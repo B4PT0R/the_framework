@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "harness-core"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "codex-backend-sdk>=0.5.3",
+    "fastapi",
+    "httpx",
+    "jsonschema>=4.26.0",
+    "modict>=0.4.19",
+    "pillow",
+    "playwright",
+    "python-multipart",
+    "pyyaml",
+    "tiktoken",
+    "uvicorn",
+    "websockets",
+]
+
+[project.optional-dependencies]
+dev = ["httpx2>=2.0.0", "pytest"]
+
+[project.scripts]
+harness-core = "harness_core.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["harness_core"]
+force-include = { "starter" = "harness_core/_starter" }
+exclude = ["/starter/ui/dist/**", "/starter/ui/node_modules/**", "**/__pycache__/**", "**/*.pyc"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
