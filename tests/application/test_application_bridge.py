@@ -1,6 +1,6 @@
 import asyncio
 
-from core.server.runtime.bridge import ApplicationBridge
+from the_framework.server.runtime.bridge import ApplicationBridge
 
 
 class Supervisor:

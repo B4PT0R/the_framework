@@ -1,7 +1,7 @@
 import pytest
 
-import core.utils.tokens as tokenization
-from core.utils.tokens import token_count, token_count_payload, tokenizer_for_model
+import the_framework.utils.tokens as tokenization
+from the_framework.utils.tokens import token_count, token_count_payload, tokenizer_for_model
 
 
 def test_gpt_5_family_uses_the_local_o200k_tokenizer():

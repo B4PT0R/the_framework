@@ -1,6 +1,6 @@
 import asyncio
 
-from core.agent.runtime.event_loop import EventLoop
+from the_framework.agent.runtime.event_loop import EventLoop
 
 
 def test_async_stream_forwards_events_and_errors():

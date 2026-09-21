@@ -1,5 +1,5 @@
-from core import AgentResources
-from core.utils.persistence import MappingStore
+from the_framework import AgentResources
+from the_framework.utils.persistence import MappingStore
 from starter.application import application, resources
 
 
@@ -45,9 +45,9 @@ def test_starter_without_credentials_remains_available_after_inference_failure(t
     import pytest
     from fastapi.testclient import TestClient
 
-    from core.agent.runtime.protocol import PromptRequest
-    from core.server.runtime.application import ApplicationRuntime
-    from core.server.runtime.supervisor import WorkerSupervisor
+    from the_framework.agent.runtime.protocol import PromptRequest
+    from the_framework.server.runtime.application import ApplicationRuntime
+    from the_framework.server.runtime.supervisor import WorkerSupervisor
     from starter.server import create_app
 
     session = tmp_path / "session.json"
@@ -87,7 +87,7 @@ def test_starter_http_uses_authenticated_canonical_queue(tmp_path):
         running = False
 
         def __init__(self):
-            from core.server.runtime.bridge import ApplicationBridge
+            from the_framework.server.runtime.bridge import ApplicationBridge
             self.application = ApplicationBridge(None)
             self.submitted = []
 
@@ -185,7 +185,7 @@ def test_starter_real_worker_starts_and_restores_configuration(tmp_path):
 
 def test_starter_voice_transcript_is_committed_once_and_restored(tmp_path):
     from fastapi.testclient import TestClient
-    from core.agent.runtime.protocol import ExternalEventRequest
+    from the_framework.agent.runtime.protocol import ExternalEventRequest
     from starter.server import create_app
 
     command = ExternalEventRequest(id="realtime:test:turn-1:user", name="realtime_turn",

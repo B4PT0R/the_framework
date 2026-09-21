@@ -4,7 +4,7 @@ import sys
 
 import pytest
 
-from core.server.clients.tailscale import (
+from the_framework.server.clients.tailscale import (
     configure_serve,
     endpoint_from_status,
     main,

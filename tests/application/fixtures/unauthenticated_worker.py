@@ -2,7 +2,7 @@
 
 from codex_backend_sdk import OpenAI
 
-from core.agent.runtime.worker_process import main
+from the_framework.agent.runtime.worker_process import main
 
 
 def missing_credentials(self, *, interactive=True, force=False):

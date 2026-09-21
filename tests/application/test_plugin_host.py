@@ -3,7 +3,7 @@ import asyncio
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from core import (
+from the_framework import (
     AgentApplication,
     AgentSpec,
     BuildContext,
@@ -12,7 +12,7 @@ from core import (
     SessionPolicy,
     endpoint,
 )
-from core.server.api.endpoints import Principal
+from the_framework.server.api.endpoints import Principal
 
 
 class Service:

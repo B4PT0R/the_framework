@@ -1,7 +1,7 @@
 import asyncio
 
-from core.agent.runtime.command_loop import CommandLoop
-from core.agent.runtime.protocol import PromptRequest
+from the_framework.agent.runtime.command_loop import CommandLoop
+from the_framework.agent.runtime.protocol import PromptRequest
 
 
 class Executor:

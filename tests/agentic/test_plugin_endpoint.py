@@ -1,7 +1,7 @@
 import pytest
 
-from core.agent.extensions.endpoints import Endpoints
-from core.agent.extensions.plugin import Plugin, endpoint
+from the_framework.agent.extensions.endpoints import Endpoints
+from the_framework.agent.extensions.plugin import Plugin, endpoint
 
 
 class ApiPlugin(Plugin):

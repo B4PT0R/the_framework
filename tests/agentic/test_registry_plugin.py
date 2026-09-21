@@ -2,10 +2,10 @@ import json
 
 import pytest
 
-from core.agent import Agent
-from core.agent.models.responses import ProviderOutput, ToolOutput
+from the_framework.agent import Agent
+from the_framework.agent.models.responses import ProviderOutput, ToolOutput
 
-from core.plugins.registry import RegistryPlugin
+from the_framework.plugins.registry import RegistryPlugin
 
 
 def registry(tmp_path, **config):

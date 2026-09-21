@@ -1,19 +1,19 @@
 import asyncio
 from uuid import UUID
 
-from core.agent.runtime.agentic_loop import AgenticLoop
-from core.agent.extensions.commands import Commands
-from core.agent.context.compaction import Compaction
-from core.agent.models.config import Configs
-from core.agent.context.builder import Context
-from core.agent.models.usage import ResponseUsage
-from core.agent.extensions.hooks import Hooks, hook
-from core.agent.extensions.instructions import Instructions
-from core.agent.extensions.providers import Providers
-from core.agent.models.responses import Compaction as CompactionItem
-from core.agent.models.responses import Image, Message, Portrait
-from core.agent.context.session import Session
-from core.agent.extensions.tools import Tools
+from the_framework.agent.runtime.agentic_loop import AgenticLoop
+from the_framework.agent.extensions.commands import Commands
+from the_framework.agent.context.compaction import Compaction
+from the_framework.agent.models.config import Configs
+from the_framework.agent.context.builder import Context
+from the_framework.agent.models.usage import ResponseUsage
+from the_framework.agent.extensions.hooks import Hooks, hook
+from the_framework.agent.extensions.instructions import Instructions
+from the_framework.agent.extensions.providers import Providers
+from the_framework.agent.models.responses import Compaction as CompactionItem
+from the_framework.agent.models.responses import Image, Message, Portrait
+from the_framework.agent.context.session import Session
+from the_framework.agent.extensions.tools import Tools
 
 
 class Responses:

@@ -7,17 +7,17 @@ import pytest
 from fastapi import Request
 from modict import modict
 
-from core.agent import AgentSpec, SessionPolicy
-from core.agent.runtime.agentic_loop import PendingSteering
-from core.server.clients.browser import BrowserSession
-from core.server.clients.remote import (
+from the_framework.agent import AgentSpec, SessionPolicy
+from the_framework.agent.runtime.agentic_loop import PendingSteering
+from the_framework.server.clients.browser import BrowserSession
+from the_framework.server.clients.remote import (
     CapabilityLease, ClientApplicationConnection, PendingPairing,
 )
-from core.server.composition.application import AgentApplication, Extension, PluginSpec
-from core.server.api.endpoints import EndpointContext, Principal
-from core.server.composition.services import ServiceSpec
-from core.server.clients.surfaces import ClientSurface
-from core.server.api.websockets import WebSocketEndpoint
+from the_framework.server.composition.application import AgentApplication, Extension, PluginSpec
+from the_framework.server.api.endpoints import EndpointContext, Principal
+from the_framework.server.composition.services import ServiceSpec
+from the_framework.server.clients.surfaces import ClientSurface
+from the_framework.server.api.websockets import WebSocketEndpoint
 
 
 @pytest.mark.parametrize("make", [

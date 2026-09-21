@@ -1,13 +1,13 @@
 # Local Agent starter
 
-A small, editable desktop application built with `core`: one persistent
+A small, editable desktop application built with `the_framework`: one persistent
 conversation, a Python worker, an authenticated loopback server and a Chromium
 window. This is application source to make your own, not a mandatory framework UI.
 
 ## Create your own copy
 
-From an environment with `core` installed, run `harness-core bootstrap`
-(or `python -m core bootstrap`). Enter an empty directory for editable
+From an environment with `the_framework` installed, run `the-framework bootstrap`
+(or `python -m the_framework bootstrap`). Enter an empty directory for editable
 application code and a different empty directory for private application data.
 The CLI copies this complete starter, records the data location in
 `starter/instance.json`, and never overwrites an existing nonempty directory.
@@ -115,7 +115,7 @@ permission behavior still depend on the user's environment.
 
 Add a general `Plugin` class to the declaration, or a `PluginSpec` when it needs
 explicit construction. Keep product policy in application instructions/plugins;
-do not add product imports to `core`. Backend contributions use the
+do not add product imports to `the_framework`. Backend contributions use the
 framework's `Extension` and `@endpoint` primitives. The canonical worker remains
 the sole writer of conversation history.
 

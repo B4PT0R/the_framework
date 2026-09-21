@@ -2,22 +2,22 @@ from copy import deepcopy
 import json
 import pytest
 
-from core.agent.extensions.schema import Parameters, Param, Properties
-from core.agent.runtime.protocol import WorkerOutput, WorkerReady
-from core.agent.runtime.protocol import CommandEvent, CommandAccepted, CommandCompleted, CommandFailed, PromptRequest
-from core.agent.runtime.protocol import SessionSnapshot, SessionPage, SessionTurn
-from core.agent.runtime.protocol import WorkerStatus
-from core.agent.models.lifecycle import AgentCompactionEnd
-from core.agent.models.responses import Compaction
-from core.agent.context.session import SessionWatermark
-from core.agent.models.events import ResponseOutputItemAdded
-from core.agent.models.responses import Message
-from core.agent.models.worker import WorkerProfile
-from core.agent.models.usage import ResponseUsage, TokenDetails
-from core.server.clients.surfaces import SurfaceRelease
-from core.server.composition.application import BuildContext, Capability, CapabilityRequirement
-from core.server.clients.remote import RemoteClientPolicy
-from core.server.api.endpoints import Principal
+from the_framework.agent.extensions.schema import Parameters, Param, Properties
+from the_framework.agent.runtime.protocol import WorkerOutput, WorkerReady
+from the_framework.agent.runtime.protocol import CommandEvent, CommandAccepted, CommandCompleted, CommandFailed, PromptRequest
+from the_framework.agent.runtime.protocol import SessionSnapshot, SessionPage, SessionTurn
+from the_framework.agent.runtime.protocol import WorkerStatus
+from the_framework.agent.models.lifecycle import AgentCompactionEnd
+from the_framework.agent.models.responses import Compaction
+from the_framework.agent.context.session import SessionWatermark
+from the_framework.agent.models.events import ResponseOutputItemAdded
+from the_framework.agent.models.responses import Message
+from the_framework.agent.models.worker import WorkerProfile
+from the_framework.agent.models.usage import ResponseUsage, TokenDetails
+from the_framework.server.clients.surfaces import SurfaceRelease
+from the_framework.server.composition.application import BuildContext, Capability, CapabilityRequirement
+from the_framework.server.clients.remote import RemoteClientPolicy
+from the_framework.server.api.endpoints import Principal
 
 
 def test_ready_reconstructs_nested_profiles_without_mutating_input():

@@ -4,8 +4,8 @@ import asyncio
 
 import pytest
 
-from core.server.composition.application import Extension
-from core.server.composition.services import ServiceContext, ServiceSpec, invoke_lifecycle
+from the_framework.server.composition.application import Extension
+from the_framework.server.composition.services import ServiceContext, ServiceSpec, invoke_lifecycle
 
 
 @pytest.mark.parametrize("declaration", [Extension, ServiceSpec])

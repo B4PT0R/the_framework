@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from core import (
+from the_framework import (
     AgentApplication,
     AgentResources,
     AgentSpec,
@@ -10,16 +10,16 @@ from core import (
     PluginSpec,
     SessionPolicy,
 )
-from core.agent import Worker
-from core.utils.persistence import MappingStore
-from core.plugins.bash import BashPlugin
-from core.plugins.browser import ChromiumPlugin
-from core.plugins.memory.plugin import MemoryPlugin
-from core.plugins.realtime import RealtimePlugin
-from core.plugins.registry import RegistryPlugin
-from core.plugins.scheduler import SchedulerPlugin
-from core.plugins.system import SystemPlugin
-from core.plugins.web_search import WebSearchPlugin
+from the_framework.agent import Worker
+from the_framework.utils.persistence import MappingStore
+from the_framework.plugins.bash import BashPlugin
+from the_framework.plugins.browser import ChromiumPlugin
+from the_framework.plugins.memory.plugin import MemoryPlugin
+from the_framework.plugins.realtime import RealtimePlugin
+from the_framework.plugins.registry import RegistryPlugin
+from the_framework.plugins.scheduler import SchedulerPlugin
+from the_framework.plugins.system import SystemPlugin
+from the_framework.plugins.web_search import WebSearchPlugin
 
 ROOT = Path(__file__).resolve().parent
 

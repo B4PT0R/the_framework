@@ -1,7 +1,7 @@
 import pytest
 
-from core.plugins.web_search import WebSearchPlugin
-from core.agent import Agent
+from the_framework.plugins.web_search import WebSearchPlugin
+from the_framework.agent import Agent
 
 
 def test_web_search_plugin_exposes_configured_hosted_tool():

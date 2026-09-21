@@ -3,10 +3,10 @@ from typing import Literal
 
 from jsonschema import Draft202012Validator
 
-from core.agent.extensions.endpoints import Endpoint, endpoint
-from core.agent.extensions.schema import parse_function_specs
-from core.agent.extensions.schema import annotation_schema
-from core.agent.extensions.tools import FunctionTool
+from the_framework.agent.extensions.endpoints import Endpoint, endpoint
+from the_framework.agent.extensions.schema import parse_function_specs
+from the_framework.agent.extensions.schema import annotation_schema
+from the_framework.agent.extensions.tools import FunctionTool
 
 
 @pytest.mark.parametrize("build", [FunctionTool.from_function, Endpoint.from_function])

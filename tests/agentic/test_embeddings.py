@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.plugins.embeddings import embed_texts, normalize_embedding
+from the_framework.plugins.embeddings import embed_texts, normalize_embedding
 
 
 class Embeddings:

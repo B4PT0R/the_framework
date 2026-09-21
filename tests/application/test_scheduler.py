@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
 
-from core.agent.runtime.protocol import (
+from the_framework.agent.runtime.protocol import (
     ApplicationCall,
     ApplicationRequest,
     ApplicationResult,
@@ -10,8 +10,8 @@ from core.agent.runtime.protocol import (
     PromptRequest,
 )
 
-from core.server.runtime.bridge import ApplicationBridge
-from core.plugins.scheduler.service import SchedulerService
+from the_framework.server.runtime.bridge import ApplicationBridge
+from the_framework.plugins.scheduler.service import SchedulerService
 
 
 def iso(value):

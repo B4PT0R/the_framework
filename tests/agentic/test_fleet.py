@@ -4,25 +4,25 @@ from typing import ClassVar
 
 import pytest
 
-from core.agent.models.worker import WorkerProfile
-from core.agent.models.content import OutputText
-from core.agent.models.events import Event, ResponseOutputItemDone
-from core.agent.models.lifecycle import (
+from the_framework.agent.models.worker import WorkerProfile
+from the_framework.agent.models.content import OutputText
+from the_framework.agent.models.events import Event, ResponseOutputItemDone
+from the_framework.agent.models.lifecycle import (
     AgentTaskRequested,
     AgentCompactionEnd,
     AgentResponseItemAdded,
     AgentStepStart,
     AgentTurnEnd,
 )
-from core.agent.runtime.protocol import CommandCompleted, CommandEvent, CommandFailed, WorkerReady
-from core.agent.models.responses import (
+from the_framework.agent.runtime.protocol import CommandCompleted, CommandEvent, CommandFailed, WorkerReady
+from the_framework.agent.models.responses import (
     CompactionSummary,
     FunctionCall,
     FunctionCallOutput,
     Message,
 )
-from core.agent.context.session import SessionWatermark
-from core.server.runtime.fleet import FleetSupervisor, agent_request_prompt
+from the_framework.agent.context.session import SessionWatermark
+from the_framework.server.runtime.fleet import FleetSupervisor, agent_request_prompt
 
 
 def test_specialist_request_envelope_preserves_arbitrary_task_and_provenance():

@@ -3,7 +3,7 @@ import os
 
 import pytest
 
-from core.server.runtime.discovery import (
+from the_framework.server.runtime.discovery import (
     DEFAULT_SERVER_PORT,
     PersistentSecretStore,
     ServerAlreadyRunning,

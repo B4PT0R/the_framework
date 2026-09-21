@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "harness-core"
+name = "the-framework"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
@@ -25,11 +25,11 @@ dependencies = [
 dev = ["httpx2>=2.0.0", "pytest"]
 
 [project.scripts]
-harness-core = "core.cli:main"
+the-framework = "the_framework.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["core"]
-force-include = { "starter" = "core/_starter" }
+packages = ["the_framework"]
+force-include = { "starter" = "the_framework/_starter" }
 exclude = ["/starter/ui/dist/**", "/starter/ui/node_modules/**", "**/__pycache__/**", "**/*.pyc"]
 
 [tool.pytest.ini_options]

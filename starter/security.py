@@ -2,7 +2,7 @@
 
 from hmac import compare_digest
 
-from core.server.api.endpoints import Principal
+from the_framework.server.api.endpoints import Principal
 
 
 class LocalSecurity:

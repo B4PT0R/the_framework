@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from core.server.composition.services import ServiceGraph, ServiceSpec
+from the_framework.server.composition.services import ServiceGraph, ServiceSpec
 
 
 class Service:

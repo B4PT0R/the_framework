@@ -1,9 +1,9 @@
 from fastapi.testclient import TestClient
 
-from core.agent import AgentSpec, SessionPolicy
-from core.server.composition.application import AgentApplication, Extension, build_application
-from core.server.api.endpoints import Principal
-from core.server.api.websockets import websocket
+from the_framework.agent import AgentSpec, SessionPolicy
+from the_framework.server.composition.application import AgentApplication, Extension, build_application
+from the_framework.server.api.endpoints import Principal
+from the_framework.server.api.websockets import websocket
 
 
 class Security:

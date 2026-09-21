@@ -1,1 +1,1 @@
-"""An editable, neutral local-agent application built with core."""
+"""An editable, neutral local-agent application built with the_framework."""

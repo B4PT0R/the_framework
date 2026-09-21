@@ -1,9 +1,9 @@
-from core.agent.spec import AgentSpec, SessionPolicy
+from the_framework.agent.spec import AgentSpec, SessionPolicy
 import pytest
 from fastapi.testclient import TestClient
 
-from core.agent.extensions.plugin import endpoint
-from core.server.composition.application import (
+from the_framework.agent.extensions.plugin import endpoint
+from the_framework.server.composition.application import (
     AgentApplication,
     BuildContext,
     Capability,
@@ -12,9 +12,9 @@ from core.server.composition.application import (
     PluginSpec,
     build_application,
 )
-from core.server.api.health import ApplicationHealthApi
-from core.server.api.endpoints import Principal
-from core.server.api.websockets import WebSocketEndpoint
+from the_framework.server.api.health import ApplicationHealthApi
+from the_framework.server.api.endpoints import Principal
+from the_framework.server.api.websockets import WebSocketEndpoint
 
 
 class Security:
@@ -302,7 +302,7 @@ def test_extension_discovers_decorated_methods_from_an_object():
 
 
 def test_primary_agent_must_be_durable():
-    from core.agent import SessionPolicy
+    from the_framework.agent import SessionPolicy
 
     with pytest.raises(ValueError, match="primary agent session must be durable"):
         AgentApplication(
@@ -318,7 +318,7 @@ def test_primary_agent_must_be_durable():
 
 @pytest.mark.parametrize("short_form", [False, True])
 def test_plugin_private_agent_identities_are_namespaced_and_ephemeral_by_default(short_form):
-    from core.agent import Plugin, agent_trigger
+    from the_framework.agent import Plugin, agent_trigger
 
     class Owner(Plugin):
         name = "owner"
@@ -346,7 +346,7 @@ def test_plugin_private_agent_identities_are_namespaced_and_ephemeral_by_default
 
 
 def test_plugin_shorthand_normalizes_without_instantiating_the_plugin():
-    from core.agent import Plugin
+    from the_framework.agent import Plugin
 
     class Example(Plugin):
         name = "example"
@@ -362,7 +362,7 @@ def test_plugin_shorthand_normalizes_without_instantiating_the_plugin():
 
 
 def test_plugin_shorthand_requires_a_declared_identity():
-    from core.agent import Plugin
+    from the_framework.agent import Plugin
 
     class Anonymous(Plugin):
         pass

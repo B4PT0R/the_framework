@@ -11,12 +11,12 @@ import sys
 import urllib.request
 from pathlib import Path
 
-from core.server.clients.browser import BrowserService
-from core.server.clients.browser_rpc import (
+from the_framework.server.clients.browser import BrowserService
+from the_framework.server.clients.browser_rpc import (
     BrowserRPCServer,
     browser_socket_path,
 )
-from core.server.runtime.discovery import ServerLease
+from the_framework.server.runtime.discovery import ServerLease
 
 from .security import LocalSecurity
 

@@ -19,26 +19,26 @@ class ProductUnavailable(importlib.abc.MetaPathFinder):
             raise ImportError('product package unavailable: ' + fullname)
 
 sys.meta_path.insert(0, ProductUnavailable())
-import core
-for module in pkgutil.walk_packages(core.__path__, 'core.'):
+import the_framework
+for module in pkgutil.walk_packages(the_framework.__path__, 'the_framework.'):
     importlib.import_module(module.name)
-from core.agent import Agent
-from core.utils.persistence import MappingStore
-import core.server as server
-from core.server.clients.browser import BrowserService
-from core.server.clients.browser_rpc import BrowserRPCClient
-from core.server.runtime.realtime import RealtimeController
-from core.plugins.browser import ChromiumPlugin
-from core.plugins.bash import BashPlugin
-from core.plugins.registry import RegistryPlugin
-from core.plugins.scheduler import SchedulerPlugin
-from core.plugins.system import SystemPlugin
-from core.plugins.web_search import WebSearchPlugin
-from core.plugins.memory.store import MemoryStore
-from core.plugins.memory.curator import MemoryCuratorPlugin
-from core.plugins.memory.plugin import MemoryPlugin
-from core.plugins.realtime import RealtimePlugin, RealtimeConfig
-from core.plugins.embeddings import normalize_embedding
+from the_framework.agent import Agent
+from the_framework.utils.persistence import MappingStore
+import the_framework.server as server
+from the_framework.server.clients.browser import BrowserService
+from the_framework.server.clients.browser_rpc import BrowserRPCClient
+from the_framework.server.runtime.realtime import RealtimeController
+from the_framework.plugins.browser import ChromiumPlugin
+from the_framework.plugins.bash import BashPlugin
+from the_framework.plugins.registry import RegistryPlugin
+from the_framework.plugins.scheduler import SchedulerPlugin
+from the_framework.plugins.system import SystemPlugin
+from the_framework.plugins.web_search import WebSearchPlugin
+from the_framework.plugins.memory.store import MemoryStore
+from the_framework.plugins.memory.curator import MemoryCuratorPlugin
+from the_framework.plugins.memory.plugin import MemoryPlugin
+from the_framework.plugins.realtime import RealtimePlugin, RealtimeConfig
+from the_framework.plugins.embeddings import normalize_embedding
 
 store = MemoryStore(':memory:')
 assert MappingStore('/tmp/unused-framework-settings', field='settings').field == 'settings'
@@ -65,7 +65,7 @@ assert voice.name == 'realtime'
 package_root = os.environ.get('FRAMEWORK_PACKAGE_ROOT')
 if package_root:
     for name, module in tuple(sys.modules.items()):
-        if name.split('.')[0] == 'core':
+        if name.split('.')[0] == 'the_framework':
             assert Path(module.__file__).is_relative_to(package_root), name
 """],
         capture_output=True,

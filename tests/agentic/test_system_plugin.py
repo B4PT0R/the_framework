@@ -3,8 +3,8 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 
-from core.agent import Agent, AgenticLoop
-from core.plugins.system import SystemPlugin
+from the_framework.agent import Agent, AgenticLoop
+from the_framework.plugins.system import SystemPlugin
 
 
 def test_system_wait_exposes_a_general_preemptible_idle_tool():

@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from core.agent.context.session import Session
-from core.agent.models.responses import Message
+from the_framework.agent.context.session import Session
+from the_framework.agent.models.responses import Message
 from starter import desktop
 
 

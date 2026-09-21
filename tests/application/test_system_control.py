@@ -1,8 +1,8 @@
 import asyncio
 
-from core.agent.runtime.protocol import CommandCompleted, CommandFailed, PromptRequest
+from the_framework.agent.runtime.protocol import CommandCompleted, CommandFailed, PromptRequest
 
-from core.plugins.system.service import ServerRestartIntent, SystemControlService
+from the_framework.plugins.system.service import ServerRestartIntent, SystemControlService
 
 
 def terminal(command, *, status="completed", error=None):

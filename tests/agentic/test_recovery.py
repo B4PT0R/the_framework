@@ -1,10 +1,10 @@
 import json
 
-from core.agent.context.compaction import Compaction
-from core.agent.models.usage import ResponseUsage
-from core.agent.models.config import Configs
-from core.agent.models.responses import Message
-from core.agent.context.session import Session
+from the_framework.agent.context.compaction import Compaction
+from the_framework.agent.models.usage import ResponseUsage
+from the_framework.agent.models.config import Configs
+from the_framework.agent.models.responses import Message
+from the_framework.agent.context.session import Session
 
 
 class Responses:

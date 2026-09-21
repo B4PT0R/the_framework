@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from core.server.composition.plugins import PluginStatus
+from the_framework.server.composition.plugins import PluginStatus
 
 
 def test_status_is_the_serializable_immutable_payload():

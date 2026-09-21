@@ -1,4 +1,4 @@
-from core.agent.models.usage import usage_window
+from the_framework.agent.models.usage import usage_window
 
 
 def test_usage_windows_are_selected_by_duration_not_position():

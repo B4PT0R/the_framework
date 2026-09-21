@@ -34,7 +34,7 @@ requires an account usable by `codex-backend-sdk`. The
 features and platform-specific browser setup. The starter serves its interface
 locally; do not expose its port to the public internet.
 
-Once you have tried it, `uv run harness-core bootstrap` copies the starter into
+Once you have tried it, `uv run the-framework bootstrap` copies the starter into
 an editable code directory and asks for a *different* directory for private
 application data. Both locations must be empty. The command also accepts
 `--code-dir` and `--data-dir`. It copies files; it does not build or launch the
@@ -47,7 +47,7 @@ Applications declare their main agent and other parts in one place. For
 example, this declaration names a durable main agent:
 
 ```python
-from core import AgentApplication, AgentSpec, SessionPolicy
+from the_framework import AgentApplication, AgentSpec, SessionPolicy
 
 application = AgentApplication(
     name="My Agent",
@@ -62,16 +62,17 @@ application = AgentApplication(
 
 This declaration names the agent but does not launch a server. Add security,
 plugins, services and clients as your application requires. The
-[framework guide](docs/core-framework.md) explains those pieces; the
+[framework guide](docs/framework.md) explains those pieces; the
 [minimal application](examples/minimal_agent_app.py) shows a complete HTTP
-service. The Python import is `core`, while the distribution and bootstrap
-command are named `harness-core`.
+service. The Python import is `the_framework`; the distribution and bootstrap
+command are named `the-framework`.
 
 ## Work on the framework
 
 The distribution is currently installed from this source checkout; it is not
-published to a package index. The reusable library is in [`core/`](core/), the
-editable example in [`starter/`](starter/), and their tests in [`tests/`](tests/).
+published to a package index. The reusable library is in
+[`the_framework/`](the_framework/), the editable example in
+[`starter/`](starter/), and their tests in [`tests/`](tests/).
 
 ```sh
 uv sync --extra dev

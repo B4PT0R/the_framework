@@ -3,8 +3,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.agent.runtime.protocol import SessionSnapshotRequest, StatusRequest
-from core.server.api.endpoints import HttpError
+from the_framework.agent.runtime.protocol import SessionSnapshotRequest, StatusRequest
+from the_framework.server.api.endpoints import HttpError
 from starter.voice import VoiceApi
 from starter.server import ChatApi
 

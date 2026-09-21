@@ -1,16 +1,16 @@
 # Working on The Framework
 
-The public Python package is `core/`; `starter/` is an editable example that
-uses it. Read [README.md](README.md) for the first-run path and
-[docs/core-framework.md](docs/core-framework.md) for the composition API. This
+The public Python package is `the_framework/`; `starter/` is an editable
+example that uses it. Read [README.md](README.md) for the first-run path and
+[docs/framework.md](docs/framework.md) for the composition API. This
 file records the constraints to preserve when changing the framework.
 
 ## Ownership and contracts
 
 - Keep application identity, instructions, policies and domain-specific
-  features outside `core`. Dependencies point from applications to the
-  framework, never the reverse. The starter must depend on `core`, not on any
-  particular application.
+  features outside `the_framework`. Dependencies point from applications to the
+  framework, never the reverse. The starter must depend on `the_framework`, not
+  on any particular application.
 - An `AgentApplication` has one durable primary conversation. The worker is its
   only history writer. Plugins may declare private specialist agents, but a
   specialist must not write into primary history; results return through the

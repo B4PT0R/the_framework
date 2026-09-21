@@ -2,10 +2,10 @@
 
 import asyncio
 
-from core import endpoint
-from core.agent.runtime.protocol import SessionSnapshotRequest, StatusRequest
-from core.utils.ids import timestamp_id
-from core.server.api.endpoints import HttpError
+from the_framework import endpoint
+from the_framework.agent.runtime.protocol import SessionSnapshotRequest, StatusRequest
+from the_framework.utils.ids import timestamp_id
+from the_framework.server.api.endpoints import HttpError
 
 CALL_REQUEST = {"type": "object", "properties": {
     "call_id": {"type": "string", "minLength": 1, "maxLength": 200},

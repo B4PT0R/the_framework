@@ -4,9 +4,9 @@ from types import SimpleNamespace
 import pytest
 import requests
 
-from core.agent import Agent
-from core.agent.runtime.agentic_loop import AgenticLoop, GenerationUnavailable
-from core.agent.models.responses import FunctionCall, FunctionCallOutput
+from the_framework.agent import Agent
+from the_framework.agent.runtime.agentic_loop import AgenticLoop, GenerationUnavailable
+from the_framework.agent.models.responses import FunctionCall, FunctionCallOutput
 
 
 def test_interrupt_finishes_current_tool_and_marks_remaining_calls_skipped():

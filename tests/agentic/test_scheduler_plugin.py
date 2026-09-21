@@ -1,9 +1,9 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
 
-from core.agent import Agent
+from the_framework.agent import Agent
 
-from core.plugins.scheduler import SchedulerPlugin
+from the_framework.plugins.scheduler import SchedulerPlugin
 
 
 def iso_after(minutes):

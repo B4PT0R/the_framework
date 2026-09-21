@@ -1,16 +1,16 @@
-from core.agent.spec import AgentSpec
+from the_framework.agent.spec import AgentSpec
 import asyncio
 from types import SimpleNamespace
 
-from core.agent import Agent as RuntimeAgent
-from core.agent.runtime.application import Application
-from core.agent.extensions.specialists import AgentTriggers, agent_trigger
-from core.agent.runtime.event_loop import EventLoop
-from core.agent.models.events import Event
-from core.agent.extensions.hooks import Hooks
-from core.agent.models.lifecycle import AgentCompactionEnd, AgentCompactionStart
-from core.agent.context.projections import SessionProjections
-from core.agent.runtime.protocol import (
+from the_framework.agent import Agent as RuntimeAgent
+from the_framework.agent.runtime.application import Application
+from the_framework.agent.extensions.specialists import AgentTriggers, agent_trigger
+from the_framework.agent.runtime.event_loop import EventLoop
+from the_framework.agent.models.events import Event
+from the_framework.agent.extensions.hooks import Hooks
+from the_framework.agent.models.lifecycle import AgentCompactionEnd, AgentCompactionStart
+from the_framework.agent.context.projections import SessionProjections
+from the_framework.agent.runtime.protocol import (
     ApplicationCall,
     ApplicationResult,
     CompactRequest,
@@ -23,10 +23,10 @@ from core.agent.runtime.protocol import (
     StatusRequest,
     TransientEventRequest,
 )
-from core.agent.models.responses import FunctionCall, FunctionCallOutput, Message
-from core.agent.context.session import Session
-from core.agent.runtime.worker import Worker
-from core.plugins.system import SystemPlugin
+from the_framework.agent.models.responses import FunctionCall, FunctionCallOutput, Message
+from the_framework.agent.context.session import Session
+from the_framework.agent.runtime.worker import Worker
+from the_framework.plugins.system import SystemPlugin
 
 
 class Agent:
@@ -496,7 +496,7 @@ def test_worker_projects_only_displayable_session_items(tmp_path):
             outgoing.append(message)
 
         agent = Agent()
-        from core.agent.models.responses import Image
+        from the_framework.agent.models.responses import Image
         image_path = tmp_path / "image.png"
         image_path.write_bytes(b"image")
 
