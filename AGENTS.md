@@ -13,7 +13,9 @@ component. Explain names, acronyms, prerequisites and commands before relying on
 them. Give enough context to understand why a technical rule exists; do not use
 these files as shorthand notes about whatever implementation detail is currently
 on your mind. Link to deeper documentation instead of making the introduction
-incomprehensible or duplicating the entire design.
+incomprehensible or duplicating the entire design. In a reader-facing README,
+prioritize what someone can build, run or learn here; omit project genealogy and
+internal boundary notes unless they affect that reader's next action.
 
 Each application has one main conversational agent and one durable conversation
 history. Plugins may add tools or private specialist agents, but a specialist

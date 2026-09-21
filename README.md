@@ -1,42 +1,41 @@
 # The Framework
 
-This repository is a Python toolkit for building applications around a
-long-running AI agent. The toolkit handles the agent's conversation and tools,
-the server that connects it to clients, and the worker processes that keep
-long-running work separate from the server. An application supplies its own
-identity, instructions, plugins and user interface.
+Build an agent application with a persistent conversation, tools, plugins and
+an authenticated web interface. The Python library handles conversation state,
+background worker processes and client connections; you decide what your agent
+does and how its interface looks.
 
-There are two main parts:
+You can start in either of two ways:
 
-- [`core/`](core/) is the reusable library. Its Python import name is `core`;
-  the installable distribution and bootstrap command are named `harness-core`.
-- [`starter/`](starter/) is a small working application built only with that
-  library. You can copy it and change its behavior and interface without
-  modifying the framework. Its [README](starter/README.md) explains how to run
-  it and what is included.
+- Copy the working [`starter/`](starter/) application and adapt its agent and
+  interface. Its [guide](starter/README.md) covers setup and everyday use.
+- Compose an application from the [`core/`](core/) library. See the
+  [framework guide](docs/core-framework.md) and the
+  [minimal Python example](examples/minimal_agent_app.py).
 
-[The Harness](https://github.com/B4PT0R/the_harness) is a separate application that uses this
-framework for Pandora. It is not required to use the starter or import `core`.
-This framework has not yet been published to a package index; The Harness uses
-this checkout as a local dependency.
+## Create an application from the starter
 
-## Try it locally
+From this checkout, install Python 3.12+ and
+[`uv`](https://docs.astral.sh/uv/), then run:
 
-From this repository's root, with Python 3.12+ and
-[`uv`](https://docs.astral.sh/uv/) installed:
+```sh
+uv sync
+uv run harness-core bootstrap
+```
+
+Bootstrap asks for two separate, empty locations: one for your editable
+application code and one for private data such as the conversation and uploaded
+files. It copies the starter but does not launch it. You may pass `--code-dir`
+and `--data-dir` instead of answering prompts. Follow the
+[starter setup guide](starter/README.md) to build the interface and run the app.
+
+The Python import is `core`; the distribution and bootstrap command are named
+`harness-core`. The distribution is not yet published to a package index, so
+install it from this checkout.
+
+## Develop the framework
 
 ```sh
 uv sync --extra dev
 uv run pytest -q tests/application tests/agentic
-uv run harness-core bootstrap
 ```
-
-The last command asks for two separate, empty locations: one for a copy of the
-starter's editable code and one for its private data (conversation, settings and
-files). It does not start the application. To build and launch the copied
-starter, follow its [setup instructions](starter/README.md). You may also pass
-`--code-dir` and `--data-dir` to bootstrap instead of answering prompts.
-
-To assemble a different application directly with the library, see the
-[framework guide](docs/core-framework.md) and the
-[minimal Python example](examples/minimal_agent_app.py).
