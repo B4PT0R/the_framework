@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from harness_core import (
+from core import (
     AgentApplication,
     AgentResources,
     AgentSpec,
@@ -10,16 +10,16 @@ from harness_core import (
     PluginSpec,
     SessionPolicy,
 )
-from harness_core.agent import Worker
-from harness_core.utils.persistence import MappingStore
-from harness_core.plugins.bash import BashPlugin
-from harness_core.plugins.browser import ChromiumPlugin
-from harness_core.plugins.memory.plugin import MemoryPlugin
-from harness_core.plugins.realtime import RealtimePlugin
-from harness_core.plugins.registry import RegistryPlugin
-from harness_core.plugins.scheduler import SchedulerPlugin
-from harness_core.plugins.system import SystemPlugin
-from harness_core.plugins.web_search import WebSearchPlugin
+from core.agent import Worker
+from core.utils.persistence import MappingStore
+from core.plugins.bash import BashPlugin
+from core.plugins.browser import ChromiumPlugin
+from core.plugins.memory.plugin import MemoryPlugin
+from core.plugins.realtime import RealtimePlugin
+from core.plugins.registry import RegistryPlugin
+from core.plugins.scheduler import SchedulerPlugin
+from core.plugins.system import SystemPlugin
+from core.plugins.web_search import WebSearchPlugin
 
 ROOT = Path(__file__).resolve().parent
 

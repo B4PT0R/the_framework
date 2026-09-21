@@ -1,9 +1,9 @@
 from fastapi.testclient import TestClient
 
-from harness_core.agent import AgentSpec, SessionPolicy
-from harness_core.server.composition.application import AgentApplication, Extension, build_application
-from harness_core.server.api.endpoints import Principal
-from harness_core.server.api.websockets import websocket
+from core.agent import AgentSpec, SessionPolicy
+from core.server.composition.application import AgentApplication, Extension, build_application
+from core.server.api.endpoints import Principal
+from core.server.api.websockets import websocket
 
 
 class Security:

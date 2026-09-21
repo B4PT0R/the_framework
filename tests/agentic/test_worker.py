@@ -1,16 +1,16 @@
-from harness_core.agent.spec import AgentSpec
+from core.agent.spec import AgentSpec
 import asyncio
 from types import SimpleNamespace
 
-from harness_core.agent import Agent as RuntimeAgent
-from harness_core.agent.runtime.application import Application
-from harness_core.agent.extensions.specialists import AgentTriggers, agent_trigger
-from harness_core.agent.runtime.event_loop import EventLoop
-from harness_core.agent.models.events import Event
-from harness_core.agent.extensions.hooks import Hooks
-from harness_core.agent.models.lifecycle import AgentCompactionEnd, AgentCompactionStart
-from harness_core.agent.context.projections import SessionProjections
-from harness_core.agent.runtime.protocol import (
+from core.agent import Agent as RuntimeAgent
+from core.agent.runtime.application import Application
+from core.agent.extensions.specialists import AgentTriggers, agent_trigger
+from core.agent.runtime.event_loop import EventLoop
+from core.agent.models.events import Event
+from core.agent.extensions.hooks import Hooks
+from core.agent.models.lifecycle import AgentCompactionEnd, AgentCompactionStart
+from core.agent.context.projections import SessionProjections
+from core.agent.runtime.protocol import (
     ApplicationCall,
     ApplicationResult,
     CompactRequest,
@@ -23,10 +23,10 @@ from harness_core.agent.runtime.protocol import (
     StatusRequest,
     TransientEventRequest,
 )
-from harness_core.agent.models.responses import FunctionCall, FunctionCallOutput, Message
-from harness_core.agent.context.session import Session
-from harness_core.agent.runtime.worker import Worker
-from harness_core.plugins.system import SystemPlugin
+from core.agent.models.responses import FunctionCall, FunctionCallOutput, Message
+from core.agent.context.session import Session
+from core.agent.runtime.worker import Worker
+from core.plugins.system import SystemPlugin
 
 
 class Agent:
@@ -496,7 +496,7 @@ def test_worker_projects_only_displayable_session_items(tmp_path):
             outgoing.append(message)
 
         agent = Agent()
-        from harness_core.agent.models.responses import Image
+        from core.agent.models.responses import Image
         image_path = tmp_path / "image.png"
         image_path.write_bytes(b"image")
 

@@ -1,1 +1,1 @@
-"""An editable, neutral local-agent application built with harness_core."""
+"""An editable, neutral local-agent application built with core."""

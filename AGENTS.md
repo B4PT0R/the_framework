@@ -1,6 +1,6 @@
 # The Framework — Development Instructions
 
-This repository owns the reusable `harness_core` Python package and the neutral
+This repository owns the reusable `core` Python package and the neutral
 `starter` application. It must never import `the_harness` or assume Pandora's
 identity, policies, personal data or device configuration. Product composition
 belongs in `/home/baptiste/dev/the_harness` and depends inward on this package.

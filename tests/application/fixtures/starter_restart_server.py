@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi import Request, HTTPException
 
 import starter.server
-from harness_core import AgentApplication, ClientSurface
+from core import AgentApplication, ClientSurface
 from starter.desktop import main
 
 build = starter.server.create_app

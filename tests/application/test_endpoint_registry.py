@@ -2,8 +2,8 @@ from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 from fastapi.testclient import TestClient
 
-from harness_core.agent.extensions.plugin import Plugin, endpoint
-from harness_core.server.api.endpoints import PermitAllSecurity, register_plugin_endpoints
+from core.agent.extensions.plugin import Plugin, endpoint
+from core.server.api.endpoints import PermitAllSecurity, register_plugin_endpoints
 
 
 class EndpointPlugin(Plugin):

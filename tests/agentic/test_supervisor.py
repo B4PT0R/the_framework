@@ -2,13 +2,13 @@ import asyncio
 import sys
 from pathlib import Path
 
-from harness_core.agent.runtime.protocol import (
+from core.agent.runtime.protocol import (
     SessionSnapshot,
     SessionSnapshotRequest,
     StatusRequest,
     WorkerStatus,
 )
-from harness_core.server.runtime.supervisor import WorkerExited, WorkerSupervisor, WorkerTransportError
+from core.server.runtime.supervisor import WorkerExited, WorkerSupervisor, WorkerTransportError
 
 FIXTURE = Path(__file__).parents[1] / "fixtures" / "fake_worker.py"
 
@@ -16,7 +16,7 @@ FIXTURE = Path(__file__).parents[1] / "fixtures" / "fake_worker.py"
 def test_supervisor_defaults_to_the_generic_agent_worker(tmp_path):
     supervisor = WorkerSupervisor(tmp_path / "session.json")
 
-    assert supervisor.command[1:3] == ["-m", "harness_core.agent.runtime.worker_process"]
+    assert supervisor.command[1:3] == ["-m", "core.agent.runtime.worker_process"]
 
 
 def test_supervisor_starts_exchanges_messages_and_stops(tmp_path):

@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from harness_core.utils.persistence import MappingStore
+from core.utils.persistence import MappingStore
 
 
 def test_mapping_store_roundtrip_is_private_and_versioned(tmp_path):
@@ -24,7 +24,7 @@ def test_failed_replace_preserves_snapshot_and_removes_temporary(tmp_path, monke
     def fail(*args):
         raise OSError("replacement failed")
 
-    monkeypatch.setattr("harness_core.utils.persistence.os.replace", fail)
+    monkeypatch.setattr("core.utils.persistence.os.replace", fail)
     with pytest.raises(OSError, match="replacement failed"):
         store.save({"revision": 2})
     assert store.load() == {"revision": 1}

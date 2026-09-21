@@ -1,9 +1,9 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
 
-from harness_core.agent import Agent
+from core.agent import Agent
 
-from harness_core.plugins.scheduler import SchedulerPlugin
+from core.plugins.scheduler import SchedulerPlugin
 
 
 def iso_after(minutes):

@@ -5,18 +5,18 @@ import sys
 
 from httpx import ASGITransport, AsyncClient
 
-from harness_core.agent import AgentSpec, SessionPolicy
-from harness_core.agent.models.responses import Message
-from harness_core.agent.context.session import Session
-from harness_core.server import (
+from core.agent import AgentSpec, SessionPolicy
+from core.agent.models.responses import Message
+from core.agent.context.session import Session
+from core.server import (
     AgentApplication,
     CanonicalAgentApi,
     Extension,
     WorkerSupervisor,
     build_application,
 )
-from harness_core.server.runtime.application import ApplicationRuntime
-from harness_core.server.api.endpoints import Principal
+from core.server.runtime.application import ApplicationRuntime
+from core.server.api.endpoints import Principal
 
 
 def test_independent_application_preserves_session_across_server_recreation(tmp_path):
@@ -91,7 +91,7 @@ def test_generic_worker_builds_a_declared_private_agent(tmp_path):
             command=[
                 sys.executable,
                 "-m",
-                "harness_core.agent.runtime.worker_process",
+                "core.agent.runtime.worker_process",
                 "--session",
                 str(session),
                 "--application",

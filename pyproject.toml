@@ -25,11 +25,11 @@ dependencies = [
 dev = ["httpx2>=2.0.0", "pytest"]
 
 [project.scripts]
-harness-core = "harness_core.cli:main"
+harness-core = "core.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["harness_core"]
-force-include = { "starter" = "harness_core/_starter" }
+packages = ["core"]
+force-include = { "starter" = "core/_starter" }
 exclude = ["/starter/ui/dist/**", "/starter/ui/node_modules/**", "**/__pycache__/**", "**/*.pyc"]
 
 [tool.pytest.ini_options]

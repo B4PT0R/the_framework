@@ -1,11 +1,11 @@
 # Core agent-application framework
 
-All reusable Python code lives under one namespace, `harness_core`:
+All reusable Python code lives under one namespace, `core`:
 
-- `harness_core.agent`: persistent agent, worker, payloads and plugin contracts;
-- `harness_core.server`: declarative server composition, supervisors and transports;
-- `harness_core.plugins`: optional general-purpose capabilities and their resources;
-- `harness_core.utils`: owner-neutral identifiers, token counting and atomic persistence.
+- `core.agent`: persistent agent, worker, payloads and plugin contracts;
+- `core.server`: declarative server composition, supervisors and transports;
+- `core.plugins`: optional general-purpose capabilities and their resources;
+- `core.utils`: owner-neutral identifiers, token counting and atomic persistence.
 
 `the_harness` consumes this framework and owns product identity, policies and
 domain-specific plugins. Dependencies point from the application to the core,
@@ -40,11 +40,11 @@ Modules are grouped by responsibility, not by implementation size:
 not belong to an agent execution loop or server owner. General plugins retain
 their existing capability-oriented packages under `plugins/`.
 
-The `harness_core`, `harness_core.agent` and `harness_core.server` facades retain
+The `core`, `core.agent` and `core.server` facades retain
 the concise public construction API. Internal imports target the owning module directly; the
 subpackages introduce no forwarding services or legacy module aliases.
 
-The worker entrypoint is `python -m harness_core.agent.runtime.worker_process`.
+The worker entrypoint is `python -m core.agent.runtime.worker_process`.
 Runtime prompt resources live next to that runtime and are verified from the
 built wheel. Moving Python modules does not change persisted JSON discriminators
 or the HTTP/WebSocket protocol.
@@ -57,13 +57,13 @@ independence and the core/product boundary. Ruff's import/name/error checks and
 `git diff --check` pass. This is a source/package verification, not a production
 restart or a new device acceptance run.
 
-This repository distributes `harness_core` and bundles the neutral `starter`
+This repository distributes the `core` import package as `harness-core` and bundles the neutral `starter`
 template, without the product application. Run `harness-core bootstrap` (or
-`python -m harness_core bootstrap`) to copy the editable starter into a code
+`python -m core bootstrap`) to copy the editable starter into a code
 directory while keeping its private data in a separate directory. The package
 is not yet published to an index. There are no legacy top-level `agent`, `server`
 or `agent_plugins` import aliases. The wheel isolation test extracts only the
-`harness_core` package, blocks product imports, and constructs the general
+`core` package, blocks product imports, and constructs the general
 plugins using their packaged Markdown resources.
 
 `AgentApplication` is the single root declaration. It owns exactly one durable
@@ -81,7 +81,7 @@ A complete HTTP service can be assembled without manipulating FastAPI or a
 lifecycle callback:
 
 ```python
-from harness_core import (
+from core import (
     AgentApplication,
     AgentSpec,
     Extension,
@@ -255,7 +255,7 @@ binding contributions, such as the system boundary, reject those transitions.
 ## Agent construction
 
 ```python
-from harness_core.agent import AgentResources, AgentSpec
+from core.agent import AgentResources, AgentSpec
 
 agent_spec = AgentSpec(
     name="companion",
@@ -393,19 +393,19 @@ credentials without weakening the ordinary HTTP security policy.
 
 ## Built-in application primitives
 
-Reusable agent plugins live in `harness_core.plugins`, separate from the product's
+Reusable agent plugins live in `core.plugins`, separate from the product's
 `the_harness.plugins`: `bash`, `system`, `registry`, `scheduler`, and
 `web_search`. Import each capability directly from its subpackage; importing
 one does not load the other plugins or product services. Their instruction
 files ship alongside their implementations. Application-specific defaults
 (including the shell working directory) belong in application configuration.
 
-`harness_core.plugins.memory` owns storage, retrieval, curation tools and orchestration;
+`core.plugins.memory` owns storage, retrieval, curation tools and orchestration;
 applications specialize `memory.plugin.MemoryPlugin.curator_instructions`.
-`harness_core.plugins.browser` accepts an explicit runtime directory and uses
-`harness_core.server.clients.browser`/`harness_core.server.clients.browser_rpc` for the persistent Playwright process.
-`harness_core.plugins.realtime` provides canonical voice projection with application-owned
-provider selection. `harness_core.server.runtime.realtime.RealtimeController` owns transport and
+`core.plugins.browser` accepts an explicit runtime directory and uses
+`core.server.clients.browser`/`core.server.clients.browser_rpc` for the persistent Playwright process.
+`core.plugins.realtime` provides canonical voice projection with application-owned
+provider selection. `core.server.runtime.realtime.RealtimeController` owns transport and
 delegation; subclasses contribute context through `start_context`, `ready_context`,
 `flush_context` and `close_context`. The latter must stop and await their producers.
 Pandora's thin plugin specializations retain her prompts and defaults; her live
@@ -421,17 +421,17 @@ and plugin-state storage are separate application choices. Declare a
 optional inference `client`. It runs once when constructing the agent, not while
 compiling its declaration. Tests or embedding callers may instead pass a complete
 `AgentResources` to `build_agent(resources=...)`; that bypasses the factory, with
-no implicit merge or persistence side effects. The default `harness_core.agent.runtime.worker_process` does
+no implicit merge or persistence side effects. The default `core.agent.runtime.worker_process` does
 not persist configuration updates across process recreation.
 
-`harness_core.utils.persistence.MappingStore(path, field="settings")` supplies private atomic
+`core.utils.persistence.MappingStore(path, field="settings")` supplies private atomic
 JSON snapshot persistence for these callbacks. Use `store.load()` as the initial
 configuration and `store.save` as its persistence callback. The document contains
 `version` and the selected mapping field. Application-specific migrations remain
 outside this store. Snapshot replacement is atomic; coordinating read/modify/write
 operations remains the application's single-writer responsibility.
 
-The public `harness_core.server` package exports reusable pieces for common agent apps:
+The public `core.server` package exports reusable pieces for common agent apps:
 
 - `CanonicalAgentApi` for status, session pages, configuration, compaction,
   interruption and application-defined atomic reset;
@@ -447,7 +447,7 @@ The public `harness_core.server` package exports reusable pieces for common agen
 than a special Vite side effect:
 
 ```python
-from harness_core import ClientSurface
+from core import ClientSurface
 
 surface = ClientSurface(
     name="main",
@@ -473,7 +473,7 @@ routes, middleware or mounts after `build_application()`.
 ## Standalone example
 
 [`examples/minimal_agent_app.py`](../examples/minimal_agent_app.py) is a second,
-independent application that imports only `harness_core`. It demonstrates an
+independent application that imports only `core`. It demonstrates an
 authenticated endpoint, a lifecycle-managed service and graph-derived health
 without importing any The Harness product module:
 
@@ -501,7 +501,7 @@ The implementation for those steps is split by ownership across
 `runtime_composition.py`, `client_composition.py`, `media_composition.py`,
 `api_composition.py`, `remote_composition.py` and
 `extension_composition.py`. Product policy remains in these modules; no product
-composition is imported back into `harness_core`.
+composition is imported back into `core`.
 
 ## Design rule
 

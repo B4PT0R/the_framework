@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from harness_core.cli import bootstrap, main
+from core.cli import bootstrap, main
 
 
 def test_bootstrap_copies_editable_starter_and_separates_private_data(tmp_path):

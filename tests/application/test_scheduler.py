@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
 
-from harness_core.agent.runtime.protocol import (
+from core.agent.runtime.protocol import (
     ApplicationCall,
     ApplicationRequest,
     ApplicationResult,
@@ -10,8 +10,8 @@ from harness_core.agent.runtime.protocol import (
     PromptRequest,
 )
 
-from harness_core.server.runtime.bridge import ApplicationBridge
-from harness_core.plugins.scheduler.service import SchedulerService
+from core.server.runtime.bridge import ApplicationBridge
+from core.plugins.scheduler.service import SchedulerService
 
 
 def iso(value):

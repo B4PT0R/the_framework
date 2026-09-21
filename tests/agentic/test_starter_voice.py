@@ -3,8 +3,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from harness_core.agent.runtime.protocol import SessionSnapshotRequest, StatusRequest
-from harness_core.server.api.endpoints import HttpError
+from core.agent.runtime.protocol import SessionSnapshotRequest, StatusRequest
+from core.server.api.endpoints import HttpError
 from starter.voice import VoiceApi
 from starter.server import ChatApi
 

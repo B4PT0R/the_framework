@@ -3,7 +3,7 @@ import asyncio
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from harness_core import (
+from core import (
     AgentApplication,
     AgentSpec,
     BuildContext,
@@ -12,7 +12,7 @@ from harness_core import (
     SessionPolicy,
     endpoint,
 )
-from harness_core.server.api.endpoints import Principal
+from core.server.api.endpoints import Principal
 
 
 class Service:

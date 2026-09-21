@@ -1,9 +1,9 @@
-from harness_core.agent.spec import AgentSpec, SessionPolicy
+from core.agent.spec import AgentSpec, SessionPolicy
 import pytest
 from fastapi.testclient import TestClient
 
-from harness_core.agent.extensions.plugin import endpoint
-from harness_core.server.composition.application import (
+from core.agent.extensions.plugin import endpoint
+from core.server.composition.application import (
     AgentApplication,
     BuildContext,
     Capability,
@@ -12,9 +12,9 @@ from harness_core.server.composition.application import (
     PluginSpec,
     build_application,
 )
-from harness_core.server.api.health import ApplicationHealthApi
-from harness_core.server.api.endpoints import Principal
-from harness_core.server.api.websockets import WebSocketEndpoint
+from core.server.api.health import ApplicationHealthApi
+from core.server.api.endpoints import Principal
+from core.server.api.websockets import WebSocketEndpoint
 
 
 class Security:
@@ -302,7 +302,7 @@ def test_extension_discovers_decorated_methods_from_an_object():
 
 
 def test_primary_agent_must_be_durable():
-    from harness_core.agent import SessionPolicy
+    from core.agent import SessionPolicy
 
     with pytest.raises(ValueError, match="primary agent session must be durable"):
         AgentApplication(
@@ -318,7 +318,7 @@ def test_primary_agent_must_be_durable():
 
 @pytest.mark.parametrize("short_form", [False, True])
 def test_plugin_private_agent_identities_are_namespaced_and_ephemeral_by_default(short_form):
-    from harness_core.agent import Plugin, agent_trigger
+    from core.agent import Plugin, agent_trigger
 
     class Owner(Plugin):
         name = "owner"
@@ -346,7 +346,7 @@ def test_plugin_private_agent_identities_are_namespaced_and_ephemeral_by_default
 
 
 def test_plugin_shorthand_normalizes_without_instantiating_the_plugin():
-    from harness_core.agent import Plugin
+    from core.agent import Plugin
 
     class Example(Plugin):
         name = "example"
@@ -362,7 +362,7 @@ def test_plugin_shorthand_normalizes_without_instantiating_the_plugin():
 
 
 def test_plugin_shorthand_requires_a_declared_identity():
-    from harness_core.agent import Plugin
+    from core.agent import Plugin
 
     class Anonymous(Plugin):
         pass

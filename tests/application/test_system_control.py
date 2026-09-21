@@ -1,8 +1,8 @@
 import asyncio
 
-from harness_core.agent.runtime.protocol import CommandCompleted, CommandFailed, PromptRequest
+from core.agent.runtime.protocol import CommandCompleted, CommandFailed, PromptRequest
 
-from harness_core.plugins.system.service import ServerRestartIntent, SystemControlService
+from core.plugins.system.service import ServerRestartIntent, SystemControlService
 
 
 def terminal(command, *, status="completed", error=None):

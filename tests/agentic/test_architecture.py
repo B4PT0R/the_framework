@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).parents[2]
-CORE_ROOT = PROJECT_ROOT / "harness_core"
+CORE_ROOT = PROJECT_ROOT / "core"
 
 
 def test_payload_models_do_not_depend_on_context_or_execution():
@@ -22,11 +22,11 @@ def test_payload_models_do_not_depend_on_context_or_execution():
                 continue
             for target in imports:
                 if target.startswith((
-                    "harness_core.agent.context",
-                    "harness_core.agent.extensions",
-                    "harness_core.agent.runtime",
-                    "harness_core.server",
-                    "harness_core.plugins",
+                    "core.agent.context",
+                    "core.agent.extensions",
+                    "core.agent.runtime",
+                    "core.server",
+                    "core.plugins",
                     "the_harness",
                 )):
                     violations.append(f"{path.name}: {target}")
@@ -36,8 +36,8 @@ def test_payload_models_do_not_depend_on_context_or_execution():
 def test_agent_core_has_no_product_or_server_dependencies():
     forbidden_text = ("Pandora", "TheHarness", "The Harness", "love_harness")
     forbidden_imports = (
-        "from harness_core.server",
-        "import harness_core.server",
+        "from core.server",
+        "import core.server",
         "from the_harness",
         "import the_harness",
     )

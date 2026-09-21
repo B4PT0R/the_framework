@@ -1,7 +1,7 @@
 import pytest
 
-from harness_core.plugins.web_search import WebSearchPlugin
-from harness_core.agent import Agent
+from core.plugins.web_search import WebSearchPlugin
+from core.agent import Agent
 
 
 def test_web_search_plugin_exposes_configured_hosted_tool():

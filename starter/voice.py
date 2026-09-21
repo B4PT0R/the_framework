@@ -2,10 +2,10 @@
 
 import asyncio
 
-from harness_core import endpoint
-from harness_core.agent.runtime.protocol import SessionSnapshotRequest, StatusRequest
-from harness_core.utils.ids import timestamp_id
-from harness_core.server.api.endpoints import HttpError
+from core import endpoint
+from core.agent.runtime.protocol import SessionSnapshotRequest, StatusRequest
+from core.utils.ids import timestamp_id
+from core.server.api.endpoints import HttpError
 
 CALL_REQUEST = {"type": "object", "properties": {
     "call_id": {"type": "string", "minLength": 1, "maxLength": 200},

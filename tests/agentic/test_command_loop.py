@@ -1,7 +1,7 @@
 import asyncio
 
-from harness_core.agent.runtime.command_loop import CommandLoop
-from harness_core.agent.runtime.protocol import PromptRequest
+from core.agent.runtime.command_loop import CommandLoop
+from core.agent.runtime.protocol import PromptRequest
 
 
 class Executor:

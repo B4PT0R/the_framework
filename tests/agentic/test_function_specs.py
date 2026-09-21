@@ -3,7 +3,7 @@ from typing import Literal
 import pytest
 from jsonschema import Draft202012Validator
 
-from harness_core.agent.extensions.tools import FunctionTool, tool
+from core.agent.extensions.tools import FunctionTool, tool
 
 
 def test_function_tool_schema_supports_optional_and_generic_annotations():

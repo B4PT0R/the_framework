@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from harness_core.server.composition.services import ServiceGraph, ServiceSpec
+from core.server.composition.services import ServiceGraph, ServiceSpec
 
 
 class Service:

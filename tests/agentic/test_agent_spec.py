@@ -2,9 +2,9 @@ import asyncio
 import pytest
 import json
 
-from harness_core.agent import AgentResources, AgentSpec, Instruction, Plugin, QueuePolicy, SessionPolicy
-from harness_core.agent.runtime.protocol import PluginBindingRequest, PromptRequest
-from harness_core.server.composition.application import PluginSpec
+from core.agent import AgentResources, AgentSpec, Instruction, Plugin, QueuePolicy, SessionPolicy
+from core.agent.runtime.protocol import PluginBindingRequest, PromptRequest
+from core.server.composition.application import PluginSpec
 
 
 class ExamplePlugin(Plugin):
@@ -12,7 +12,7 @@ class ExamplePlugin(Plugin):
 
 
 def test_backend_client_is_lazy_noninteractive_and_retryable(monkeypatch):
-    from harness_core.agent.runtime import agent as runtime
+    from core.agent.runtime import agent as runtime
 
     calls = []
     available = False
@@ -40,7 +40,7 @@ def test_specialist_spec_roundtrip_preserves_execution_configuration():
     spec = AgentSpec(
         name="observer", configuration={"model": "model", "reasoning": {"effort": "low"},
                                          "example": {"enabled": True}},
-        plugins=("harness_core.plugins.registry:RegistryPlugin",),
+        plugins=("core.plugins.registry:RegistryPlugin",),
         idle_timeout_seconds=30, completion_tool="done", completion_retry_limit=2,
     )
     restored = AgentSpec.from_profile(json.loads(json.dumps(spec.fleet_profile())))
@@ -59,7 +59,7 @@ def test_plain_role_instructions_use_the_same_instruction_model():
 
 
 def test_trigger_keeps_selection_separate_from_shared_agent_spec():
-    from harness_core.agent import AgentTrigger, agent_trigger
+    from core.agent import AgentTrigger, agent_trigger
 
     spec = AgentSpec(name="observer", configuration={"model": "custom"})
 

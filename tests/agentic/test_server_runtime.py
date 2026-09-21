@@ -3,7 +3,7 @@ import os
 
 import pytest
 
-from harness_core.server.runtime.discovery import (
+from core.server.runtime.discovery import (
     DEFAULT_SERVER_PORT,
     PersistentSecretStore,
     ServerAlreadyRunning,

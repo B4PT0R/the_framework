@@ -1,6 +1,6 @@
 import pytest
 
-from harness_core.server.composition.dependencies import dependency_order
+from core.server.composition.dependencies import dependency_order
 
 
 def test_stable_order_visits_shared_dependencies_once():

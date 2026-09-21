@@ -6,9 +6,9 @@ from threading import Lock
 
 import pytest
 
-from harness_core.agent.models.content import InputText
-from harness_core.agent.models.usage import ResponseUsage
-from harness_core.agent.models.responses import (
+from core.agent.models.content import InputText
+from core.agent.models.usage import ResponseUsage
+from core.agent.models.responses import (
     CommandOutput,
     CompactionSummary,
     FunctionCall,
@@ -18,7 +18,7 @@ from harness_core.agent.models.responses import (
     Message,
     ToolOutput,
 )
-from harness_core.agent.context.session import Session
+from core.agent.context.session import Session
 
 
 def test_session_round_trip(tmp_path):

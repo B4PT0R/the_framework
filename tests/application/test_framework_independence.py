@@ -19,26 +19,26 @@ class ProductUnavailable(importlib.abc.MetaPathFinder):
             raise ImportError('product package unavailable: ' + fullname)
 
 sys.meta_path.insert(0, ProductUnavailable())
-import harness_core
-for module in pkgutil.walk_packages(harness_core.__path__, 'harness_core.'):
+import core
+for module in pkgutil.walk_packages(core.__path__, 'core.'):
     importlib.import_module(module.name)
-from harness_core.agent import Agent
-from harness_core.utils.persistence import MappingStore
-import harness_core.server as server
-from harness_core.server.clients.browser import BrowserService
-from harness_core.server.clients.browser_rpc import BrowserRPCClient
-from harness_core.server.runtime.realtime import RealtimeController
-from harness_core.plugins.browser import ChromiumPlugin
-from harness_core.plugins.bash import BashPlugin
-from harness_core.plugins.registry import RegistryPlugin
-from harness_core.plugins.scheduler import SchedulerPlugin
-from harness_core.plugins.system import SystemPlugin
-from harness_core.plugins.web_search import WebSearchPlugin
-from harness_core.plugins.memory.store import MemoryStore
-from harness_core.plugins.memory.curator import MemoryCuratorPlugin
-from harness_core.plugins.memory.plugin import MemoryPlugin
-from harness_core.plugins.realtime import RealtimePlugin, RealtimeConfig
-from harness_core.plugins.embeddings import normalize_embedding
+from core.agent import Agent
+from core.utils.persistence import MappingStore
+import core.server as server
+from core.server.clients.browser import BrowserService
+from core.server.clients.browser_rpc import BrowserRPCClient
+from core.server.runtime.realtime import RealtimeController
+from core.plugins.browser import ChromiumPlugin
+from core.plugins.bash import BashPlugin
+from core.plugins.registry import RegistryPlugin
+from core.plugins.scheduler import SchedulerPlugin
+from core.plugins.system import SystemPlugin
+from core.plugins.web_search import WebSearchPlugin
+from core.plugins.memory.store import MemoryStore
+from core.plugins.memory.curator import MemoryCuratorPlugin
+from core.plugins.memory.plugin import MemoryPlugin
+from core.plugins.realtime import RealtimePlugin, RealtimeConfig
+from core.plugins.embeddings import normalize_embedding
 
 store = MemoryStore(':memory:')
 assert MappingStore('/tmp/unused-framework-settings', field='settings').field == 'settings'
@@ -65,7 +65,7 @@ assert voice.name == 'realtime'
 package_root = os.environ.get('FRAMEWORK_PACKAGE_ROOT')
 if package_root:
     for name, module in tuple(sys.modules.items()):
-        if name.split('.')[0] == 'harness_core':
+        if name.split('.')[0] == 'core':
             assert Path(module.__file__).is_relative_to(package_root), name
 """],
         capture_output=True,

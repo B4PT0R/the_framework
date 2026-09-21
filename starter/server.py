@@ -4,24 +4,24 @@ import asyncio
 import sys
 from pathlib import Path
 
-from harness_core import AgentApplication, BuildContext, Extension, endpoint
-from harness_core.agent.models.responses import Image, Message
-from harness_core.agent.runtime.protocol import PluginBindingRequest, PromptRequest
-from harness_core.utils.ids import timestamp_id
-from harness_core.plugins.scheduler.service import SchedulerService
-from harness_core.plugins.system.service import SystemControlService
-from harness_core.server import (
+from core import AgentApplication, BuildContext, Extension, endpoint
+from core.agent.models.responses import Image, Message
+from core.agent.runtime.protocol import PluginBindingRequest, PromptRequest
+from core.utils.ids import timestamp_id
+from core.plugins.scheduler.service import SchedulerService
+from core.plugins.system.service import SystemControlService
+from core.server import (
     ApplicationHealthApi,
     CanonicalAgentApi,
     CanonicalTransportSockets,
     WorkerSupervisor,
     bind_application_controls,
 )
-from harness_core.server.api.endpoints import HttpError
-from harness_core.server.api.uploads import copied_files_message, copy_uploaded_files
-from harness_core.server.runtime.application import ApplicationRuntime
-from harness_core.server.runtime.fleet import FleetSupervisor
-from harness_core.server.runtime.realtime import RealtimeController
+from core.server.api.endpoints import HttpError
+from core.server.api.uploads import copied_files_message, copy_uploaded_files
+from core.server.runtime.application import ApplicationRuntime
+from core.server.runtime.fleet import FleetSupervisor
+from core.server.runtime.realtime import RealtimeController
 
 from .application import ROOT, application
 from .security import LocalSecurity
@@ -114,7 +114,7 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None):
     root = Path(data_root).resolve()
     if runtime is None:
         supervisor = WorkerSupervisor(root / "session.json", command=[
-            sys.executable, "-m", "harness_core.agent.runtime.worker_process",
+            sys.executable, "-m", "core.agent.runtime.worker_process",
             "--session", str(root / "session.json"),
             "--application", REFERENCE, "--agent", "assistant",
         ])

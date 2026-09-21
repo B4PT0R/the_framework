@@ -1,5 +1,5 @@
-from harness_core.agent.spec import AgentSpec, QueuePolicy
-from harness_core.agent.extensions.instructions import Instruction
+from core.agent.spec import AgentSpec, QueuePolicy
+from core.agent.extensions.instructions import Instruction
 import asyncio
 import json
 from pathlib import Path
@@ -7,22 +7,22 @@ from pathlib import Path
 import pytest
 from modict import modict
 
-from harness_core.agent.runtime.agent import Agent
-from harness_core.agent.extensions.specialists import AgentTriggers, agent_trigger
-from harness_core.agent.runtime.agentic_loop import AgenticLoop
-from harness_core.agent.extensions.commands import Commands, command
-from harness_core.agent.models.config import Config, Configs
-from harness_core.agent.context.builder import Context
-from harness_core.agent.extensions.endpoints import Endpoints
-from harness_core.agent.runtime.event_loop import EventLoop
-from harness_core.agent.extensions.hooks import Hooks, hook
-from harness_core.agent.extensions.instructions import Instructions
-from harness_core.agent.extensions.plugin import Plugin, endpoint
-from harness_core.agent.extensions.providers import Providers, provider
-from harness_core.agent.models.responses import CommandOutput, FunctionCall, Image, ProviderOutput, ToolOutput
-from harness_core.agent.context.session import Session
-from harness_core.agent.models.state import States
-from harness_core.agent.extensions.tools import NamespaceTool, ToolSearchTool, Tools, tool
+from core.agent.runtime.agent import Agent
+from core.agent.extensions.specialists import AgentTriggers, agent_trigger
+from core.agent.runtime.agentic_loop import AgenticLoop
+from core.agent.extensions.commands import Commands, command
+from core.agent.models.config import Config, Configs
+from core.agent.context.builder import Context
+from core.agent.extensions.endpoints import Endpoints
+from core.agent.runtime.event_loop import EventLoop
+from core.agent.extensions.hooks import Hooks, hook
+from core.agent.extensions.instructions import Instructions
+from core.agent.extensions.plugin import Plugin, endpoint
+from core.agent.extensions.providers import Providers, provider
+from core.agent.models.responses import CommandOutput, FunctionCall, Image, ProviderOutput, ToolOutput
+from core.agent.context.session import Session
+from core.agent.models.state import States
+from core.agent.extensions.tools import NamespaceTool, ToolSearchTool, Tools, tool
 
 
 class FakeAgent:
@@ -255,9 +255,9 @@ def test_expired_instruction_is_removed_from_every_rendered_scope(monkeypatch):
     instructions.add(Instruction(name="temporary", content="Arrival", expires_at=100))
     instructions.add(Instruction(name="lasting", content="Always"))
 
-    monkeypatch.setattr("harness_core.agent.extensions.instructions.time.time", lambda: 99)
+    monkeypatch.setattr("core.agent.extensions.instructions.time.time", lambda: 99)
     assert instructions.render(scope="agentic") == "Arrival\n\nAlways"
-    monkeypatch.setattr("harness_core.agent.extensions.instructions.time.time", lambda: 100)
+    monkeypatch.setattr("core.agent.extensions.instructions.time.time", lambda: 100)
     assert instructions.render(scope="agentic") == "Always"
 
 
@@ -837,7 +837,7 @@ def test_plugin_rejects_ambiguous_inline_and_file_instructions(tmp_path):
 
 def test_builtin_tool_output_prompt_explains_message_references():
     instruction = Instruction.from_file(
-        Path(__file__).parents[2] / "harness_core/agent/runtime/prompts/tool_outputs.md"
+        Path(__file__).parents[2] / "core/agent/runtime/prompts/tool_outputs.md"
     )
 
     assert instruction.name == "tool_outputs"
@@ -848,7 +848,7 @@ def test_builtin_tool_output_prompt_explains_message_references():
 
 def test_file_instruction_accepts_a_custom_name():
     instruction = Instruction.from_file(
-        Path(__file__).parents[2] / "harness_core/agent/runtime/prompts/tool_outputs.md",
+        Path(__file__).parents[2] / "core/agent/runtime/prompts/tool_outputs.md",
         name="tool_results_protocol",
     )
 

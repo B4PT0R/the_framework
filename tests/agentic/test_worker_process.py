@@ -2,13 +2,13 @@ import asyncio
 import io
 import json
 
-from harness_core.agent.runtime.protocol import (
+from core.agent.runtime.protocol import (
     CommandCompleted,
     PromptRequest,
     WorkerOutput,
     WorkerStopped,
 )
-from harness_core.agent.runtime.worker_process import JsonLines
+from core.agent.runtime.worker_process import JsonLines
 
 
 def test_json_lines_transport_uses_serializable_payloads():
@@ -48,10 +48,10 @@ def test_worker_output_recasts_nested_protocol_payloads():
 def test_application_specialist_retains_factories_and_resolved_runtime_profile(tmp_path, monkeypatch):
     from types import SimpleNamespace
 
-    from harness_core.agent import AgentSpec
-    from harness_core.agent.runtime import worker_process
-    from harness_core.plugins.memory.curator import MemoryCuratorPlugin
-    from harness_core.server.runtime.fleet import AgentRunner
+    from core.agent import AgentSpec
+    from core.agent.runtime import worker_process
+    from core.plugins.memory.curator import MemoryCuratorPlugin
+    from core.server.runtime.fleet import AgentRunner
 
     spec = AgentSpec(name="memory.jiminy", plugins=(lambda agent: MemoryCuratorPlugin(agent),))
     path = tmp_path / "durable-memory.sqlite3"

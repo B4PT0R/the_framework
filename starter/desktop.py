@@ -11,12 +11,12 @@ import sys
 import urllib.request
 from pathlib import Path
 
-from harness_core.server.clients.browser import BrowserService
-from harness_core.server.clients.browser_rpc import (
+from core.server.clients.browser import BrowserService
+from core.server.clients.browser_rpc import (
     BrowserRPCServer,
     browser_socket_path,
 )
-from harness_core.server.runtime.discovery import ServerLease
+from core.server.runtime.discovery import ServerLease
 
 from .security import LocalSecurity
 

@@ -4,7 +4,7 @@ import stat
 
 import pytest
 
-from harness_core.utils import persistence
+from core.utils import persistence
 
 
 def test_atomic_write_is_private_and_invisible_until_committed(tmp_path):

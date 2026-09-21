@@ -1,6 +1,6 @@
 # The Framework
 
-`harness_core` is the reusable Python framework for persistent agent applications.
+`core` is the reusable Python framework for persistent agent applications.
 It provides agent/session runtime, plugin composition, server and worker
 supervision, client transports, and browser surfaces without importing any
 The Harness product policy. The [starter](starter/README.md) is a small editable

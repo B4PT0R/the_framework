@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from harness_core.agent.context.session import Session
-from harness_core.agent.models.responses import Message
+from core.agent.context.session import Session
+from core.agent.models.responses import Message
 from starter import desktop
 
 

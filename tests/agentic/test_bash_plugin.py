@@ -4,8 +4,8 @@ import time
 
 import pytest
 
-from harness_core.agent import Agent, ShutdownRequest, Worker
-from harness_core.plugins.bash import BashPlugin
+from core.agent import Agent, ShutdownRequest, Worker
+from core.plugins.bash import BashPlugin
 
 
 def bash_plugin(tmp_path, **overrides):

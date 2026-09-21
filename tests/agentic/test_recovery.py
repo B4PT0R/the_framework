@@ -1,10 +1,10 @@
 import json
 
-from harness_core.agent.context.compaction import Compaction
-from harness_core.agent.models.usage import ResponseUsage
-from harness_core.agent.models.config import Configs
-from harness_core.agent.models.responses import Message
-from harness_core.agent.context.session import Session
+from core.agent.context.compaction import Compaction
+from core.agent.models.usage import ResponseUsage
+from core.agent.models.config import Configs
+from core.agent.models.responses import Message
+from core.agent.context.session import Session
 
 
 class Responses:

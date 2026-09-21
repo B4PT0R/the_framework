@@ -2,10 +2,10 @@ import json
 
 import pytest
 
-from harness_core.agent import Agent
-from harness_core.agent.models.responses import ProviderOutput, ToolOutput
+from core.agent import Agent
+from core.agent.models.responses import ProviderOutput, ToolOutput
 
-from harness_core.plugins.registry import RegistryPlugin
+from core.plugins.registry import RegistryPlugin
 
 
 def registry(tmp_path, **config):

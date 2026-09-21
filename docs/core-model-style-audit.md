@@ -1,6 +1,6 @@
 # Core model/style audit
 
-Scope: all Python modules in `harness_core.agent`, `server`, and general plugins.
+Scope: all Python modules in `core.agent`, `server`, and general plugins.
 Baseline: `d9bd37c`. No deployment or restart is part of this pass.
 
 Final verification: `pytest -q tests/application tests/agentic` — **875 passed
@@ -96,7 +96,7 @@ per model, not via mechanical decorator replacement.
 ## Complete model harmonization
 
 The initial nine migrations are now followed by all fourteen remaining core
-dataclasses. No dataclass remains in `harness_core`. Keeping a second convention
+dataclasses. No dataclass remains in `core`. Keeping a second convention
 merely because a record is not JSON added cognitive cost without a demonstrated
 technical benefit.
 

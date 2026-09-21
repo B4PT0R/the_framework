@@ -1,19 +1,19 @@
 import asyncio
 from uuid import UUID
 
-from harness_core.agent.runtime.agentic_loop import AgenticLoop
-from harness_core.agent.extensions.commands import Commands
-from harness_core.agent.context.compaction import Compaction
-from harness_core.agent.models.config import Configs
-from harness_core.agent.context.builder import Context
-from harness_core.agent.models.usage import ResponseUsage
-from harness_core.agent.extensions.hooks import Hooks, hook
-from harness_core.agent.extensions.instructions import Instructions
-from harness_core.agent.extensions.providers import Providers
-from harness_core.agent.models.responses import Compaction as CompactionItem
-from harness_core.agent.models.responses import Image, Message, Portrait
-from harness_core.agent.context.session import Session
-from harness_core.agent.extensions.tools import Tools
+from core.agent.runtime.agentic_loop import AgenticLoop
+from core.agent.extensions.commands import Commands
+from core.agent.context.compaction import Compaction
+from core.agent.models.config import Configs
+from core.agent.context.builder import Context
+from core.agent.models.usage import ResponseUsage
+from core.agent.extensions.hooks import Hooks, hook
+from core.agent.extensions.instructions import Instructions
+from core.agent.extensions.providers import Providers
+from core.agent.models.responses import Compaction as CompactionItem
+from core.agent.models.responses import Image, Message, Portrait
+from core.agent.context.session import Session
+from core.agent.extensions.tools import Tools
 
 
 class Responses:

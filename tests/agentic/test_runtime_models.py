@@ -7,17 +7,17 @@ import pytest
 from fastapi import Request
 from modict import modict
 
-from harness_core.agent import AgentSpec, SessionPolicy
-from harness_core.agent.runtime.agentic_loop import PendingSteering
-from harness_core.server.clients.browser import BrowserSession
-from harness_core.server.clients.remote import (
+from core.agent import AgentSpec, SessionPolicy
+from core.agent.runtime.agentic_loop import PendingSteering
+from core.server.clients.browser import BrowserSession
+from core.server.clients.remote import (
     CapabilityLease, ClientApplicationConnection, PendingPairing,
 )
-from harness_core.server.composition.application import AgentApplication, Extension, PluginSpec
-from harness_core.server.api.endpoints import EndpointContext, Principal
-from harness_core.server.composition.services import ServiceSpec
-from harness_core.server.clients.surfaces import ClientSurface
-from harness_core.server.api.websockets import WebSocketEndpoint
+from core.server.composition.application import AgentApplication, Extension, PluginSpec
+from core.server.api.endpoints import EndpointContext, Principal
+from core.server.composition.services import ServiceSpec
+from core.server.clients.surfaces import ClientSurface
+from core.server.api.websockets import WebSocketEndpoint
 
 
 @pytest.mark.parametrize("make", [

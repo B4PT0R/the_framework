@@ -6,9 +6,9 @@ import socket
 
 import pytest
 
-from harness_core.server.clients.browser import BrowserError
-from harness_core.server.clients.browser_rpc import BrowserRPCServer
-from harness_core.server.runtime.discovery import ServerAlreadyRunning
+from core.server.clients.browser import BrowserError
+from core.server.clients.browser_rpc import BrowserRPCServer
+from core.server.runtime.discovery import ServerAlreadyRunning
 
 
 @pytest.mark.parametrize("request_started", [False, True])

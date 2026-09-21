@@ -1,8 +1,8 @@
 """Small standalone application built only from the reusable core packages."""
 
-from harness_core import AgentApplication, AgentSpec, Extension, SessionPolicy, endpoint
-from harness_core.server import ApplicationHealthApi
-from harness_core.server.api.endpoints import Principal
+from core import AgentApplication, AgentSpec, Extension, SessionPolicy, endpoint
+from core.server import ApplicationHealthApi
+from core.server.api.endpoints import Principal
 from modict import modict
 
 

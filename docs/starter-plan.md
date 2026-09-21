@@ -3,7 +3,7 @@
 ## Scope and composition
 
 The deliverable is `starter/`: a usable, editable **local desktop application**,
-not an endpoint demo or a mandatory framework UI. It composes `harness_core`
+not an endpoint demo or a mandatory framework UI. It composes `core`
 without importing `the_harness`, reading product configuration or activating
 hardware. Its data directory, instructions, UI and identity are independent.
 

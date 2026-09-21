@@ -3,9 +3,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from harness_core.agent.runtime.protocol import StatusRequest
-from harness_core.server.runtime.application import ApplicationRuntime
-from harness_core.server.runtime.supervisor import WorkerExited
+from core.agent.runtime.protocol import StatusRequest
+from core.server.runtime.application import ApplicationRuntime
+from core.server.runtime.supervisor import WorkerExited
 
 
 @pytest.mark.parametrize("phase", ["start", "stop", "both"])

@@ -27,15 +27,16 @@ def test_wheel_contains_standalone_framework_and_prompt_resources(tmp_path, monk
     with zipfile.ZipFile(wheel) as archive:
         assert not any(name.startswith(("agent/", "agent_plugins/", "server/"))
                        for name in archive.namelist())
-        assert "harness_core/py.typed" in archive.namelist()
-        assert "harness_core/utils/ids.py" in archive.namelist()
-        assert "harness_core/utils/persistence.py" in archive.namelist()
-        assert "harness_core/utils/tokens.py" in archive.namelist()
-        assert "harness_core/ids.py" not in archive.namelist()
-        assert "harness_core/persistence.py" not in archive.namelist()
-        assert "harness_core/tokens.py" not in archive.namelist()
+        assert not any(name.startswith("harness_core/") for name in archive.namelist())
+        assert "core/py.typed" in archive.namelist()
+        assert "core/utils/ids.py" in archive.namelist()
+        assert "core/utils/persistence.py" in archive.namelist()
+        assert "core/utils/tokens.py" in archive.namelist()
+        assert "core/ids.py" not in archive.namelist()
+        assert "core/persistence.py" not in archive.namelist()
+        assert "core/tokens.py" not in archive.namelist()
         for member in archive.namelist():
-            if member.startswith("harness_core/"):
+            if member.startswith("core/"):
                 archive.extract(member, installed)
     monkeypatch.chdir(installed)
     monkeypatch.setenv("PYTHONPATH", str(installed))
@@ -45,7 +46,7 @@ def test_wheel_contains_standalone_framework_and_prompt_resources(tmp_path, monk
     check_independence()
     subprocess.run(
         [sys.executable, "-c", (
-            "from harness_core import AgentApplication, AgentSpec, ClientSurface, "
+            "from core import AgentApplication, AgentSpec, ClientSurface, "
             "Extension, Plugin, PluginSpec, QueuePolicy, SessionPolicy, endpoint, "
             "provider, tool; "
             "a = AgentApplication(name='Wheel', version='1', primary_agent=AgentSpec("
@@ -58,13 +59,13 @@ def test_wheel_contains_standalone_framework_and_prompt_resources(tmp_path, monk
     # Both canonical and specialist supervisors launch this module. Resolve it
     # from the wheel alone, not accidentally from an editable source checkout.
     subprocess.run(
-        [sys.executable, "-m", "harness_core.agent.runtime.worker_process", "--help"],
+        [sys.executable, "-m", "core.agent.runtime.worker_process", "--help"],
         check=True, capture_output=True, text=True, timeout=30,
     )
     code = tmp_path / "my-agent"
     data = tmp_path / "my-agent-data"
     subprocess.run(
-        [sys.executable, "-m", "harness_core", "bootstrap", "--code-dir", str(code), "--data-dir", str(data)],
+        [sys.executable, "-m", "core", "bootstrap", "--code-dir", str(code), "--data-dir", str(data)],
         check=True, capture_output=True, text=True, timeout=30,
     )
     assert (code / "starter/ui/src/realtime-audio.js").is_file()

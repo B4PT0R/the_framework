@@ -5,10 +5,10 @@ from modict import modict
 from typing import Literal
 import pytest
 
-from harness_core.agent import endpoint
-from harness_core.agent.extensions.endpoints import Endpoint
-from harness_core.server.api.endpoints import EndpointRegistry
-from harness_core.server.api.model_schema import model_schema
+from core.agent import endpoint
+from core.agent.extensions.endpoints import Endpoint
+from core.server.api.endpoints import EndpointRegistry
+from core.server.api.model_schema import model_schema
 
 
 class RequestModel(modict):

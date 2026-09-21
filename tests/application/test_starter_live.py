@@ -6,7 +6,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from harness_core.agent.runtime.protocol import PromptRequest
+from core.agent.runtime.protocol import PromptRequest
 from starter.server import create_app
 
 pytestmark = pytest.mark.skipif(
@@ -40,7 +40,7 @@ def test_starter_real_inference_with_tool_and_canonical_response(tmp_path):
 
 
 def test_starter_real_memory_curates_indexes_and_survives_reconstruction(tmp_path):
-    from harness_core.plugins.memory.store import MemoryStore
+    from core.plugins.memory.store import MemoryStore
 
     app = create_app(tmp_path, token="isolated-test", origin="http://testserver")
     results = []

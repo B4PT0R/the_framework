@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from harness_core.agent.runtime.protocol import StatusRequest
-from harness_core.server.runtime.supervisor import WorkerExited, WorkerSupervisor
+from core.agent.runtime.protocol import StatusRequest
+from core.server.runtime.supervisor import WorkerExited, WorkerSupervisor
 
 
 @pytest.mark.parametrize("broken_pipe", [False, True])

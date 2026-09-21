@@ -2,7 +2,7 @@
 
 from hmac import compare_digest
 
-from harness_core.server.api.endpoints import Principal
+from core.server.api.endpoints import Principal
 
 
 class LocalSecurity:

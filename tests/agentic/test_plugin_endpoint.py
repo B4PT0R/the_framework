@@ -1,7 +1,7 @@
 import pytest
 
-from harness_core.agent.extensions.endpoints import Endpoints
-from harness_core.agent.extensions.plugin import Plugin, endpoint
+from core.agent.extensions.endpoints import Endpoints
+from core.agent.extensions.plugin import Plugin, endpoint
 
 
 class ApiPlugin(Plugin):
