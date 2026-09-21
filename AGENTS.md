@@ -7,16 +7,6 @@ with this library; its Pandora-specific behavior belongs there. Framework
 code must never import that application or assume its identity, policies,
 personal data or device configuration.
 
-Write `AGENTS.md` and `README.md` for a reader who has not seen our conversations.
-Start with the purpose of the project and the role of each repository or major
-component. Explain names, acronyms, prerequisites and commands before relying on
-them. Give enough context to understand why a technical rule exists; do not use
-these files as shorthand notes about whatever implementation detail is currently
-on your mind. Link to deeper documentation instead of making the introduction
-incomprehensible or duplicating the entire design. In a reader-facing README,
-prioritize what someone can build, run or learn here; omit project genealogy and
-internal boundary notes unless they affect that reader's next action.
-
 Each application has one main conversational agent and one durable conversation
 history. Plugins may add tools or private specialist agents, but a specialist
 must not change that main history directly. The server starts and monitors agent
