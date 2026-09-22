@@ -71,8 +71,8 @@ def test_compile_allows_runtime_name_equal_to_another_plugin_identity():
         PluginSpec(name="first", runtime=Extension(name="second")),
         PluginSpec(name="second", runtime=Extension(name="third")),
     )).compile()
-    assert plan.plugin_extensions["first"].name == "second"
-    assert plan.plugin_extensions["second"].name == "third"
+    assert plan.plugin_extensions["first"][0].name == "second"
+    assert plan.plugin_extensions["second"][0].name == "third"
 
 
 def test_compile_rejects_private_agent_shadowing_primary():
@@ -285,7 +285,7 @@ def test_compiler_keeps_server_factories_out_of_worker_projection():
     assert plan.capabilities["memory.curate"].version == 2
     app = spec.build(BuildContext({"marker": "resolved"}))
     assert observed == ["resolved"]
-    assert app.state.application.plan.plugin_extensions["memory"].name == "memory_runtime"
+    assert app.state.application.plan.plugin_extensions["memory"][0].name == "memory_runtime"
 
 
 def test_extension_discovers_decorated_methods_from_an_object():

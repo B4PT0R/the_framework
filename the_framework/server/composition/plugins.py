@@ -80,7 +80,10 @@ class PluginHost:
         for name, spec in plan.plugins.items():
             saved = persisted.get(name, {})
             running = bool(saved.get("running", spec.runtime_enabled))
-            binding = bool(saved.get("binding_enabled", spec.binding_enabled))
+            binding = bool(
+                spec.agent is not None
+                and saved.get("binding_enabled", spec.binding_enabled)
+            )
             if not running:
                 binding = False
             if spec.runtime_required:
@@ -175,37 +178,30 @@ class PluginHost:
         from .application import _declared_endpoints
 
         for name in self._runtime_order(running):
-            extension = self.plan.plugin_extensions.get(name)
-            if extension is None:
-                continue
-            for source in extension.endpoints:
-                for endpoint in _declared_endpoints(source):
-                    registry.add(endpoint, owner=name)
-            for endpoint in extension.websockets:
-                if any(
-                    endpoint.path == prefix
-                    or endpoint.path.startswith(f"{prefix.rstrip('/')}/")
-                    for prefix in self.reserved_prefixes
-                ):
-                    raise ValueError(
-                        "plugin WebSocket is shadowed by a mount: "
-                        f"{endpoint.path}"
-                    )
-                sockets.add(endpoint, owner=name)
+            for extension in self.plan.plugin_extensions.get(name, ()):
+                for source in extension.endpoints:
+                    for endpoint in _declared_endpoints(source):
+                        registry.add(endpoint, owner=name)
+                for endpoint in extension.websockets:
+                    if any(
+                        endpoint.path == prefix
+                        or endpoint.path.startswith(f"{prefix.rstrip('/')}/")
+                        for prefix in self.reserved_prefixes
+                    ):
+                        raise ValueError(
+                            "plugin WebSocket is shadowed by a mount: "
+                            f"{endpoint.path}"
+                        )
+                    sockets.add(endpoint, owner=name)
         registry.install()
         sockets.install()
         return app
 
-    async def start(self):
-        running = [
-            name for name, state in self.states.items() if state["running"]
-        ]
-        snapshot = self._build_snapshot(running)
+    async def _start_extensions(self, name):
+        started = []
         try:
-            for name in self._runtime_order(running):
-                extension = self.plan.plugin_extensions.get(name)
-                if extension is None or extension.service is None:
-                    self.started.append(name)
+            for extension in self.plan.plugin_extensions.get(name, ()):
+                if extension.service is None:
                     continue
                 unavailable = [
                     dependency for dependency in extension.requires
@@ -217,9 +213,38 @@ class PluginHost:
                         + ", ".join(unavailable)
                     )
                 await invoke_lifecycle(extension, "start", self.application_context.services)
-                self.application_context.services.add(
-                    extension.name, extension.service
-                )
+                self.application_context.services.add(extension.name, extension.service)
+                started.append(extension)
+        except Exception:
+            for extension in reversed(started):
+                try:
+                    await invoke_lifecycle(extension, "stop", self.application_context.services)
+                finally:
+                    self.application_context.services.remove(extension.name, extension.service)
+            raise
+
+    async def _stop_extensions(self, name):
+        failures = []
+        for extension in reversed(self.plan.plugin_extensions.get(name, ())):
+            if extension.service is None:
+                continue
+            try:
+                await invoke_lifecycle(extension, "stop", self.application_context.services)
+            except Exception as error:
+                failures.append(error)
+            finally:
+                self.application_context.services.remove(extension.name, extension.service)
+        if failures:
+            raise ExceptionGroup(f"plugin {name} runtime shutdown failed", failures)
+
+    async def start(self):
+        running = [
+            name for name, state in self.states.items() if state["running"]
+        ]
+        snapshot = self._build_snapshot(running)
+        try:
+            for name in self._runtime_order(running):
+                await self._start_extensions(name)
                 self.started.append(name)
             if self.runtime_update is not None:
                 for name, state in self.states.items():
@@ -236,17 +261,10 @@ class PluginHost:
     async def stop(self):
         failures = []
         for name in reversed(self.started):
-            extension = self.plan.plugin_extensions.get(name)
-            if extension is None or extension.service is None:
-                continue
             try:
-                await invoke_lifecycle(extension, "stop", self.application_context.services)
+                await self._stop_extensions(name)
             except Exception as error:
                 failures.append(error)
-            finally:
-                self.application_context.services.remove(
-                    extension.name, extension.service
-                )
         self.started.clear()
         self.router.swap(self._build_snapshot(()))
         if failures:
@@ -258,6 +276,8 @@ class PluginHost:
             raise ValueError(f"unknown plugin: {name}")
         state = self.states[name]
         enabled = bool(enabled)
+        if enabled and spec.agent is None:
+            raise RuntimeError(f"plugin has no agent binding: {name}")
         if enabled and not state["running"]:
             raise RuntimeError(f"plugin runtime is stopped: {name}")
         if not enabled and spec.binding_required:
@@ -309,17 +329,12 @@ class PluginHost:
                 if inspect.isawaitable(result):
                     await result
             state["binding_enabled"] = False
-        extension = self.plan.plugin_extensions.get(name)
         try:
             if self.runtime_update is not None:
                 result = self.runtime_update(name, False)
                 if inspect.isawaitable(result):
                     await result
-            if extension is not None and extension.service is not None:
-                await invoke_lifecycle(extension, "stop", self.application_context.services)
-                self.application_context.services.remove(
-                    extension.name, extension.service
-                )
+            await self._stop_extensions(name)
             running = [
                 item for item, value in self.states.items()
                 if value["running"] and item != name
@@ -331,11 +346,7 @@ class PluginHost:
         except Exception:
             state["running"] = True
             state["binding_enabled"] = previous_binding
-            if extension is not None and extension.service is not None:
-                await invoke_lifecycle(extension, "start", self.application_context.services)
-                self.application_context.services.add(
-                    extension.name, extension.service
-                )
+            await self._start_extensions(name)
             if self.runtime_update is not None:
                 result = self.runtime_update(name, True)
                 if inspect.isawaitable(result):
@@ -372,13 +383,8 @@ class PluginHost:
             item for item, value in self.states.items() if value["running"]
         ]
         snapshot = self._build_snapshot((*running, name))
-        extension = self.plan.plugin_extensions.get(name)
         try:
-            if extension is not None and extension.service is not None:
-                await invoke_lifecycle(extension, "start", self.application_context.services)
-                self.application_context.services.add(
-                    extension.name, extension.service
-                )
+            await self._start_extensions(name)
             if self.runtime_update is not None:
                 result = self.runtime_update(name, True)
                 if inspect.isawaitable(result):
@@ -393,13 +399,7 @@ class PluginHost:
                 result = self.runtime_update(name, False)
                 if inspect.isawaitable(result):
                     await result
-            if extension is not None and extension.service is not None:
-                try:
-                    await invoke_lifecycle(extension, "stop", self.application_context.services)
-                finally:
-                    self.application_context.services.remove(
-                        extension.name, extension.service
-                    )
+            await self._stop_extensions(name)
             raise
         self.router.swap(snapshot)
         self.started.append(name)

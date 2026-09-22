@@ -113,11 +113,15 @@ permission behavior still depend on the user's environment.
 | `ui/src/settings.jsx` | Model, plugin activation and editable configuration |
 | `ui/src/session.js` | Display projection of canonical items and streaming events |
 
-Add a general `Plugin` class to the declaration, or a `PluginSpec` when it needs
-explicit construction. Keep product policy in application instructions/plugins;
-do not add product imports to `the_framework`. Backend contributions use the
-framework's `Extension` and `@endpoint` primitives. The canonical worker remains
-the sole writer of conversation history.
+Add an agent-only plugin class to the declaration, or use `PluginSpec` when the
+feature also needs server services, routes or an activation policy. The
+`scheduler` and `system` declarations in `application.py` show this pattern:
+their server factories receive process-local services when `server.py` builds
+the app, while the worker reads the same declaration without constructing those
+services. Keep application policy in its own instructions and plugins; do not
+add product imports to `the_framework`. Backend contributions use the framework's
+`Extension` and `@endpoint` primitives. The canonical worker remains the sole
+writer of conversation history.
 
 The system/browser plugins expose managed UI build, preview, publish and rollback.
 Edit `ui/`, build a candidate, inspect its authenticated preview in the separate

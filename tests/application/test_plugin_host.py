@@ -56,6 +56,7 @@ def declaration(service, **plugin_options):
         ),
         plugins=(PluginSpec(
             name="example",
+            agent=object,
             runtime=Extension(name="example_runtime", service=service, endpoints=(Api(),)),
             **plugin_options,
         ),),
@@ -109,6 +110,91 @@ def test_runtime_and_binding_transitions_are_independent_and_persistent(tmp_path
         status = restored.state.application.plugin_host.status("example")
         assert status.running is True
         assert status.binding_enabled is True
+
+    asyncio.run(scenario())
+
+
+def test_plugin_owns_multiple_ordered_server_components_and_hot_routes():
+    async def scenario():
+        events = []
+
+        class NamedService:
+            def __init__(self, name):
+                self.name = name
+
+            async def start(self):
+                events.append(f"start:{self.name}")
+
+            async def stop(self):
+                events.append(f"stop:{self.name}")
+
+        def runtime(_context):
+            return (
+                Extension(
+                    name="feature_api",
+                    service_factory=lambda feature_store: NamedService("api"),
+                    requires=("feature_store",),
+                    endpoints=(Api(),),
+                ),
+                Extension(name="feature_store", service=NamedService("store")),
+            )
+
+        spec = AgentApplication(
+            name="Vertical feature",
+            version="1",
+            primary_agent=AgentSpec(
+                name="primary", session=SessionPolicy.durable()
+            ),
+            plugins=(PluginSpec(name="feature", runtime=runtime),),
+        )
+        assert spec.compile().plugin_extensions == {}
+        app = spec.build()
+        assert tuple(
+            item.name for item in app.state.application.plan.plugin_extensions["feature"]
+        ) == ("feature_store", "feature_api")
+        assert app.state.application.plugin_host.status("feature").binding_enabled is False
+        async with app.router.lifespan_context(app):
+            host = app.state.application.plugin_host
+            with pytest.raises(RuntimeError, match="no agent binding"):
+                await host.set_binding("feature", True)
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                assert (await client.get("/plugin/value")).status_code == 200
+                await host.stop_runtime("feature")
+                assert (await client.get("/plugin/value")).status_code == 404
+                await host.start_runtime("feature")
+                assert (await client.get("/plugin/value")).status_code == 200
+        assert events == [
+            "start:store", "start:api", "stop:api", "stop:store",
+            "start:store", "start:api", "stop:api", "stop:store",
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_grouped_plugin_start_failure_rolls_back_earlier_services():
+    async def scenario():
+        events = []
+        base = declaration(Service(events))
+        plugin = PluginSpec(
+            name="example",
+            runtime=(
+                Extension(name="first", service=Service(events)),
+                Extension(
+                    name="second",
+                    service=Service(events, fail=True),
+                    requires=("first",),
+                ),
+            ),
+        )
+        spec = AgentApplication({**base, "plugins": (plugin,)})
+        failing = spec.build()
+        with pytest.raises(RuntimeError, match="failed"):
+            async with failing.router.lifespan_context(failing):
+                pass
+        assert events == ["start", "start", "stop"]
+        assert failing.state.application.services.snapshot() == {}
 
     asyncio.run(scenario())
 

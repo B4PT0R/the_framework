@@ -138,7 +138,7 @@ class PluginSpec(modict):
 
     name: str
     agent: Callable | type | object | None = None
-    runtime: Extension | Callable[[BuildContext], Extension] | None = None
+    runtime: Extension | tuple[Extension, ...] | Callable[[BuildContext], Extension | tuple[Extension, ...]] | None = None
     agents: tuple[AgentSpec, ...] = ()
     capabilities: tuple[Capability, ...] = ()
     requires: tuple[CapabilityRequirement, ...] = ()
@@ -156,6 +156,8 @@ class PluginSpec(modict):
             raise ValueError("a required plugin runtime cannot start disabled")
         if self.binding_required and not self.binding_enabled:
             raise ValueError("a required plugin binding cannot start disabled")
+        if self.binding_required and self.agent is None:
+            raise ValueError("a server-only plugin cannot require an agent binding")
         names = [agent.name for agent in self.agents]
         if len(names) != len(set(names)):
             raise ValueError(f"duplicate private agent in plugin {self.name}")
@@ -174,11 +176,12 @@ class PluginSpec(modict):
         if not self.runtime_enabled or self.runtime is None:
             return None
         extension = self.runtime
-        if not isinstance(extension, Extension):
+        if not isinstance(extension, (Extension, tuple)):
             extension = extension(context)
-        if not isinstance(extension, Extension):
-            raise TypeError(f"plugin {self.name} did not produce an Extension")
-        return extension
+        extensions = _tuple(extension)
+        if not all(isinstance(item, Extension) for item in extensions):
+            raise TypeError(f"plugin {self.name} did not produce Extensions")
+        return extensions
 
     def agent_plugin(self):
         if not self.runtime_enabled or not self.binding_enabled:
@@ -195,7 +198,7 @@ class ApplicationPlan(modict):
     primary_agent: AgentSpec
     agents: Mapping[str, AgentSpec]
     plugins: Mapping[str, PluginSpec]
-    plugin_extensions: Mapping[str, Extension]
+    plugin_extensions: Mapping[str, tuple[Extension, ...]]
     extensions: tuple[Extension, ...]
     capabilities: Mapping[str, Capability]
     extension_order: tuple[str, ...]
@@ -324,14 +327,18 @@ def _compile_application(application):
             capability_owners[capability.name] = plugin.name
         # A worker must be able to compile the agent projection without
         # constructing server-only resources or needing server credentials.
-        extension = plugin.runtime if plugin.runtime_enabled and isinstance(plugin.runtime, Extension) else None
-        if extension is not None:
+        static_runtime = plugin.runtime if isinstance(plugin.runtime, (Extension, tuple)) else ()
+        static_extensions = _tuple(static_runtime) if plugin.runtime_enabled else ()
+        if not all(isinstance(item, Extension) for item in static_extensions):
+            raise TypeError(f"plugin {plugin.name} runtime must contain Extensions")
+        for extension in static_extensions:
             if extension.name in runtime_names:
                 raise ValueError(
                     f"duplicate plugin runtime extension: {extension.name}"
                 )
             runtime_names.add(extension.name)
-            plugin_extensions[plugin.name] = extension
+        if static_extensions:
+            plugin_extensions[plugin.name] = static_extensions
         if plugin.agent_plugin() is not None:
             agent_contributions.append(plugin)
     for plugin in plugins.values():
@@ -415,16 +422,17 @@ def _resolve_plugin_extensions(plan, context):
     names = {extension.name for extension in plan.extensions}
     extensions = {}
     for plugin in plan.plugins.values():
-        extension = plugin.runtime_extension(context)
-        if extension is None:
+        plugin_runtime = plugin.runtime_extension(context)
+        if plugin_runtime is None:
             continue
-        if extension.name in names:
-            raise ValueError(f"duplicate plugin runtime extension: {extension.name}")
-        names.add(extension.name)
-        extensions[plugin.name] = extension
+        for extension in plugin_runtime:
+            if extension.name in names:
+                raise ValueError(f"duplicate plugin runtime extension: {extension.name}")
+            names.add(extension.name)
+        extensions[plugin.name] = plugin_runtime
     dependency_order({
         extension.name: extension.requires
-        for extension in (*plan.extensions, *extensions.values())
+        for extension in (*plan.extensions, *(item for group in extensions.values() for item in group))
     }, kind="application extension")
     return extensions
 
@@ -478,13 +486,21 @@ def build_application(
             resolved_services[name] = extension.service
     resolved_plugin_extensions = {}
     for plugin_name in _plugin_dependency_order(plan.plugins):
-        extension = plugin_extensions.get(plugin_name)
-        if extension is None:
+        group = plugin_extensions.get(plugin_name)
+        if group is None:
             continue
-        extension = _construct_extension_service(extension, resolved_services)
-        resolved_plugin_extensions[plugin_name] = extension
-        if extension.service is not None:
-            resolved_services[extension.name] = extension.service
+        by_name = {extension.name: extension for extension in group}
+        order = dependency_order({
+            name: tuple(dependency for dependency in extension.requires if dependency in by_name)
+            for name, extension in by_name.items()
+        }, kind=f"plugin {plugin_name} extension")
+        resolved_group = []
+        for name in order:
+            extension = _construct_extension_service(by_name[name], resolved_services)
+            resolved_group.append(extension)
+            if extension.service is not None:
+                resolved_services[extension.name] = extension.service
+        resolved_plugin_extensions[plugin_name] = tuple(resolved_group)
     plan = ApplicationPlan({**plan,
         "extensions": tuple(
             resolved_extensions[extension.name]

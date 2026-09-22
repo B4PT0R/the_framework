@@ -246,10 +246,22 @@ images = PluginSpec(
 )
 ```
 
+A feature can own several server components without splitting its runtime into
+unrelated application extensions. Its `runtime` may be a tuple of `Extension`
+objects, or a server-side factory receiving `BuildContext` and returning that
+tuple. Components are constructed and started in dependency order, then stopped
+in reverse order as one plugin runtime. The worker's `compile()` path never
+calls that factory. For example, a media plugin can own a store, an index and
+an HTTP API, while the application supplies only process-local objects through
+`BuildContext` at server build time. Shared core services still live in
+`AgentApplication.extensions` until the high-level plugin API absorbs their
+ownership cleanly.
+
 The runtime and agent binding have distinct initial states. Disabling a binding
 removes the plugin from the agent while its server routes and state may remain
 available. Stopping the runtime also disables its binding. Runtime transitions
 are implemented by the plugin host rather than by mutating global registries.
+Server-only plugins have no agent binding to enable or disable.
 Public inter-plugin dependencies use versioned `Capability` contracts; private
 agents are identified as `plugin.agent` and cannot be depended on directly.
 

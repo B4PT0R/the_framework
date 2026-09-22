@@ -158,9 +158,6 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None):
         Extension(name="voice", service=controller, requires=("runtime",),
                   start=lambda service, context: None,
                   stop=lambda service, context: service.stop(), endpoints=(voice,)),
-        Extension(name="scheduler", service=scheduler, requires=("runtime",),
-                  start=lambda service, context: service.start(active=False)),
-        Extension(name="system", service=system, requires=("runtime",)),
         Extension(name="conversation", requires=("runtime",), endpoints=(
             CanonicalAgentApi(runtime, session_projection="display"), ChatApi(runtime, root / "files", voice),
             ApplicationHealthApi(),
@@ -173,6 +170,8 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None):
         "surface_root": root / "surfaces",
         "surface_notify": lambda payload: runtime.publish({**payload, "type": "interface_refresh_requested"}),
         "surface_progress": runtime.publish,
+        "scheduler": scheduler,
+        "system": system,
     }))
     bind_application_controls(runtime, app, ui_root=ROOT / "ui/dist")
     app.state.runtime = runtime

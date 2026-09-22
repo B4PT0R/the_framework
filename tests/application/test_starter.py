@@ -1,6 +1,6 @@
 from the_framework import AgentResources
 from the_framework.utils.persistence import MappingStore
-from starter.application import application, resources
+from starter.application import application, resources, scheduler_runtime, system_runtime
 
 
 def test_starter_assembles_with_product_imports_forbidden():
@@ -36,6 +36,8 @@ def test_starter_declares_general_plugins_and_memory_specialist():
         "realtime", "chromium",
     }
     assert "memory.jiminy" in plan.agents
+    assert plan.plugins["scheduler"].runtime is scheduler_runtime
+    assert plan.plugins["system"].runtime is system_runtime
 
 
 def test_starter_without_credentials_remains_available_after_inference_failure(tmp_path):

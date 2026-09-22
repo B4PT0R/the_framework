@@ -7,6 +7,7 @@ from the_framework import (
     AgentResources,
     AgentSpec,
     ClientSurface,
+    Extension,
     PluginSpec,
     SessionPolicy,
 )
@@ -30,6 +31,23 @@ class Memory(MemoryPlugin):
 
 def browser(agent):
     return ChromiumPlugin(agent, runtime_root=Path(agent.session.path).parent)
+
+
+def scheduler_runtime(context):
+    return Extension(
+        name="scheduler",
+        service=context.require("scheduler"),
+        requires=("runtime",),
+        start=lambda service, _context: service.start(active=False),
+    )
+
+
+def system_runtime(context):
+    return Extension(
+        name="system",
+        service=context.require("system"),
+        requires=("runtime",),
+    )
 
 
 def resources(session_path):
@@ -60,7 +78,9 @@ application = AgentApplication(
     ),
     plugins=(
         BashPlugin, RegistryPlugin, WebSearchPlugin, Memory,
-        SchedulerPlugin, SystemPlugin, RealtimePlugin,
+        PluginSpec(name="scheduler", agent=SchedulerPlugin, runtime=scheduler_runtime),
+        PluginSpec(name="system", agent=SystemPlugin, runtime=system_runtime),
+        RealtimePlugin,
         PluginSpec(name="chromium", agent=browser),
     ),
     surfaces=(ClientSurface(name="main", source=ROOT / "ui",
