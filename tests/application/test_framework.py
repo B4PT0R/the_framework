@@ -265,6 +265,39 @@ def test_extension_factory_receives_declared_service_dependencies():
         Extension(name="invalid", service=object(), service_factory=lambda: object())
 
 
+def test_extension_factory_discovers_its_services_websockets():
+    class SocketService:
+        async def handle(self, socket):
+            await socket.accept()
+            await socket.send_json({"status": "ready"})
+            await socket.close()
+
+        def websocket_declarations(self):
+            return (WebSocketEndpoint(
+                path="/feature/events", handler=self.handle, authenticated=False,
+            ),)
+
+    app = build_application(application(
+        "Service sockets",
+        extensions=(Extension(
+            name="feature", service_factory=SocketService,
+            websockets="service",
+        ),),
+    ))
+
+    with TestClient(app) as client:
+        with client.websocket_connect("/feature/events") as socket:
+            assert socket.receive_json() == {"status": "ready"}
+
+    with pytest.raises(ValueError, match="without websocket_declarations"):
+        build_application(application(
+            "Missing sockets",
+            extensions=(Extension(
+                name="feature", service=object(), websockets="service",
+            ),),
+        ))
+
+
 def test_plugin_agent_binding_can_be_disabled_while_runtime_is_installed():
     app = build_application(application(
         "Disabled Bundle",

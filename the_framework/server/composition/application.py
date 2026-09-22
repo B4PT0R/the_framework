@@ -112,7 +112,7 @@ class Extension(modict):
     service: object | None = None
     service_factory: Callable[..., object] | None = None
     endpoints: tuple[object, ...] | Literal["service"] = ()
-    websockets: tuple[object, ...] = ()
+    websockets: tuple[object, ...] | Literal["service"] = ()
     requires: tuple[str, ...] = ()
     critical: bool = True
     start: Callable | None = None
@@ -130,6 +130,8 @@ class Extension(modict):
             raise ValueError("extension service and factory are mutually exclusive")
         if isinstance(self.endpoints, str) and self.endpoints != "service":
             raise ValueError("extension endpoints must use 'service' or declarations")
+        if isinstance(self.websockets, str) and self.websockets != "service":
+            raise ValueError("extension websockets must use 'service' or declarations")
 
     def with_endpoints(self, *endpoints):
         if self.endpoints == "service":
@@ -138,7 +140,7 @@ class Extension(modict):
 
     @modict.any_validator(mode="before")
     def normalize_sequences(self, key, value):
-        if key == "endpoints" and value == "service":
+        if key in {"endpoints", "websockets"} and value == "service":
             return value
         return _tuple(value) if key in {"endpoints", "websockets", "requires", "middleware", "mounts"} else value
 
@@ -537,13 +539,27 @@ def _construct_extension_service(extension, services):
                 "without a decorated service"
             )
         endpoints = (service,)
-    if service is extension.service and endpoints is extension.endpoints:
+    websockets = extension.websockets
+    if websockets == "service":
+        declarations = getattr(service, "websocket_declarations", None)
+        if not callable(declarations):
+            raise ValueError(
+                f"extension {extension.name} requested service WebSockets "
+                "without websocket_declarations()"
+            )
+        websockets = tuple(declarations())
+    if (
+        service is extension.service
+        and endpoints is extension.endpoints
+        and websockets is extension.websockets
+    ):
         return extension
     return Extension({
         **extension,
         "service": service,
         "service_factory": None,
         "endpoints": endpoints,
+        "websockets": websockets,
     })
 
 

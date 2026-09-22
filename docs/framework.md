@@ -214,6 +214,11 @@ Omitting `endpoints` exposes no routes; use an explicit tuple when routes come
 from another object or you intend to expose only a subset. Route collisions
 and invalid schemas are still checked before startup.
 
+For a service that constructs its own WebSocket declarations, implement
+`websocket_declarations()` returning its `WebSocketEndpoint` values and set
+`websockets="service"`. This works with `service_factory` as well, so the socket
+handlers can refer to the constructed service without a separate pre-build step.
+
 Runtime lookup goes through the single application context:
 
 ```python
@@ -421,9 +426,9 @@ the request contains only one file, and normal JSON Schema cardinality limits
 are enforced before the handler runs.
 
 WebSocket handlers use the matching `@websocket` declaration and are composed
-through `Extension(websockets=(...))`. They share the same authentication and
-authorization policy, reject unauthorized upgrades with close code `1008`, and
-are collision-checked before any route is installed.
+through `Extension(websockets=(...))` or service discovery above. They share
+the same authentication and authorization policy, reject unauthorized upgrades
+with close code `1008`, and are collision-checked before any route is installed.
 
 Protocols that authenticate during their own handshake can construct a
 `WebSocketEndpoint(..., handshake=...)`. The handshake returns a small
