@@ -92,6 +92,10 @@ def test_starter_preserves_browser_and_conversation_across_server_restart(tmp_pa
                 await page.get_by_role("button", name="Settings", exact=True).click()
                 model = page.get_by_label("Model", exact=True)
                 await model.wait_for()
+                chat = page.locator(".plugin-row").filter(has_text="chat")
+                await chat.get_by_text("Server only · Loaded", exact=True).wait_for()
+                assert await chat.locator('input[type="checkbox"]').count() == 0
+                assert await page.locator('.plugin-row input[type="checkbox"]').count() > 0
                 await page.get_by_text("Advanced configuration", exact=True).click()
                 draft = page.get_by_label("Agent configuration JSON")
                 saved = await draft.input_value()
