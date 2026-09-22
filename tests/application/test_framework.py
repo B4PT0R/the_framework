@@ -288,6 +288,32 @@ def test_compiler_keeps_server_factories_out_of_worker_projection():
     assert app.state.application.plan.plugin_extensions["memory"][0].name == "memory_runtime"
 
 
+def test_importable_runtime_factory_is_resolved_only_for_server_build(monkeypatch):
+    from types import SimpleNamespace
+    from the_framework.server.composition import application as composition
+
+    imported = []
+
+    def load(name):
+        imported.append(name)
+        return SimpleNamespace(factory=lambda context: Extension(
+            name=context.require("name")
+        ))
+
+    monkeypatch.setattr(composition, "import_module", load)
+    spec = application("Lazy runtime", plugins=(PluginSpec(
+        name="feature", runtime="feature.server:factory",
+    ),))
+    assert spec.compile().plugin_extensions == {}
+    assert imported == []
+    app = spec.build(BuildContext({"name": "feature_runtime"}))
+    assert imported == ["feature.server"]
+    assert app.state.application.plan.plugin_extensions["feature"][0].name == "feature_runtime"
+
+    with pytest.raises(ValueError, match="module:factory"):
+        PluginSpec(name="invalid", runtime="feature.server.factory")
+
+
 def test_extension_discovers_decorated_methods_from_an_object():
     class Api:
         @endpoint("get", "/object-endpoint", authenticated=False)

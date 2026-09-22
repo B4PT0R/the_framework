@@ -251,7 +251,9 @@ unrelated application extensions. Its `runtime` may be a tuple of `Extension`
 objects, or a server-side factory receiving `BuildContext` and returning that
 tuple. Components are constructed and started in dependency order, then stopped
 in reverse order as one plugin runtime. The worker's `compile()` path never
-calls that factory. For example, a media plugin can own a store, an index and
+calls that factory. Use an importable `"package.module:factory"` reference when
+the worker should not even import the server module; the reference is resolved
+only by `build(context)`. For example, a media plugin can own a store, an index and
 an HTTP API, while the application supplies only process-local objects through
 `BuildContext` at server build time. Shared core services still live in
 `AgentApplication.extensions` until the high-level plugin API absorbs their

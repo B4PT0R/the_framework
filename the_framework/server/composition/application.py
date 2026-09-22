@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+from importlib import import_module
 from collections.abc import Callable, Mapping
 from contextlib import asynccontextmanager
 from types import MappingProxyType
@@ -138,7 +139,7 @@ class PluginSpec(modict):
 
     name: str
     agent: Callable | type | object | None = None
-    runtime: Extension | tuple[Extension, ...] | Callable[[BuildContext], Extension | tuple[Extension, ...]] | None = None
+    runtime: Extension | tuple[Extension, ...] | Callable[[BuildContext], Extension | tuple[Extension, ...]] | str | None = None
     agents: tuple[AgentSpec, ...] = ()
     capabilities: tuple[Capability, ...] = ()
     requires: tuple[CapabilityRequirement, ...] = ()
@@ -158,6 +159,16 @@ class PluginSpec(modict):
             raise ValueError("a required plugin binding cannot start disabled")
         if self.binding_required and self.agent is None:
             raise ValueError("a server-only plugin cannot require an agent binding")
+        if isinstance(self.runtime, str):
+            module, separator, attribute = self.runtime.partition(":")
+            if (
+                not separator
+                or not all(part.isidentifier() for part in module.split("."))
+                or not attribute.isidentifier()
+            ):
+                raise ValueError(
+                    f"plugin {self.name} runtime reference must use module:factory"
+                )
         names = [agent.name for agent in self.agents]
         if len(names) != len(set(names)):
             raise ValueError(f"duplicate private agent in plugin {self.name}")
@@ -176,7 +187,12 @@ class PluginSpec(modict):
         if not self.runtime_enabled or self.runtime is None:
             return None
         extension = self.runtime
+        if isinstance(extension, str):
+            module, attribute = extension.split(":", 1)
+            extension = getattr(import_module(module), attribute)
         if not isinstance(extension, (Extension, tuple)):
+            if not callable(extension):
+                raise TypeError(f"plugin {self.name} runtime factory is not callable")
             extension = extension(context)
         extensions = _tuple(extension)
         if not all(isinstance(item, Extension) for item in extensions):
