@@ -57,11 +57,11 @@ independence and the the_framework/product boundary. Ruff's import/name/error ch
 `git diff --check` pass. This is a source/package verification, not a production
 restart or a new device acceptance run.
 
-This repository distributes the `the_framework` import package as `the-framework` and bundles the neutral `starter`
+This repository distributes the `the_framework` import package as `b4pt0r-the-framework` and bundles the neutral `starter`
 template, without the product application. Run `the-framework bootstrap` (or
 `python -m the_framework bootstrap`) to copy the editable starter into a code
 directory while keeping its private data in a separate directory. The package
-is not yet published to an index. There are no legacy top-level `agent`, `server`
+is published on PyPI as `b4pt0r-the-framework`. There are no legacy top-level `agent`, `server`
 or `agent_plugins` import aliases. The wheel isolation test extracts only the
 `the_framework` package, blocks product imports, and constructs the general
 plugins using their packaged Markdown resources.

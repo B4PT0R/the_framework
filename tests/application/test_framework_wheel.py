@@ -1,6 +1,7 @@
 """Exercise the reusable packages from a built wheel, outside the checkout."""
 
 from pathlib import Path
+from email.parser import Parser
 import shutil
 import subprocess
 import sys
@@ -23,8 +24,16 @@ def test_wheel_contains_standalone_framework_and_prompt_resources(tmp_path, monk
         check=True, capture_output=True, text=True, timeout=120,
     )
     wheel, = (tmp_path / "dist").glob("*.whl")
+    assert wheel.name.startswith("b4pt0r_the_framework-")
     installed = tmp_path / "installed"
     with zipfile.ZipFile(wheel) as archive:
+        metadata_path, = (name for name in archive.namelist() if name.endswith(".dist-info/METADATA"))
+        metadata = Parser().parsestr(archive.read(metadata_path).decode())
+        assert metadata["Name"] == "b4pt0r-the-framework"
+        assert metadata["License-Expression"] == "MIT"
+        assert metadata["Requires-Python"] == ">=3.12"
+        assert "# The Framework" in metadata.get_payload()
+        assert any(name.endswith(".dist-info/licenses/LICENSE") for name in archive.namelist())
         assert not any(name.startswith(("agent/", "agent_plugins/", "server/"))
                        for name in archive.namelist())
         assert "the_framework/py.typed" in archive.namelist()

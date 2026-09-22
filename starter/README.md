@@ -6,7 +6,7 @@ window. This is application source to make your own, not a mandatory framework U
 
 ## Create your own copy
 
-From an environment with `the_framework` installed, run `the-framework bootstrap`
+From an environment with `b4pt0r-the-framework` installed, run `the-framework bootstrap`
 (or `python -m the_framework bootstrap`). Enter an empty directory for editable
 application code and a different empty directory for private application data.
 The CLI copies this complete starter, records the data location in
@@ -30,8 +30,8 @@ include The Harness product packages.
 
 Requires Python 3.12+, Node/npm and the system libraries required by Playwright
 Chromium. The starter is bundled as a bootstrap template in this framework's
-wheel. The distribution is available from this local checkout; it has not been
-published to a package index.
+wheel. Install `b4pt0r-the-framework` from PyPI or use `uv sync` from this
+checkout before running these commands.
 
 ```sh
 python3 -m venv .venv

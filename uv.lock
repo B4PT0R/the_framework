@@ -43,6 +43,50 @@ wheels = [
 ]
 
 [[package]]
+name = "b4pt0r-the-framework"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "codex-backend-sdk" },
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "jsonschema" },
+    { name = "modict" },
+    { name = "pillow" },
+    { name = "playwright" },
+    { name = "python-multipart" },
+    { name = "pyyaml" },
+    { name = "tiktoken" },
+    { name = "uvicorn" },
+    { name = "websockets" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "httpx2" },
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "codex-backend-sdk", specifier = ">=0.5.3" },
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "httpx2", marker = "extra == 'dev'", specifier = ">=2.0.0" },
+    { name = "jsonschema", specifier = ">=4.26.0" },
+    { name = "modict", specifier = ">=0.4.19" },
+    { name = "pillow" },
+    { name = "playwright" },
+    { name = "pytest", marker = "extra == 'dev'" },
+    { name = "python-multipart" },
+    { name = "pyyaml" },
+    { name = "tiktoken" },
+    { name = "uvicorn" },
+    { name = "websockets" },
+]
+provides-extras = ["dev"]
+
+[[package]]
 name = "certifi"
 version = "2026.7.22"
 source = { registry = "https://pypi.org/simple" }
@@ -305,50 +349,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/01/ee/02a2c011bdab74c6f
 wheels = [
     { url = "https://files.pythonhosted.org/packages/04/4b/29cac41a4d98d144bf5f6d33995617b185d14b22401f75ca86f384e87ff1/h11-0.16.0-py3-none-any.whl", hash = "sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86", size = 37515, upload-time = "2025-04-24T03:35:24.344Z" },
 ]
-
-[[package]]
-name = "the-framework"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "codex-backend-sdk" },
-    { name = "fastapi" },
-    { name = "httpx" },
-    { name = "jsonschema" },
-    { name = "modict" },
-    { name = "pillow" },
-    { name = "playwright" },
-    { name = "python-multipart" },
-    { name = "pyyaml" },
-    { name = "tiktoken" },
-    { name = "uvicorn" },
-    { name = "websockets" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "httpx2" },
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "codex-backend-sdk", specifier = ">=0.5.3" },
-    { name = "fastapi" },
-    { name = "httpx" },
-    { name = "httpx2", marker = "extra == 'dev'", specifier = ">=2.0.0" },
-    { name = "jsonschema", specifier = ">=4.26.0" },
-    { name = "modict", specifier = ">=0.4.19" },
-    { name = "pillow" },
-    { name = "playwright" },
-    { name = "pytest", marker = "extra == 'dev'" },
-    { name = "python-multipart" },
-    { name = "pyyaml" },
-    { name = "tiktoken" },
-    { name = "uvicorn" },
-    { name = "websockets" },
-]
-provides-extras = ["dev"]
 
 [[package]]
 name = "httpcore"
