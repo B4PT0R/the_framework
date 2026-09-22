@@ -292,7 +292,11 @@ if its provider is absent or too old. Use `Plugin.optional_requires` when an
 integration should be enabled only if its provider is installed; a present
 provider is version-checked and resolved first, but its absence is valid.
 Both forms determine construction and startup order. A plugin runtime factory
-may expose a prepared object to later factories with
+can call `context.has_capability("voice.session", min_version=1)` to select
+optional service dependencies and behavior from the compiled application plan.
+A missing provider returns `False`; a present but incompatible provider fails
+compilation before the factory runs.
+The runtime factory may also expose a prepared object to later factories with
 `context.provide("feature.name", value)`; other factories read it with
 `context.require(...)` or `context.get(...)`. Names cannot overwrite initial
 context inputs or another export.

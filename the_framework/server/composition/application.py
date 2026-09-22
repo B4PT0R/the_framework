@@ -70,6 +70,12 @@ class BuildContext(modict[str, object]):
         super().__init__(*args, **kwargs)
         object.__setattr__(self, "_provided", {})
         object.__setattr__(self, "_contributions", {})
+        object.__setattr__(self, "_capabilities", MappingProxyType({}))
+
+    def has_capability(self, name, min_version=1):
+        """Whether the compiled application installs a compatible capability."""
+        capability = self._capabilities.get(name)
+        return capability is not None and capability.version >= min_version
 
     def provide(self, name, value):
         """Expose a prepared value to plugins resolved later in the dependency DAG."""
@@ -622,6 +628,7 @@ def build_application(
         raise TypeError("build_application expects an AgentApplication")
     plan = application.compile()
     build_context = context if context is not None else BuildContext()
+    object.__setattr__(build_context, "_capabilities", plan.capabilities)
     plugin_extensions = _resolve_plugin_extensions(plan, build_context)
     declarations = {
         extension.name: extension

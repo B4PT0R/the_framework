@@ -383,7 +383,11 @@ def test_optional_capability_orders_present_provider_without_requiring_installat
         return Extension(name="provider_runtime", service=prepared)
 
     def consumer(context):
-        observed.append(context.get("prepared"))
+        observed.append((
+            context.has_capability("example.provider"),
+            context.has_capability("example.provider", min_version=2),
+            context.get("prepared"),
+        ))
         return Extension(name="consumer_runtime", service=object())
 
     consumer_plugin = Plugin(
@@ -399,7 +403,7 @@ def test_optional_capability_orders_present_provider_without_requiring_installat
     with_provider = application(
         "With optional provider", plugins=(consumer_plugin, provider_plugin),
     ).build(BuildContext())
-    assert observed == [prepared]
+    assert observed == [(True, False, prepared)]
     assert with_provider.state.application.plan.extension_order == (
         "provider_runtime", "consumer_runtime",
     )
@@ -407,7 +411,7 @@ def test_optional_capability_orders_present_provider_without_requiring_installat
     without_provider = application(
         "Without optional provider", plugins=(consumer_plugin,),
     ).build(BuildContext())
-    assert observed == [prepared, None]
+    assert observed == [(True, False, prepared), (False, False, None)]
     assert "provider_runtime" not in without_provider.state.application.extensions
 
     with pytest.raises(ValueError, match="cannot integrate capability example.provider>=2"):
