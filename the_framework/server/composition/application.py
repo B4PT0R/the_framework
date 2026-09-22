@@ -268,7 +268,13 @@ class ApplicationContext:
         self.spec = plan.application
         self.plan = plan
         self.services = ServiceContext()
-        self.extensions = {item.name: item for item in plan.extensions}
+        self.extensions = {
+            item.name: item
+            for item in (
+                *plan.extensions,
+                *(extension for group in plan.plugin_extensions.values() for extension in group),
+            )
+        }
         self.plugins = dict(plan.plugins)
         self.service_graph = None
         self.plugin_host = None
@@ -358,7 +364,13 @@ def _compile_application(application):
     _plugin_dependency_order(plugins)
 
     extension_order = dependency_order(
-        {name: extension.requires for name, extension in extension_map.items()},
+        {
+            name: tuple(
+                dependency for dependency in extension.requires
+                if dependency in extension_map
+            )
+            for name, extension in extension_map.items()
+        },
         kind="application extension",
     )
     surface_routes = [
@@ -438,6 +450,34 @@ def _resolve_plugin_extensions(plan, context):
     return extensions
 
 
+def _extension_dependencies(plan, plugin_extensions):
+    """One startup DAG for application and plugin-owned server components."""
+    exports = {
+        capability.name: name
+        for name, plugin in plan.plugins.items()
+        for capability in plugin.capabilities
+    }
+    dependencies = {
+        extension.name: extension.requires
+        for extension in plan.extensions
+    }
+    for name, group in plugin_extensions.items():
+        providers = tuple(dict.fromkeys(
+            exports[requirement.name]
+            for requirement in plan.plugins[name].requires
+        ))
+        provider_extensions = tuple(
+            extension.name
+            for provider in providers
+            for extension in plugin_extensions.get(provider, ())
+        )
+        for extension in group:
+            dependencies[extension.name] = tuple(dict.fromkeys((
+                *extension.requires, *provider_extensions,
+            )))
+    return dependencies
+
+
 def _plugin_dependency_order(plugins):
     exports = {
         capability.name: name
@@ -477,42 +517,43 @@ def build_application(
     plan = application.compile()
     build_context = context or BuildContext()
     plugin_extensions = _resolve_plugin_extensions(plan, build_context)
+    declarations = {
+        extension.name: extension
+        for extension in (
+            *plan.extensions,
+            *(item for group in plugin_extensions.values() for item in group),
+        )
+    }
+    extension_dependencies = _extension_dependencies(plan, plugin_extensions)
+    startup_order = dependency_order(extension_dependencies, kind="application extension")
     resolved_services = {}
     resolved_extensions = {}
-    for name in plan.extension_order:
-        extension = next(value for value in plan.extensions if value.name == name)
-        extension = _construct_extension_service(extension, resolved_services)
+    for name in startup_order:
+        extension = _construct_extension_service(declarations[name], resolved_services)
         resolved_extensions[name] = extension
         if extension.service is not None:
             resolved_services[name] = extension.service
-    resolved_plugin_extensions = {}
-    for plugin_name in _plugin_dependency_order(plan.plugins):
-        group = plugin_extensions.get(plugin_name)
-        if group is None:
-            continue
-        by_name = {extension.name: extension for extension in group}
-        order = dependency_order({
-            name: tuple(dependency for dependency in extension.requires if dependency in by_name)
-            for name, extension in by_name.items()
-        }, kind=f"plugin {plugin_name} extension")
-        resolved_group = []
-        for name in order:
-            extension = _construct_extension_service(by_name[name], resolved_services)
-            resolved_group.append(extension)
-            if extension.service is not None:
-                resolved_services[extension.name] = extension.service
-        resolved_plugin_extensions[plugin_name] = tuple(resolved_group)
+    resolved_plugin_extensions = {
+        plugin_name: tuple(
+            resolved_extensions[name]
+            for name in startup_order
+            if name in {extension.name for extension in group}
+        )
+        for plugin_name, group in plugin_extensions.items()
+    }
     plan = ApplicationPlan({**plan,
         "extensions": tuple(
             resolved_extensions[extension.name]
             for extension in plan.extensions
         ),
         "plugin_extensions": MappingProxyType(resolved_plugin_extensions),
+        "extension_order": tuple(startup_order),
     })
     runtime = ApplicationContext(plan)
 
     services = []
-    for extension in plan.extensions:
+    for name in startup_order:
+        extension = resolved_extensions[name]
         if extension.service is None:
             if any((extension.start, extension.stop, extension.health)):
                 raise ValueError(
@@ -520,8 +561,7 @@ def build_application(
                 )
             continue
         dependencies = tuple(
-            dependency
-            for dependency in extension.requires
+            dependency for dependency in extension_dependencies[name]
             if runtime.extensions[dependency].service is not None
         )
         services.append(ServiceSpec(
@@ -615,9 +655,6 @@ def build_application(
             )
     core_openapi = app.openapi
 
-    def openapi_changed(_snapshot):
-        app.openapi_schema = None
-
     occupied = {
         (method.upper(), route.path)
         for route in app.routes
@@ -637,7 +674,6 @@ def build_application(
         binding_update=build_context.get("plugin_binding_update"),
         occupied=occupied,
         reserved_prefixes=(*mounted_paths, *surface_paths),
-        openapi_changed=openapi_changed,
     )
     runtime.plugin_host = plugin_host
     app.mount("/", plugin_host.router, name="plugin-runtime")
@@ -646,7 +682,7 @@ def build_application(
         if app.openapi_schema is not None:
             return app.openapi_schema
         schema = core_openapi()
-        plugin_schema = plugin_host.router.snapshot.openapi()
+        plugin_schema = plugin_host.router.openapi()
         schema.setdefault("paths", {}).update(plugin_schema.get("paths", {}))
         for name, values in plugin_schema.get("components", {}).items():
             schema.setdefault("components", {}).setdefault(name, {}).update(values)
@@ -660,10 +696,7 @@ def build_application(
         await graph.start()
         try:
             await plugin_host.start()
-            try:
-                yield
-            finally:
-                await plugin_host.stop()
+            yield
         finally:
             await graph.stop()
 

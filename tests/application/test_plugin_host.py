@@ -155,6 +155,80 @@ def test_plugin_owns_multiple_ordered_server_components_and_static_routes():
     asyncio.run(scenario())
 
 
+def test_application_service_can_depend_on_plugin_owned_service():
+    events = []
+    provider = Service(events)
+    dependent = Service(events)
+    app = AgentApplication(
+        name="Cross-boundary lifecycle",
+        version="1",
+        primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
+        plugins=(Plugin(
+            name="provider",
+            runtime=Extension(name="provider_service", service=provider),
+        ),),
+        extensions=(Extension(
+            name="dependent_service",
+            service_factory=lambda provider_service: (
+                dependent if provider_service is provider else None
+            ),
+            requires=("provider_service",),
+        ),),
+    ).build()
+
+    async def scenario():
+        async with app.router.lifespan_context(app):
+            assert app.state.application.service("provider_service") is provider
+            assert app.state.application.service("dependent_service") is dependent
+            assert events == ["start", "start"]
+        assert events == ["start", "start", "stop", "stop"]
+        assert app.state.application.services.snapshot() == {}
+
+    asyncio.run(scenario())
+
+
+def test_capability_dependency_orders_plugin_services_without_extension_edge():
+    events = []
+
+    class NamedService:
+        def __init__(self, name):
+            self.name = name
+
+        def start(self):
+            events.append(f"start:{self.name}")
+
+        def stop(self):
+            events.append(f"stop:{self.name}")
+
+    app = AgentApplication(
+        name="Capability startup order",
+        version="1",
+        primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
+        plugins=(
+            Plugin(
+                name="consumer",
+                requires=(CapabilityRequirement(name="provider.api"),),
+                runtime=Extension(name="consumer_service", service=NamedService("consumer")),
+            ),
+            Plugin(
+                name="provider",
+                capabilities=(Capability(name="provider.api"),),
+                runtime=Extension(name="provider_service", service=NamedService("provider")),
+            ),
+        ),
+    ).build()
+
+    async def scenario():
+        async with app.router.lifespan_context(app):
+            pass
+        assert events == [
+            "start:provider", "start:consumer",
+            "stop:consumer", "stop:provider",
+        ]
+
+    asyncio.run(scenario())
+
+
 def test_grouped_plugin_start_failure_rolls_back_earlier_services():
     async def scenario():
         events = []

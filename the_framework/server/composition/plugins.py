@@ -12,25 +12,6 @@ from ...utils.persistence import MappingStore
 from ..api.endpoints import EndpointRegistry
 from ..api.websockets import WebSocketRegistry
 from .dependencies import dependency_order
-from .services import invoke_lifecycle
-
-
-class EndpointSnapshotRouter:
-    """One stable ASGI mount delegating to an atomically replaced application."""
-
-    def __init__(self, on_swap=None):
-        self.snapshot = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
-        self.on_swap = on_swap
-
-    def swap(self, snapshot):
-        previous = self.snapshot
-        self.snapshot = snapshot
-        if self.on_swap is not None:
-            self.on_swap(snapshot)
-        return previous
-
-    async def __call__(self, scope, receive, send):
-        await self.snapshot(scope, receive, send)
 
 
 class PluginStatus(modict):
@@ -44,7 +25,7 @@ class PluginStatus(modict):
 
 
 class PluginHost:
-    """Start declared runtimes once; only their agent bindings change live."""
+    """Hold startup-fixed plugin routes and persistent live agent bindings."""
 
     def __init__(
         self,
@@ -57,7 +38,6 @@ class PluginHost:
         binding_update=None,
         occupied=(),
         reserved_prefixes=(),
-        openapi_changed=None,
     ):
         self.plan = plan
         self.application_context = application_context
@@ -66,7 +46,6 @@ class PluginHost:
         self.binding_update = binding_update
         self.occupied = frozenset(occupied)
         self.reserved_prefixes = tuple(reserved_prefixes)
-        self.router = EndpointSnapshotRouter(openapi_changed)
         self.store = (
             MappingStore(state_path, field="plugins")
             if state_path is not None
@@ -93,8 +72,7 @@ class PluginHost:
                 "running": True,
                 "binding_enabled": binding,
             }
-        self.started = []
-        self.router.swap(self._build_snapshot(self.plan.plugins))
+        self.router = self._build_snapshot(self.plan.plugins)
 
     def status(self, name=None):
         names = (name,) if name is not None else tuple(self.plan.plugins)
@@ -171,70 +149,9 @@ class PluginHost:
         sockets.install()
         return app
 
-    async def _start_extensions(self, name):
-        started = []
-        try:
-            for extension in self.plan.plugin_extensions.get(name, ()):
-                if extension.service is None:
-                    continue
-                unavailable = [
-                    dependency for dependency in extension.requires
-                    if dependency not in self.application_context.services
-                ]
-                if unavailable:
-                    raise RuntimeError(
-                        f"plugin {name} dependencies are unavailable: "
-                        + ", ".join(unavailable)
-                    )
-                await invoke_lifecycle(extension, "start", self.application_context.services)
-                self.application_context.services.add(extension.name, extension.service)
-                started.append(extension)
-        except Exception:
-            for extension in reversed(started):
-                try:
-                    await invoke_lifecycle(extension, "stop", self.application_context.services)
-                finally:
-                    self.application_context.services.remove(extension.name, extension.service)
-            raise
-
-    async def _stop_extensions(self, name):
-        failures = []
-        for extension in reversed(self.plan.plugin_extensions.get(name, ())):
-            if extension.service is None:
-                continue
-            try:
-                await invoke_lifecycle(extension, "stop", self.application_context.services)
-            except Exception as error:
-                failures.append(error)
-            finally:
-                self.application_context.services.remove(extension.name, extension.service)
-        if failures:
-            raise ExceptionGroup(f"plugin {name} runtime shutdown failed", failures)
-
     async def start(self):
-        snapshot = self._build_snapshot(self.plan.plugins)
-        try:
-            for name in self._runtime_order(self.plan.plugins):
-                await self._start_extensions(name)
-                self.started.append(name)
-        except Exception:
-            await self.stop()
-            raise
-        self.router.swap(snapshot)
         self._save()
         return self
-
-    async def stop(self):
-        failures = []
-        for name in reversed(self.started):
-            try:
-                await self._stop_extensions(name)
-            except Exception as error:
-                failures.append(error)
-        self.started.clear()
-        self.router.swap(self._build_snapshot(()))
-        if failures:
-            raise ExceptionGroup("plugin runtime shutdown failed", failures)
 
     async def set_binding(self, name, enabled):
         spec = self.plan.plugins.get(name)
@@ -265,4 +182,4 @@ class PluginHost:
             raise
         return self.status(name)
 
-__all__ = ["EndpointSnapshotRouter", "PluginHost", "PluginStatus"]
+__all__ = ["PluginHost", "PluginStatus"]

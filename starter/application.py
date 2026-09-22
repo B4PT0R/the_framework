@@ -50,6 +50,17 @@ def system_runtime(context):
     )
 
 
+def realtime_runtime(context):
+    return Extension(
+        name="voice",
+        service=context.require("voice_controller"),
+        requires=("runtime",),
+        start=lambda _service, _context: None,
+        stop=lambda service, _context: service.stop(),
+        endpoints=(context.require("voice_api"),),
+    )
+
+
 def resources(session_path):
     """Keep the user's configuration and plugin state beside their session."""
     if session_path is None:
@@ -80,7 +91,7 @@ application = AgentApplication(
         BashPlugin, RegistryPlugin, WebSearchPlugin, Memory,
         Plugin(name="scheduler", agent=SchedulerPlugin, runtime=scheduler_runtime),
         Plugin(name="system", agent=SystemPlugin, runtime=system_runtime),
-        RealtimePlugin,
+        Plugin(name="realtime", agent=RealtimePlugin, runtime=realtime_runtime),
         Plugin(name="chromium", agent=browser),
     ),
     surfaces=(ClientSurface(name="main", source=ROOT / "ui",
