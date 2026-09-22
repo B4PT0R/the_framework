@@ -206,7 +206,7 @@ h1 {
   display: grid;
   gap: 10px;
 }
-.plugins label {
+.plugins .plugin-row {
   display: flex;
   align-items: center;
   gap: 10px;

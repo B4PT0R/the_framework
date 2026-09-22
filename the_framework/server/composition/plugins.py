@@ -14,6 +14,7 @@ class PluginStatus(modict):
     installed: bool
     loaded: bool
     running: bool
+    binding_available: bool
     binding_enabled: bool
     binding_required: bool
 
@@ -70,6 +71,7 @@ class PluginHost:
                 installed=True,
                 loaded=state["loaded"],
                 running=state["running"],
+                binding_available=spec.agent is not None,
                 binding_enabled=state["binding_enabled"],
                 binding_required=spec.binding_required,
             ))

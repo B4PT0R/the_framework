@@ -54,7 +54,7 @@ the launcher as HttpOnly cookies, never passed in URLs or browser storage.
 The default data directory is `~/.local/share/local-agent`. It contains the
 canonical session, configuration, plugin state, uploaded files, memory and browser
 profiles. Keep it private. Another data directory creates another independent
-application; this does not modify the running The Harness instance.
+application with separate state.
 
 ### Backend login
 
@@ -80,11 +80,13 @@ and changes to the backend remain external prerequisites.
   images are validated and sent as vision inputs; other files are referenced by
   their local path for tools to read. Each upload is limited to 32 files / 64 MiB.
 - **Settings** selects the model and enables plugin contributions. **Advanced
-  configuration** edits the same configuration draft, including plugin settings.
+  configuration** edits the same configuration draft, including agent-plugin settings.
   Save applies and persists it. Model availability depends on the backend account.
 
-General plugins include Bash, registry, web search, memory, scheduler, system,
-browser and realtime declarations. **Loaded** describes local runtime state,
+General plugins include Bash, registry, web search, memory, chat, scheduler,
+system, browser and realtime declarations. The `chat` plugin owns the prompt
+and attachment HTTP routes; it has no agent-side binding, so settings show its
+server status without an agent toggle. **Loaded** describes local runtime state,
 not confirmation of external-service availability. Inference, hosted search and
 memory embeddings require a usable backend account and supported capabilities.
 The starter defaults to `gpt-5.6-luna`; saved model settings take precedence.
@@ -109,7 +111,8 @@ Voice control disappears when that runtime is absent.
 | `application.py` | Agent identity, plugin composition, persistence and UI surface |
 | `instructions.md` | Main agent's editable instructions |
 | `memory.md` | Private memory curator's instructions |
-| `server.py` | Local application assembly and conversation/attachment endpoints |
+| `server.py` | Local worker, security and canonical transport assembly |
+| `chat.py` | Optional prompt and attachment routes, with voice integration when installed |
 | `security.py` | Exact host/origin checks and private local authentication |
 | `desktop.py` | Parent-owned browser/socket and supervised server replacement |
 | `ui/src/main.jsx` | Chat, composer and connection lifecycle |
@@ -118,7 +121,7 @@ Voice control disappears when that runtime is absent.
 
 Add an agent-only plugin class to the declaration, or use `Plugin` when the
 feature also needs server services, routes or an activation policy. The
-`scheduler` and `system` declarations in `application.py` show this pattern:
+`chat`, `scheduler` and `system` declarations in `application.py` show this pattern:
 their server factories construct their own services from the declared runtime
 dependency and the data directory supplied by `server.py`. The worker reads the
 same declaration without constructing those server services. Keep application

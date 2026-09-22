@@ -87,6 +87,7 @@ def test_binding_changes_do_not_stop_runtime_and_persist(tmp_path):
                 await host.set_binding("example", False)
                 assert (await client.get("/plugin/value")).status_code == 200
                 assert host.status("example").binding_enabled is False
+                assert host.status("example").binding_available is True
                 assert host.status("example").running is True
                 await host.set_binding("example", True)
         assert bindings == [
@@ -142,6 +143,7 @@ def test_plugin_owns_multiple_ordered_server_components_and_static_routes():
             item.name for item in app.state.application.plan.plugin_extensions["feature"]
         ) == ("feature_store", "feature_api")
         assert app.state.application.plugin_host.status("feature").binding_enabled is False
+        assert app.state.application.plugin_host.status("feature").binding_available is False
         async with app.router.lifespan_context(app):
             host = app.state.application.plugin_host
             with pytest.raises(RuntimeError, match="no agent binding"):

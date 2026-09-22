@@ -76,16 +76,19 @@ export function Settings({ onClose, report }) {
       <h3>Plugins</h3>
       <div className="plugins">
         {plugins.map((plugin) => (
-          <label key={plugin.name}>
-            <input
+          <div className="plugin-row" key={plugin.name}>
+            {plugin.binding_available && <input
               type="checkbox"
+              aria-label={`Expose ${plugin.name} to the agent`}
               checked={plugin.binding_enabled}
               disabled={plugin.binding_required || !plugin.running}
               onChange={() => toggle(plugin)}
-            />
-            {plugin.name}
-            <small>{plugin.running ? "Loaded" : "Stopped"}</small>
-          </label>
+            />}
+            <span>{plugin.name}</span>
+            <small>{plugin.binding_available
+              ? (plugin.running ? "Loaded" : "Stopped")
+              : (plugin.running ? "Server only · Loaded" : "Server only · Stopped")}</small>
+          </div>
         ))}
       </div>
       <details>

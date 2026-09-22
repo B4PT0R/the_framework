@@ -349,7 +349,9 @@ Public inter-plugin dependencies use versioned `Capability` contracts; private
 agents are identified as `plugin.agent` and cannot be depended on directly.
 
 The plugin host reports runtime status separately from each agent's persistent
-binding. Application and plugin endpoints, WebSockets, middleware and mounts
+binding. Its `binding_available` flag distinguishes server-only plugins from
+agent plugins whose binding is currently disabled. Application and plugin
+endpoints, WebSockets, middleware and mounts
 are installed on one server at startup; route and mount collisions fail before
 any service starts. OpenAPI includes the complete fixed endpoint set. Required
 bindings, such as the system boundary, cannot be disabled.

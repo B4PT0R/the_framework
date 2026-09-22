@@ -30,13 +30,17 @@ function App() {
   const [error, setError] = useState("");
   const [settings, setSettings] = useState(false);
   const [voiceState, setVoiceState] = useState("idle");
+  const [chatAvailable, setChatAvailable] = useState(null);
   const [voiceAvailable, setVoiceAvailable] = useState(false);
   const [captions, setCaptions] = useState({});
   const voice = useRef(null);
   useEffect(() => {
     const controller = new AbortController();
     api("plugins", { signal: controller.signal })
-      .then((result) => setVoiceAvailable(pluginRunning(result.plugins, "realtime")))
+      .then((result) => {
+        setChatAvailable(pluginRunning(result.plugins, "chat"));
+        setVoiceAvailable(pluginRunning(result.plugins, "realtime"));
+      })
       .catch((cause) => {
         if (cause.name !== "AbortError") setError(cause.message);
       });
@@ -190,7 +194,7 @@ function App() {
   }
   async function send(event) {
     event.preventDefault();
-    if (sending || (!draft.trim() && !files.length)) return;
+    if (chatAvailable !== true || sending || (!draft.trim() && !files.length)) return;
     const text = draft;
     setError("");
     if (voiceState === "idle") setBusy(true);
@@ -280,7 +284,9 @@ function App() {
               </div>
             )}
             <div className="activity" role="status">
-              {busy ? activity || "Working…" : "Ready when you are"}
+              {chatAvailable === false
+                ? "Text chat is not installed in this application"
+                : (busy ? activity || "Working…" : "Ready when you are")}
             </div>
             <form className="composer" onSubmit={send}>
               {!!files.length && (
@@ -309,7 +315,7 @@ function App() {
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 rows={3}
-                disabled={sending}
+                disabled={sending || chatAvailable !== true}
               />
               <div className="composer-actions">
                 <span>Local · Persistent · Yours</span>
@@ -326,7 +332,7 @@ function App() {
                 />
                 <button
                   type="button"
-                  disabled={sending || voiceState !== "idle"}
+                  disabled={sending || chatAvailable !== true || voiceState !== "idle"}
                   onClick={() => fileInput.current.click()}
                 >
                   Attach
@@ -374,6 +380,7 @@ function App() {
                   className="primary"
                   disabled={
                     sending ||
+                    chatAvailable !== true ||
                     (!draft.trim() && !files.length) ||
                     connection !== "Connected"
                   }

@@ -53,16 +53,30 @@ with TemporaryDirectory() as root:
     assert result.returncode == 0, result.stderr
 
 
+def test_starter_worker_compiles_without_importing_chat_server():
+    import subprocess
+    import sys
+
+    result = subprocess.run([sys.executable, "-c", """
+import sys
+from starter.application import application
+application.compile()
+assert 'starter.chat' not in sys.modules
+"""], capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+
+
 def test_starter_declares_general_plugins_and_memory_specialist():
     plan = application.compile()
     assert plan.primary_agent.name == "assistant"
     assert {plugin.name for plugin in application.plugins} == {
-        "bash", "registry", "web_search", "memory", "scheduler", "system",
+        "bash", "registry", "web_search", "memory", "chat", "scheduler", "system",
         "realtime", "chromium",
     }
     assert "memory.jiminy" in plan.agents
     assert plan.plugins["scheduler"].runtime is scheduler_runtime
     assert plan.plugins["system"].runtime is system_runtime
+    assert plan.plugins["chat"].runtime == "starter.chat:chat_runtime"
     assert plan.capabilities["realtime.session"].version == 1
 
 
@@ -98,6 +112,29 @@ def test_starter_assembles_without_voice_plugin(tmp_path, monkeypatch):
         assert attachment.status_code == 202
         assert [command.id for command in runtime.submitted] == ["text", "files"]
         assert (tmp_path / "files" / "notes.txt").read_bytes() == b"notes"
+
+
+def test_starter_chat_plugin_owns_client_routes(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from starter import server
+
+    without_chat = AgentApplication({
+        **application,
+        "plugins": tuple(
+            plugin for plugin in application.plugins if plugin.name != "chat"
+        ),
+    })
+    monkeypatch.setattr(server, "application", without_chat)
+    app = server.create_app(
+        tmp_path, token="test", origin="http://testserver", runtime=FakeRuntime(),
+    )
+    assert "chat" not in app.state.application.extensions
+    assert "/api/v1/session" in {route.path for route in app.routes}
+    with TestClient(app) as client:
+        client.headers["authorization"] = "Bearer test"
+        assert client.post(
+            "/api/v1/agent/prompt", json={"id": "text", "prompt": "Hello"},
+        ).status_code == 404
 
 
 def test_starter_worker_uses_declared_primary_agent_name(tmp_path):
@@ -172,7 +209,15 @@ def test_starter_http_uses_authenticated_canonical_queue(tmp_path):
         assert runtime.submitted[0].prompt == "Hello"
         assert client.post("/api/v1/agent/interrupt", json={}).status_code == 202
         assert runtime.submitted[-1].type == "interrupt_request"
-        assert len(client.get("/api/v1/plugins").json()["plugins"]) == 8
+        assert {
+            plugin["name"] for plugin in client.get("/api/v1/plugins").json()["plugins"]
+        } == {plugin.name for plugin in application.plugins}
+        chat_status = next(
+            plugin for plugin in client.get("/api/v1/plugins").json()["plugins"]
+            if plugin["name"] == "chat"
+        )
+        assert chat_status["running"] is True
+        assert chat_status["binding_available"] is False
         response = client.post("/api/v1/agent/attachments",
                                data={"id": "files-1", "prompt": "Read these notes"},
                                files=[("files", ("notes.txt", b"Important notes", "text/plain"))])
