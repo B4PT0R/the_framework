@@ -23,13 +23,14 @@ def test_starter_real_inference_with_tool_and_canonical_response(tmp_path):
         if output.get("type") == "command_event":
             events.append(output.event)
 
-    app.state.runtime.register_observer(observe)
     with TestClient(app) as client:
+        runtime = app.state.application.service("runtime")
+        runtime.register_observer(observe)
         command = PromptRequest(id="tool-smoke", prompt=(
             "Use the bash tool once to execute: printf 'starter-tool-ok'. "
             "Do not change files. Then reply with that exact command output."
         ))
-        client.portal.call(app.state.runtime.command, command, 60)
+        client.portal.call(runtime.command, command, 60)
         page = client.get("/api/v1/session", headers={"authorization": "Bearer isolated-test"}).json()
         text = "\n".join(part.get("text", "") for turn in page["turns"]
                          for item in turn["items"] if item.get("role") == "assistant"
@@ -44,9 +45,10 @@ def test_starter_real_memory_curates_indexes_and_survives_reconstruction(tmp_pat
 
     app = create_app(tmp_path, token="isolated-test", origin="http://testserver")
     results = []
-    app.state.runtime.register_fleet_result_handler(lambda result: results.append(result))
     with TestClient(app) as client:
-        client.portal.call(app.state.runtime.command, PromptRequest(
+        runtime = app.state.application.service("runtime")
+        runtime.register_fleet_result_handler(lambda result: results.append(result))
+        client.portal.call(runtime.command, PromptRequest(
             id="memory-smoke",
             prompt=("My project is called Copper Finch "
                     "and its source language is Rust. Please use memory.remember to preserve "
@@ -57,13 +59,13 @@ def test_starter_real_memory_curates_indexes_and_survives_reconstruction(tmp_pat
         while time.monotonic() < deadline:
             if results:
                 break
-            status = app.state.runtime.fleet.status()
+            status = runtime.fleet.status()
             assert not any(worker["error"] for worker in status), status
             time.sleep(0.5)
-        assert results and results[-1].status == "completed", results or app.state.runtime.fleet.status()
+        assert results and results[-1].status == "completed", results or runtime.fleet.status()
         entries = store.active()
         assert entries, results
-        assert all(entry.embedding for entry in entries), app.state.runtime.fleet.status()
+        assert all(entry.embedding for entry in entries), runtime.fleet.status()
         content = " ".join(entry.content for entry in entries).lower()
         assert "copper finch" in content and "rust" in content
 

@@ -23,7 +23,7 @@ from starter import desktop
 from starter.server import create_app
 with TemporaryDirectory() as root:
     app = create_app(Path(root), token='isolated-test', origin='http://localhost')
-    assert app.state.runtime is not None
+    assert app.state.application.extensions['runtime'].service is not None
 """], capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stderr
 
@@ -38,6 +38,16 @@ def test_starter_declares_general_plugins_and_memory_specialist():
     assert "memory.jiminy" in plan.agents
     assert plan.plugins["scheduler"].runtime is scheduler_runtime
     assert plan.plugins["system"].runtime is system_runtime
+
+
+def test_starter_worker_uses_declared_primary_agent_name(tmp_path):
+    from starter.server import create_app
+
+    app = create_app(tmp_path, token="test", origin="http://testserver")
+    runtime = app.state.application.extensions["runtime"].service
+    assert runtime.supervisor.command[-2:] == [
+        "--agent", application.primary_agent.name,
+    ]
 
 
 def test_starter_without_credentials_remains_available_after_inference_failure(tmp_path):
@@ -214,9 +224,10 @@ def test_starter_voice_transcript_is_committed_once_and_restored(tmp_path):
         async def observe(output):
             events.append(output)
 
-        app.state.runtime.register_observer(observe)
         with TestClient(app) as client:
-            client.portal.call(app.state.runtime.command, command)
+            runtime = app.state.application.service("runtime")
+            runtime.register_observer(observe)
+            client.portal.call(runtime.command, command)
             response = client.get("/api/v1/session", headers={"authorization": "Bearer test-secret"})
             items = [item for turn in response.json()["turns"] for item in turn["items"]]
             transcripts = [item for item in items if item.get("kind") == "realtime"]

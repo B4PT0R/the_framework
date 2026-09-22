@@ -112,7 +112,7 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None):
         supervisor = WorkerSupervisor(root / "session.json", command=[
             sys.executable, "-m", "the_framework.agent.runtime.worker_process",
             "--session", str(root / "session.json"),
-            "--application", REFERENCE, "--agent", "assistant",
+            "--application", REFERENCE, "--agent", application.primary_agent.name,
         ])
         runtime = ApplicationRuntime(supervisor, fleet_factory=lambda path, profiles: FleetSupervisor(
             path, profiles, application_reference=REFERENCE,
@@ -157,5 +157,4 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None):
         "restart": restart,
     }))
     bind_application_controls(runtime, app, ui_root=ROOT / "ui/dist")
-    app.state.runtime = runtime
     return app
