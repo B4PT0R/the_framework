@@ -74,7 +74,7 @@ def test_text_joins_voice_and_attachments_do_not_start_a_parallel_turn(tmp_path)
         runtime = SimpleNamespace(submit=submit)
         controller = SimpleNamespace(active=True, send_text=send_text)
         voice = VoiceApi(runtime, controller)
-        chat = ChatApi(runtime, tmp_path, voice)
+        chat = ChatApi(runtime, tmp_path, lambda: voice)
         await chat.prompt("typed", "Hello")
         assert spoken == ["Hello"]
         assert submitted == []
@@ -86,5 +86,26 @@ def test_text_joins_voice_and_attachments_do_not_start_a_parallel_turn(tmp_path)
         controller.active = False
         await chat.prompt("text", "Back to text")
         assert submitted[0].prompt == "Back to text"
+
+    asyncio.run(check())
+
+
+def test_text_and_attachments_work_without_voice(tmp_path):
+    async def check():
+        from io import BytesIO
+        from starlette.datastructures import UploadFile
+
+        submitted = []
+
+        async def submit(command):
+            submitted.append(command)
+
+        chat = ChatApi(SimpleNamespace(submit=submit), tmp_path, lambda: None)
+        await chat.prompt("text", "Hello without voice")
+        file = UploadFile(filename="notes.txt", file=BytesIO(b"notes"))
+        result = await chat.attachments("files", [file], "Read this")
+        assert result["status"] == "submitted"
+        assert [command.id for command in submitted] == ["text", "files"]
+        assert (tmp_path / "notes.txt").read_bytes() == b"notes"
 
     asyncio.run(check())

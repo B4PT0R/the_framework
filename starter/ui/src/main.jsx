@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { RemoteRealtimeTranscriptAssembler } from "./realtime-transcript.js";
 import { api } from "./api";
 import { voiceSession } from "./voice";
+import { pluginRunning } from "./plugins";
 import { Settings } from "./settings";
 import {
   conversationBusy,
@@ -29,9 +30,20 @@ function App() {
   const [error, setError] = useState("");
   const [settings, setSettings] = useState(false);
   const [voiceState, setVoiceState] = useState("idle");
+  const [voiceAvailable, setVoiceAvailable] = useState(false);
   const [captions, setCaptions] = useState({});
   const voice = useRef(null);
   useEffect(() => {
+    const controller = new AbortController();
+    api("plugins", { signal: controller.signal })
+      .then((result) => setVoiceAvailable(pluginRunning(result.plugins, "realtime")))
+      .catch((cause) => {
+        if (cause.name !== "AbortError") setError(cause.message);
+      });
+    return () => controller.abort();
+  }, []);
+  useEffect(() => {
+    if (!voiceAvailable) return undefined;
     let mounted = true;
     const session = voiceSession(
       api,
@@ -50,8 +62,9 @@ function App() {
     return () => {
       mounted = false;
       void session.stop();
+      voice.current = null;
     };
-  }, []);
+  }, [voiceAvailable]);
   const scroll = useRef(null);
   const follow = useRef(true);
   useEffect(() => {
@@ -318,30 +331,32 @@ function App() {
                 >
                   Attach
                 </button>
-                <button
-                  type="button"
-                  disabled={
-                    voiceState === "stopping" ||
-                    (voiceState === "idle" &&
-                      (busy ||
-                        sending ||
-                        files.length > 0 ||
-                        connection !== "Connected"))
-                  }
-                  onClick={() =>
-                    voiceState === "idle"
-                      ? voice.current.start()
-                      : voice.current.stop()
-                  }
-                >
-                  {voiceState === "idle"
-                    ? "Voice"
-                    : voiceState === "connecting"
-                      ? "Cancel voice"
-                      : voiceState === "stopping"
-                        ? "Stopping…"
-                        : "End voice"}
-                </button>
+                {voiceAvailable && (
+                  <button
+                    type="button"
+                    disabled={
+                      voiceState === "stopping" ||
+                      (voiceState === "idle" &&
+                        (busy ||
+                          sending ||
+                          files.length > 0 ||
+                          connection !== "Connected"))
+                    }
+                    onClick={() =>
+                      voiceState === "idle"
+                        ? voice.current.start()
+                        : voice.current.stop()
+                    }
+                  >
+                    {voiceState === "idle"
+                      ? "Voice"
+                      : voiceState === "connecting"
+                        ? "Cancel voice"
+                        : voiceState === "stopping"
+                          ? "Stopping…"
+                          : "End voice"}
+                  </button>
+                )}
                 {busy && (
                   <button
                     type="button"

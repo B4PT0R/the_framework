@@ -1,6 +1,31 @@
-from the_framework import AgentResources
+from the_framework import AgentApplication, AgentResources
 from the_framework.utils.persistence import MappingStore
 from starter.application import application, resources, scheduler_runtime, system_runtime
+
+
+class FakeRuntime:
+    fleet = None
+    running = False
+
+    def __init__(self):
+        from the_framework.server.runtime.bridge import ApplicationBridge
+        self.application = ApplicationBridge(None)
+        self.submitted = []
+
+    def register_observer(self, observer):
+        pass
+
+    async def start(self):
+        self.running = True
+
+    async def stop(self):
+        self.running = False
+
+    async def submit(self, command):
+        self.submitted.append(command)
+
+    async def publish(self, event):
+        pass
 
 
 def test_starter_assembles_with_product_imports_forbidden():
@@ -38,6 +63,41 @@ def test_starter_declares_general_plugins_and_memory_specialist():
     assert "memory.jiminy" in plan.agents
     assert plan.plugins["scheduler"].runtime is scheduler_runtime
     assert plan.plugins["system"].runtime is system_runtime
+    assert plan.capabilities["realtime.session"].version == 1
+
+
+def test_starter_assembles_without_voice_plugin(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from starter import server
+
+    text_only = AgentApplication({
+        **application,
+        "plugins": tuple(
+            plugin for plugin in application.plugins
+            if plugin.name != "realtime"
+        ),
+    })
+    monkeypatch.setattr(server, "application", text_only)
+    runtime = FakeRuntime()
+    app = server.create_app(
+        tmp_path, token="test", origin="http://testserver", runtime=runtime,
+    )
+    assert "voice" not in app.state.application.extensions
+    assert "chat" in app.state.application.extensions
+    with TestClient(app) as client:
+        client.headers["authorization"] = "Bearer test"
+        prompt = client.post(
+            "/api/v1/agent/prompt", json={"id": "text", "prompt": "Hello"},
+        )
+        attachment = client.post(
+            "/api/v1/agent/attachments",
+            data={"id": "files", "prompt": "Read this"},
+            files={"files": ("notes.txt", b"notes", "text/plain")},
+        )
+        assert prompt.status_code == 202
+        assert attachment.status_code == 202
+        assert [command.id for command in runtime.submitted] == ["text", "files"]
+        assert (tmp_path / "files" / "notes.txt").read_bytes() == b"notes"
 
 
 def test_starter_worker_uses_declared_primary_agent_name(tmp_path):
@@ -94,31 +154,7 @@ def test_starter_http_uses_authenticated_canonical_queue(tmp_path):
     from fastapi.testclient import TestClient
     from starter.server import create_app
 
-    class Runtime:
-        fleet = None
-        running = False
-
-        def __init__(self):
-            from the_framework.server.runtime.bridge import ApplicationBridge
-            self.application = ApplicationBridge(None)
-            self.submitted = []
-
-        def register_observer(self, observer):
-            pass
-
-        async def start(self):
-            self.running = True
-
-        async def stop(self):
-            self.running = False
-
-        async def submit(self, command):
-            self.submitted.append(command)
-
-        async def publish(self, event):
-            pass
-
-    runtime = Runtime()
+    runtime = FakeRuntime()
     app = create_app(tmp_path, token="private-test-secret", origin="http://testserver", runtime=runtime)
     with TestClient(app) as client:
         assert runtime.running

@@ -44,10 +44,11 @@ def prepare_attachments(files, workfolder):
 
 
 class ChatApi:
-    def __init__(self, runtime, workfolder, voice):
+    def __init__(self, runtime, workfolder, voice_service, *, text_lock=None):
         self.runtime = runtime
         self.workfolder = workfolder
-        self.voice = voice
+        self.voice_service = voice_service
+        self.text_lock = text_lock if text_lock is not None else asyncio.Lock()
 
     @endpoint("post", "/api/v1/agent/prompt", status_code=202,
               request={"type": "object", "properties": {
@@ -57,9 +58,10 @@ class ChatApi:
               response={"type": "object"})
     async def prompt(self, id: str, prompt: str):
         """Submit a client-correlated turn to the canonical single-writer queue."""
-        async with self.voice.lock:
-            if self.voice.controller.active:
-                await self.voice.controller.send_text(prompt)
+        voice = self.voice_service()
+        async with (voice.lock if voice is not None else self.text_lock):
+            if voice is not None and voice.controller.active:
+                await voice.controller.send_text(prompt)
             else:
                 await self.runtime.submit(PromptRequest(id=id, prompt=prompt))
         return {"id": id, "status": "submitted"}
@@ -73,8 +75,9 @@ class ChatApi:
               response={"type": "object"})
     async def attachments(self, id: str, files: list, prompt: str = ""):
         """Store attachments before submitting one ordered conversation turn."""
-        async with self.voice.lock:
-            if self.voice.controller.active:
+        voice = self.voice_service()
+        async with (voice.lock if voice is not None else self.text_lock):
+            if voice is not None and voice.controller.active:
                 for upload in files:
                     await upload.close()
                 raise HttpError(409, "voice_active", "Stop voice before sending attachments")
@@ -120,11 +123,18 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None):
     security = LocalSecurity(token, origin=origin)
     sockets = CanonicalTransportSockets(runtime, event_handshake=security.handshake,
                                         application_handshake=security.handshake)
+    app = None
+    text_mode_lock = asyncio.Lock()
+
+    def voice_service():
+        if app is None:
+            raise RuntimeError("voice service is unavailable before application build")
+        return app.state.application.services.get("voice")
 
     async def binding(name, enabled):
-        voice = app.state.application.service("voice")
-        async with voice.lock:
-            if name == "realtime" and not enabled:
+        voice = voice_service()
+        async with (voice.lock if voice is not None else text_mode_lock):
+            if name == "realtime" and not enabled and voice is not None:
                 await voice.controller.stop()
             result = await runtime.command(PluginBindingRequest(
                 id=timestamp_id(), plugin=name, enabled=enabled,
@@ -142,9 +152,11 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None):
         ), websockets=(sockets.events_socket, sockets.application_socket)),
         Extension(
             name="chat",
-            service_factory=lambda runtime, voice: ChatApi(runtime, root / "files", voice),
+            service_factory=lambda runtime: ChatApi(
+                runtime, root / "files", voice_service, text_lock=text_mode_lock,
+            ),
             endpoints="service",
-            requires=("runtime", "voice"),
+            requires=("runtime",),
         ),
     )
     app = definition.build(BuildContext({

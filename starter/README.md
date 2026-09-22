@@ -98,6 +98,9 @@ attachments. Partial transcripts appear as temporary **Live** captions, replaced
 by canonical messages when complete. A real backend exchange has been verified
 in Chromium with a simulated microphone; physical microphone quality and OS
 permission behavior still depend on the user's environment.
+Remove the `realtime` plugin declaration in `application.py` for a text-only
+application; the starter's chat routes and composer continue working and the
+Voice control disappears when that runtime is absent.
 
 ## Make it your application
 
