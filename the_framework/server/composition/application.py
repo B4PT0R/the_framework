@@ -627,6 +627,11 @@ def build_application(
         for surface in application.surfaces
         for route in (*surface.routes, surface.preview_route)
     )
+    allowed_surface_routes = {
+        route
+        for surface in application.surfaces
+        for route in surface.server_routes
+    }
     registry = EndpointRegistry(
         app,
         security=application.security,
@@ -638,20 +643,23 @@ def build_application(
     for extension, owner in all_extensions:
         for source in extension.endpoints:
             for declaration in _declared_endpoints(source):
-                if extension.name in plugin_owners and any(
+                if declaration.path not in allowed_surface_routes and any(
                     _path_within_mount(declaration.path, prefix)
                     for prefix in surface_prefixes
                 ):
                     raise ValueError(
-                        f"plugin endpoint is shadowed by a mount: {declaration.path}"
+                        f"application endpoint is shadowed by a mount: {declaration.path}"
                     )
                 registry.add(declaration, owner=owner)
         for endpoint in extension.websockets:
-            prefixes = (
-                (*mount_prefixes, *surface_prefixes)
-                if extension.name in plugin_owners else mount_prefixes
-            )
-            if any(_path_within_mount(endpoint.path, prefix) for prefix in prefixes):
+            if any(_path_within_mount(endpoint.path, prefix) for prefix in mount_prefixes):
+                raise ValueError(
+                    f"application WebSocket is shadowed by a mount: {endpoint.path}"
+                )
+            if endpoint.path not in allowed_surface_routes and any(
+                _path_within_mount(endpoint.path, prefix)
+                for prefix in surface_prefixes
+            ):
                 raise ValueError(
                     f"application WebSocket is shadowed by a mount: {endpoint.path}"
                 )

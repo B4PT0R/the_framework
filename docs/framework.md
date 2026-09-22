@@ -487,6 +487,7 @@ surface = ClientSurface(
     build=("npm", "run", "build:surface"),
     artifact="desktop/.surface-build",
     routes=("/ui", "/remote-ui", "/quest-ui"),
+    server_routes=("/ui/bootstrap",),
     shell="playwright",
 )
 ```
@@ -497,6 +498,9 @@ immutable release. Candidates are served on authenticated preview URLs.
 Publication atomically swaps the persisted active release and notifies clients;
 rollback swaps back without rebuilding. Build success is evidence only: the
 agent remains responsible for inspecting the preview before publication.
+`server_routes` explicitly reserves routes beneath a surface mount for an
+application or plugin endpoint, such as a login/bootstrap exchange. Other
+endpoints and WebSockets under the mounted path are rejected at build time.
 
 Middleware and mounted ASGI applications belong on an `Extension`, so they are
 validated and installed with the rest of the graph, whether that extension is

@@ -276,14 +276,25 @@ def test_surface_mounts_reject_nested_routes_and_shadowed_plugin_endpoints(tmp_p
         ).build(BuildContext({"surface_root": tmp_path / "runtime"}))
 
 
-def test_application_bootstrap_endpoint_may_precede_its_surface_mount(tmp_path):
+def test_declared_plugin_bootstrap_endpoint_may_precede_its_surface_mount(tmp_path):
     @endpoint("get", "/ui/bootstrap", authenticated=False)
     def bootstrap():
         return {"ready": True}
 
     source = source_tree(tmp_path)
-    specification = declaration(source).with_extensions(
-        Extension(name="bootstrap", endpoints=(bootstrap,)),
+    specification = AgentApplication(
+        name="Surface bootstrap", version="1",
+        primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
+        plugins=(Plugin(
+            name="hosted_ui", runtime=Extension(
+                name="hosted_ui_runtime", endpoints=(bootstrap,),
+            ),
+        ),),
+        surfaces=(ClientSurface(
+            name="main", source=source, build=("true",), artifact="build",
+            routes=("/ui",), server_routes=("/ui/bootstrap",),
+        ),),
+        security=Security(),
     )
     app = specification.build(BuildContext({
         "surface_root": tmp_path / "runtime",
@@ -299,3 +310,12 @@ def test_application_bootstrap_endpoint_may_precede_its_surface_mount(tmp_path):
         assert "/ui/bootstrap" in schema["paths"]
 
     asyncio.run(scenario())
+
+
+def test_surface_server_route_must_belong_to_surface(tmp_path):
+    source = source_tree(tmp_path)
+    with pytest.raises(ValueError, match="surface server routes"):
+        ClientSurface(
+            name="main", source=source, build=("true",), artifact="build",
+            routes=("/ui",), server_routes=("/api/v1/unrelated",),
+        )

@@ -26,6 +26,7 @@ class ClientSurface(modict):
     build: tuple[str, ...]
     artifact: str | Path
     routes: tuple[str, ...]
+    server_routes: tuple[str, ...] = ()
     preview_route: str | None = None
     shell: str | None = None
     retain_releases: int = 3
@@ -41,6 +42,17 @@ class ClientSurface(modict):
             raise ValueError("surface artifact must stay inside its isolated build root")
         if not self.routes or any(not route.startswith("/") for route in self.routes):
             raise ValueError("surface routes must be absolute application paths")
+        if len(self.server_routes) != len(set(self.server_routes)) or any(
+            not path.startswith("/")
+            or not any(
+                path.startswith(f"{route.rstrip('/')}/")
+                for route in self.routes
+            )
+            for path in self.server_routes
+        ):
+            raise ValueError(
+                "surface server routes must be distinct paths below a surface route"
+            )
         if self.retain_releases < 2:
             raise ValueError("surface release retention must keep rollback available")
         if self.timeout_seconds <= 0:
@@ -52,7 +64,7 @@ class ClientSurface(modict):
             return Path(value).expanduser().resolve()
         if key == "artifact":
             return Path(value)
-        if key in {"build", "routes"}:
+        if key in {"build", "routes", "server_routes"}:
             return tuple(value)
         if key == "preview_route" and value is None:
             return f"/__surface-preview/{self.name}"
