@@ -2,10 +2,44 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 
 from fastapi import WebSocket
 from modict import modict
+from starlette.websockets import WebSocketDisconnect
+
+
+async def serve_event_stream_until_disconnect(socket, send_events):
+    """Run a server-push stream until the client disconnects or sending ends."""
+    async def wait_for_disconnect():
+        while True:
+            message = await socket.receive()
+            if message["type"] == "websocket.disconnect":
+                return
+
+    sender = asyncio.create_task(send_events())
+    receiver = asyncio.create_task(wait_for_disconnect())
+    tasks = (sender, receiver)
+    done = set()
+    try:
+        try:
+            done, _pending = await asyncio.wait(
+                tasks, return_when=asyncio.FIRST_COMPLETED,
+            )
+        except asyncio.CancelledError:
+            pass
+    finally:
+        pending = [task for task in tasks if not task.done()]
+        for task in pending:
+            task.cancel()
+        await asyncio.gather(*pending, return_exceptions=True)
+    for task in done:
+        if task.cancelled():
+            continue
+        error = task.exception()
+        if error and not isinstance(error, WebSocketDisconnect):
+            raise error
 
 
 class WebSocketEndpoint(modict):

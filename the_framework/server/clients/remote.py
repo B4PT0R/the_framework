@@ -20,6 +20,8 @@ from uuid import uuid4
 
 from modict import modict
 
+from ..api.websockets import serve_event_stream_until_disconnect
+
 from ...agent.runtime.protocol import (
     ApplicationCall,
     ApplicationCancel,
@@ -1057,7 +1059,8 @@ class ClientRemoteService:
         sockets = self.event_connections.setdefault(client_id, set())
         sockets.add(websocket)
         await websocket.accept(subprotocol=subprotocol or self.event_subprotocol)
-        try:
+
+        async def send_events():
             async for event in self.stream(after, server_instance_id):
                 outgoing = event
                 if self.event_payload_adapter is not None:
@@ -1065,6 +1068,9 @@ class ClientRemoteService:
                     if asyncio.iscoroutine(outgoing):
                         outgoing = await outgoing
                 await websocket.send_json(outgoing)
+
+        try:
+            await serve_event_stream_until_disconnect(websocket, send_events)
         finally:
             sockets.discard(websocket)
             if not sockets:

@@ -252,8 +252,10 @@ images = Plugin(
 A feature can own several server components without splitting its runtime into
 unrelated application extensions. Its `runtime` may be a tuple of `Extension`
 objects, or a server-side factory receiving `BuildContext` and returning that
-tuple. Components are constructed and started in dependency order, then stopped
-in reverse order as one plugin runtime. The worker's `compile()` path never
+tuple. Application and plugin services share one dependency graph: components
+are constructed and started in dependency order, then stopped in reverse order.
+This also lets an application extension depend on a plugin-owned service.
+The worker's `compile()` path never
 calls that factory. Use an importable `"package.module:factory"` reference when
 the worker should not even import the server module; the reference is resolved
 only by `build(context)`. For example, a media plugin can own a store, an index and
@@ -366,10 +368,10 @@ its own domain context; no general provider manager is required.
 
 ## Shared mechanics, separate ownership
 
-Application compilation, service startup and plugin startup use one stable
-dependency traversal. Services and plugin runtimes share lifecycle invocation,
-while their startup/stop transactions remain separate: application shutdown and
-reversible plugin activation do not have identical rollback semantics.
+Application and plugin services use one startup graph and one rollback path.
+The graph validates dependencies across ownership boundaries, starts providers
+before consumers, and stops everything in reverse order. Agent-binding changes
+do not restart services or alter server routes.
 
 `atomic_text_writer` shares private temporary-file creation, replacement, file
 and directory synchronization, and cleanup. Session, registry, mapping and fleet
@@ -415,6 +417,10 @@ Protocols that authenticate during their own handshake can construct a
 connection context that is injected into the handler, or `None` to reject the
 upgrade. This supports versioned subprotocols, replay cursors and private-client
 credentials without weakening the ordinary HTTP security policy.
+Server-push event handlers must also read the peer's disconnect signal while
+waiting for the next event. The framework's local and remote event streams use
+one shared routine for this, so an idle disconnected client releases its
+subscription promptly instead of lingering until a heartbeat or shutdown.
 
 ## Built-in application primitives
 

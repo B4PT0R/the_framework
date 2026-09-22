@@ -1,9 +1,14 @@
+import asyncio
+
 from fastapi.testclient import TestClient
 
 from the_framework.agent import AgentSpec, SessionPolicy
 from the_framework.server.composition.application import AgentApplication, Extension, build_application
 from the_framework.server.api.endpoints import Principal
-from the_framework.server.api.websockets import websocket
+from the_framework.server.api.websockets import (
+    serve_event_stream_until_disconnect,
+    websocket,
+)
 
 
 class Security:
@@ -68,3 +73,29 @@ def test_declarative_websocket_rejects_missing_security_and_collisions():
         assert "duplicate WebSocket endpoint" in str(error)
     else:
         raise AssertionError("duplicate WebSocket endpoint was accepted")
+
+
+def test_push_stream_stops_promptly_on_disconnect_without_another_event():
+    async def scenario():
+        incoming = asyncio.Queue()
+        sender_cancelled = asyncio.Event()
+
+        class Socket:
+            async def receive(self):
+                return await incoming.get()
+
+        async def send_events():
+            try:
+                await asyncio.Future()
+            finally:
+                sender_cancelled.set()
+
+        task = asyncio.create_task(
+            serve_event_stream_until_disconnect(Socket(), send_events)
+        )
+        await asyncio.sleep(0)
+        await incoming.put({"type": "websocket.disconnect"})
+        await asyncio.wait_for(task, 1)
+        assert sender_cancelled.is_set()
+
+    asyncio.run(scenario())
