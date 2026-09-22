@@ -82,6 +82,59 @@ class RemoteClientPolicy(modict):
         configured = self.platform_scopes or {}
         return tuple(dict.fromkeys((*self.default_scopes, *configured.get(platform, ()))))
 
+    @classmethod
+    def compose(cls, *contributions):
+        """Combine startup-installed feature policies into one validated contract."""
+        scopes = []
+        platform_scopes = {}
+        capabilities = set()
+        exclusive = set()
+        routed = set()
+        default_leases = set()
+        unleased_events = set()
+        event_capabilities = {}
+        for contribution in contributions:
+            if not isinstance(contribution, cls):
+                raise TypeError("remote policy contribution must be a RemoteClientPolicy")
+            duplicate_capabilities = capabilities & contribution.capabilities
+            if duplicate_capabilities:
+                raise ValueError(
+                    "duplicate remote capabilities: "
+                    + ", ".join(sorted(duplicate_capabilities))
+                )
+            duplicate_events = (
+                unleased_events | set(event_capabilities)
+            ) & (
+                set(contribution.unleased_events)
+                | set(contribution.event_capabilities or {})
+            )
+            if duplicate_events:
+                raise ValueError(
+                    "duplicate remote events: " + ", ".join(sorted(duplicate_events))
+                )
+            scopes.extend(contribution.default_scopes)
+            for platform, values in (contribution.platform_scopes or {}).items():
+                platform_scopes.setdefault(platform, []).extend(values)
+            capabilities.update(contribution.capabilities)
+            exclusive.update(contribution.exclusive_capabilities)
+            routed.update(contribution.routed_capabilities)
+            default_leases.update(contribution.default_lease_capabilities)
+            unleased_events.update(contribution.unleased_events)
+            event_capabilities.update(contribution.event_capabilities or {})
+        return cls(
+            default_scopes=tuple(dict.fromkeys(scopes)),
+            platform_scopes={
+                platform: tuple(dict.fromkeys(values))
+                for platform, values in platform_scopes.items()
+            },
+            capabilities=frozenset(capabilities),
+            exclusive_capabilities=frozenset(exclusive),
+            routed_capabilities=frozenset(routed),
+            default_lease_capabilities=frozenset(default_leases),
+            unleased_events=frozenset(unleased_events),
+            event_capabilities=event_capabilities,
+        )
+
 
 def _utc_now():
     return datetime.now(timezone.utc)
@@ -269,6 +322,7 @@ class ClientRemoteService:
             raise ValueError("pairing_scheme must be a valid lowercase URI scheme")
         self.harness = harness
         self.policy = policy or RemoteClientPolicy()
+        self._policy_locked = False
         self.clients = RemoteClientStore(path, policy=self.policy)
         self.receipts_path = Path(path).with_name("remote-command-receipts.json")
         self.pairings = {}
@@ -327,10 +381,19 @@ class ClientRemoteService:
         })
 
     async def start(self):
+        self._policy_locked = True
         if self.relay_task is None:
             self.relay_task = asyncio.create_task(self._relay())
         if self.lease_task is None:
             self.lease_task = asyncio.create_task(self._lease_watchdog())
+
+    def add_policy(self, contribution):
+        """Add one installed feature's policy before any client can connect."""
+        if self._policy_locked:
+            raise RuntimeError("remote client policy is fixed after startup")
+        policy = RemoteClientPolicy.compose(self.policy, contribution)
+        self.policy = policy
+        self.clients.policy = policy
 
     async def stop(self):
         sockets = [

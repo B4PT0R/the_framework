@@ -75,6 +75,33 @@ def test_compile_allows_runtime_name_equal_to_another_plugin_identity():
     assert plan.plugin_extensions["second"][0].name == "third"
 
 
+def test_plugin_runtime_factories_follow_capability_dependencies():
+    built = []
+
+    def provider(_context):
+        built.append("provider")
+        return Extension(name="provider_service")
+
+    def consumer(_context):
+        assert built == ["provider"]
+        built.append("consumer")
+        return Extension(name="consumer_service")
+
+    spec = application("ordered runtimes", plugins=(
+        Plugin(
+            name="consumer", runtime=consumer,
+            requires=(CapabilityRequirement(name="feature.provider"),),
+        ),
+        Plugin(
+            name="provider", runtime=provider,
+            capabilities=(Capability(name="feature.provider"),),
+        ),
+    ))
+
+    spec.build()
+    assert built == ["provider", "consumer"]
+
+
 def test_compile_rejects_private_agent_shadowing_primary():
     spec = AgentApplication(
         name="collision", version="1",

@@ -392,8 +392,14 @@ Remote client privileges are application-owned: `RemoteClientPolicy()` grants
 no scopes, capabilities, or platform-specific privileges. Supply the policy
 explicitly to `ClientRemoteService` (which passes it to its credential store).
 Routed and default leased capabilities must be declared exclusive capabilities;
-invalid policy graphs fail at construction. The Harness supplies its own policy
-in application assembly, including desktop and Quest permissions.
+invalid policy graphs fail at construction. An application with several installed
+features can combine their `RemoteClientPolicy` contributions with
+`RemoteClientPolicy.compose(base, feature, ...)`, or call
+`ClientRemoteService.add_policy(feature)` while constructing each plugin runtime.
+Duplicate capability or event ownership is rejected, and policy changes are
+forbidden after service startup. Plugin runtime factories run in capability
+dependency order, so a dependent feature can build on its provider's startup
+contribution. Paired-client records are not rewritten by policy composition.
 
 Authenticated endpoints require an explicit application `SecurityPolicy`.
 There is no implicit allow-all policy in `AgentApplication`. The registry:

@@ -459,7 +459,8 @@ def _service_declares_endpoints(service):
 def _resolve_plugin_extensions(plan, context):
     names = {extension.name for extension in plan.extensions}
     extensions = {}
-    for plugin in plan.plugins.values():
+    for plugin_name in _plugin_dependency_order(plan.plugins):
+        plugin = plan.plugins[plugin_name]
         plugin_runtime = plugin.runtime_extension(context)
         if plugin_runtime is None:
             continue
