@@ -92,6 +92,30 @@ class PluginHost:
                 "running": running,
                 "binding_enabled": binding,
             }
+        exports = {
+            capability.name: owner
+            for owner, spec in plan.plugins.items()
+            for capability in spec.capabilities
+        }
+        order = dependency_order({
+            name: tuple(exports[requirement.name] for requirement in spec.requires)
+            for name, spec in plan.plugins.items()
+        }, kind="plugin")
+        for name in order:
+            spec = plan.plugins[name]
+            if not self.states[name]["running"]:
+                continue
+            for requirement in spec.requires:
+                owner = exports[requirement.name]
+                if not self.states[owner]["running"]:
+                    if spec.runtime_required:
+                        raise ValueError(
+                            f"required plugin {name} requires stopped capability: "
+                            f"{requirement.name}"
+                        )
+                    self.states[name]["running"] = False
+                    self.states[name]["binding_enabled"] = False
+                    break
         self.started = []
         self.router.swap(self._build_snapshot(
             name for name, state in self.states.items() if state["running"]

@@ -7,6 +7,8 @@ from the_framework import (
     AgentApplication,
     AgentSpec,
     BuildContext,
+    Capability,
+    CapabilityRequirement,
     Extension,
     PluginSpec,
     SessionPolicy,
@@ -255,6 +257,124 @@ def test_failed_plugin_start_rolls_back_started_runtimes():
         assert second == ["start"]
 
     asyncio.run(scenario())
+
+
+def test_plugin_service_factory_receives_application_dependency_and_starts():
+    events = []
+    dependency = Service(events)
+    received = []
+
+    def create(dependency):
+        received.append(dependency)
+        return Service(events)
+
+    app = AgentApplication(
+        name="Factory",
+        version="1",
+        primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
+        extensions=(Extension(name="dependency", service=dependency),),
+        plugins=(PluginSpec(
+            name="feature",
+            runtime=Extension(
+                name="feature_runtime",
+                service_factory=create,
+                requires=("dependency",),
+            ),
+        ),),
+    ).build()
+
+    from fastapi.testclient import TestClient
+    with TestClient(app):
+        assert received == [dependency]
+        assert app.state.application.service("feature_runtime") is not None
+        assert events == ["start", "start"]
+    assert events == ["start", "start", "stop", "stop"]
+
+
+def test_plugin_service_factory_can_depend_on_another_plugin_capability():
+    events = []
+    provider = Service(events)
+    received = []
+
+    def create(provider_runtime):
+        received.append(provider_runtime)
+        return Service(events)
+
+    app = AgentApplication(
+        name="Chained factories", version="1",
+        primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
+        plugins=(
+            PluginSpec(
+                name="consumer",
+                requires=(CapabilityRequirement(name="provider.api"),),
+                runtime=Extension(
+                    name="consumer_runtime", service_factory=create,
+                    requires=("provider_runtime",),
+                ),
+            ),
+            PluginSpec(
+                name="provider", capabilities=(Capability(name="provider.api"),),
+                runtime=Extension(name="provider_runtime", service=provider),
+            ),
+        ),
+    ).build()
+
+    from fastapi.testclient import TestClient
+    with TestClient(app):
+        assert received == [provider]
+        assert app.state.application.service("consumer_runtime") is not None
+    assert events == ["start", "start", "stop", "stop"]
+
+
+def test_running_plugin_requires_running_capability_provider():
+    declaration = AgentApplication(
+        name="Dependencies",
+        version="1",
+        primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
+        plugins=(
+            PluginSpec(
+                name="base", capabilities=(Capability(name="base.api"),),
+                runtime_enabled=False, binding_enabled=False,
+            ),
+            PluginSpec(
+                name="dependent",
+                requires=(CapabilityRequirement(name="base.api"),),
+            ),
+        ),
+    )
+    with pytest.raises(ValueError, match="requires stopped capability"):
+        declaration.build()
+
+
+def test_persisted_plugin_state_stops_dependent_without_its_provider(tmp_path):
+    from the_framework.utils.persistence import MappingStore
+
+    state_path = tmp_path / "plugins.json"
+    MappingStore(state_path, field="plugins").save({
+        "base": {"running": False, "binding_enabled": False},
+        "dependent": {"running": True, "binding_enabled": False},
+    })
+    declaration = AgentApplication(
+        name="Restored dependencies", version="1",
+        primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
+        plugins=(
+            PluginSpec(name="base", capabilities=(Capability(name="base.api"),)),
+            PluginSpec(
+                name="dependent",
+                requires=(CapabilityRequirement(name="base.api"),),
+            ),
+            PluginSpec(name="independent"),
+        ),
+    )
+    app = declaration.build(BuildContext({"plugin_state_path": state_path}))
+    from fastapi.testclient import TestClient
+    with TestClient(app):
+        status = {item.name: item for item in app.state.application.plugin_host.status()}
+        assert status["base"].running is False
+        assert status["dependent"].running is False
+        assert status["independent"].running is True
+    saved = MappingStore(state_path, field="plugins").load()
+    assert saved["dependent"]["running"] is False
 
 
 def test_authenticated_plugin_api_controls_binding_and_runtime():

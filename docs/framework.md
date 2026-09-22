@@ -68,8 +68,11 @@ plugins using their packaged Markdown resources.
 
 `AgentApplication` is the single root declaration. It owns exactly one durable
 primary `AgentSpec`, the plugin specifications, server extensions, security and
-client surfaces. Calling `compile()` produces an immutable, validated plan
-before any worker, service, route or mount is started.
+client surfaces. Calling `compile()` produces an immutable, process-neutral
+plan without invoking server runtime factories. This lets a worker reconstruct
+its agent from the same declaration without server-only inputs. `build(context)`
+resolves those factories and validates the complete server graph before any
+service, route or mount is started.
 
 Application code supplies identity, plugins, domain services, policies and UI
 surfaces. The core owns process supervision, ordered commands, lifecycle,
@@ -193,6 +196,14 @@ realtime = Extension(
     requires=("runtime",),
 )
 ```
+
+The same dependency injection applies to an `Extension` returned by a plugin's
+server runtime factory. A plugin requiring another plugin's service must also
+declare the corresponding versioned public `CapabilityRequirement`; the
+capability dependency determines startup order, and an enabled dependent may
+not start while its provider runtime is stopped. A stale persisted state that
+requests an optional dependent without its provider is reconciled to stopped
+at startup; unrelated plugins can still start.
 
 Runtime lookup goes through the single application context:
 

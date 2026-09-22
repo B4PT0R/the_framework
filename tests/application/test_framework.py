@@ -255,7 +255,7 @@ def test_disabled_plugin_bundle_is_inert_on_the_server_side():
     assert app.state.application.plugins["echo"].runtime_enabled is False
 
 
-def test_compiler_resolves_capabilities_factories_and_private_identities():
+def test_compiler_keeps_server_factories_out_of_worker_projection():
     observed = []
 
     def runtime(context):
@@ -278,11 +278,14 @@ def test_compiler_resolves_capabilities_factories_and_private_identities():
         ),
     )
 
-    plan = spec.compile(BuildContext({"marker": "resolved"}))
+    plan = spec.compile()
 
-    assert observed == ["resolved"]
+    assert observed == []
     assert tuple(plan.agents) == ("memory.curator", "primary")
     assert plan.capabilities["memory.curate"].version == 2
+    app = spec.build(BuildContext({"marker": "resolved"}))
+    assert observed == ["resolved"]
+    assert app.state.application.plan.plugin_extensions["memory"].name == "memory_runtime"
 
 
 def test_extension_discovers_decorated_methods_from_an_object():

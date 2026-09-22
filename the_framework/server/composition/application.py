@@ -243,8 +243,8 @@ class AgentApplication(modict):
             return tuple(plugins)
         return _tuple(value) if key in {"plugins", "extensions", "surfaces"} else value
 
-    def compile(self, context: BuildContext | None = None):
-        return _compile_application(self, context or BuildContext())
+    def compile(self):
+        return _compile_application(self)
 
     def build(self, context: BuildContext | None = None):
         return build_application(self, context=context)
@@ -267,9 +267,10 @@ class ApplicationContext:
         return self.services.require(name)
 
 
-def _compile_application(application, build_context):
+def _compile_application(application):
     plugins = {}
     capabilities = {}
+    capability_owners = {}
     extensions = list(application.extensions)
     extension_map = {}
     for extension in extensions:
@@ -320,7 +321,10 @@ def _compile_application(application, build_context):
             if capability.name in capabilities:
                 raise ValueError(f"duplicate plugin capability: {capability.name}")
             capabilities[capability.name] = capability
-        extension = plugin.runtime_extension(build_context)
+            capability_owners[capability.name] = plugin.name
+        # A worker must be able to compile the agent projection without
+        # constructing server-only resources or needing server credentials.
+        extension = plugin.runtime if plugin.runtime_enabled and isinstance(plugin.runtime, Extension) else None
         if extension is not None:
             if extension.name in runtime_names:
                 raise ValueError(
@@ -338,6 +342,12 @@ def _compile_application(application, build_context):
                     f"plugin {plugin.name} requires unavailable capability "
                     f"{requirement.name}>={requirement.min_version}"
                 )
+            if plugin.runtime_enabled and not plugins[capability_owners[requirement.name]].runtime_enabled:
+                raise ValueError(
+                    f"plugin {plugin.name} requires stopped capability: "
+                    f"{requirement.name}"
+                )
+    _plugin_dependency_order(plugins)
 
     extension_order = dependency_order(
         {name: extension.requires for name, extension in extension_map.items()},
@@ -401,6 +411,52 @@ def _declared_endpoints(source):
     raise TypeError("extension endpoint must be decorated or expose endpoint declarations")
 
 
+def _resolve_plugin_extensions(plan, context):
+    names = {extension.name for extension in plan.extensions}
+    extensions = {}
+    for plugin in plan.plugins.values():
+        extension = plugin.runtime_extension(context)
+        if extension is None:
+            continue
+        if extension.name in names:
+            raise ValueError(f"duplicate plugin runtime extension: {extension.name}")
+        names.add(extension.name)
+        extensions[plugin.name] = extension
+    dependency_order({
+        extension.name: extension.requires
+        for extension in (*plan.extensions, *extensions.values())
+    }, kind="application extension")
+    return extensions
+
+
+def _plugin_dependency_order(plugins):
+    exports = {
+        capability.name: name
+        for name, plugin in plugins.items()
+        for capability in plugin.capabilities
+    }
+    return dependency_order({
+        name: tuple(exports[requirement.name] for requirement in plugin.requires)
+        for name, plugin in plugins.items()
+    }, kind="plugin")
+
+
+def _construct_extension_service(extension, services):
+    if extension.service_factory is None:
+        return extension
+    dependencies = {
+        dependency: services[dependency]
+        for dependency in extension.requires
+        if dependency in services
+    }
+    service = extension.service_factory(**dependencies)
+    if inspect.isawaitable(service):
+        raise TypeError(
+            f"extension factory must be synchronous: {extension.name}"
+        )
+    return Extension({**extension, "service": service, "service_factory": None})
+
+
 def build_application(
     application: AgentApplication,
     *,
@@ -409,31 +465,32 @@ def build_application(
     """Compile the complete declaration, then build its FastAPI runtime."""
     if not isinstance(application, AgentApplication):
         raise TypeError("build_application expects an AgentApplication")
-    plan = application.compile(context)
+    plan = application.compile()
+    build_context = context or BuildContext()
+    plugin_extensions = _resolve_plugin_extensions(plan, build_context)
     resolved_services = {}
     resolved_extensions = {}
     for name in plan.extension_order:
         extension = next(value for value in plan.extensions if value.name == name)
-        if extension.service_factory is not None:
-            dependencies = {
-                dependency: resolved_services[dependency]
-                for dependency in extension.requires
-                if dependency in resolved_services
-            }
-            service = extension.service_factory(**dependencies)
-            if inspect.isawaitable(service):
-                raise TypeError(
-                    f"extension factory must be synchronous: {extension.name}"
-                )
-            extension = Extension({**extension, "service": service, "service_factory": None})
+        extension = _construct_extension_service(extension, resolved_services)
         resolved_extensions[name] = extension
         if extension.service is not None:
             resolved_services[name] = extension.service
+    resolved_plugin_extensions = {}
+    for plugin_name in _plugin_dependency_order(plan.plugins):
+        extension = plugin_extensions.get(plugin_name)
+        if extension is None:
+            continue
+        extension = _construct_extension_service(extension, resolved_services)
+        resolved_plugin_extensions[plugin_name] = extension
+        if extension.service is not None:
+            resolved_services[extension.name] = extension.service
     plan = ApplicationPlan({**plan,
         "extensions": tuple(
             resolved_extensions[extension.name]
             for extension in plan.extensions
         ),
+        "plugin_extensions": MappingProxyType(resolved_plugin_extensions),
     })
     runtime = ApplicationContext(plan)
 
@@ -511,7 +568,6 @@ def build_application(
         app.add_middleware(middleware, **options)
     for path, mounted_app, name in mounts:
         app.mount(path, mounted_app, name=name)
-    build_context = context or BuildContext()
     if application.surfaces:
         surface_root = build_context.get("surface_root")
         if surface_root is None:
