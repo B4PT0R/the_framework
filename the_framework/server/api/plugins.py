@@ -1,4 +1,4 @@
-"""Authenticated control surface for declared plugin runtime and bindings."""
+"""Authenticated control surface for installed plugins and agent bindings."""
 
 from ...agent import endpoint
 
@@ -26,7 +26,7 @@ class PluginHostApi:
         authorization={"scope": "plugins:read"},
     )
     def list_plugins(self):
-        """Return installed, loaded, running and binding state separately."""
+        """Return installed runtime and agent-binding state separately."""
         return {"plugins": self.host.status()}
 
     @endpoint(
@@ -52,33 +52,5 @@ class PluginHostApi:
             raise HttpError(404, "plugin_not_found", "Plugin not found") from error
         except RuntimeError as error:
             raise HttpError(409, "plugin_transition_rejected", str(error)) from error
-
-    @endpoint(
-        "put",
-        "/api/v1/plugins/{name}/runtime",
-        request={
-            "type": "object",
-            "properties": {
-                "name": {"type": "string", "minLength": 1},
-                "running": {"type": "boolean"},
-            },
-            "required": ["name", "running"],
-            "additionalProperties": False,
-        },
-        response={"type": "object"},
-        authorization={"scope": "plugins:write"},
-    )
-    async def set_runtime(self, name, running):
-        """Start or fully stop one already installed plugin runtime."""
-        try:
-            transition = (
-                self.host.start_runtime if running else self.host.stop_runtime
-            )
-            return await transition(name)
-        except ValueError as error:
-            raise HttpError(404, "plugin_not_found", "Plugin not found") from error
-        except RuntimeError as error:
-            raise HttpError(409, "plugin_transition_rejected", str(error)) from error
-
 
 __all__ = ["PluginHostApi"]

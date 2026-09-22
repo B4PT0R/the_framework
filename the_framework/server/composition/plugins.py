@@ -1,4 +1,4 @@
-"""Transactional server runtime and agent-binding state for declared plugins."""
+"""Startup-installed plugin runtimes and persistent agent bindings."""
 
 from __future__ import annotations
 
@@ -40,12 +40,11 @@ class PluginStatus(modict):
     loaded: bool
     running: bool
     binding_enabled: bool
-    runtime_required: bool
     binding_required: bool
 
 
 class PluginHost:
-    """Own loaded/running runtime state independently from agent bindings."""
+    """Start declared runtimes once; only their agent bindings change live."""
 
     def __init__(
         self,
@@ -56,7 +55,6 @@ class PluginHost:
         validate_responses=True,
         state_path=None,
         binding_update=None,
-        runtime_update=None,
         occupied=(),
         reserved_prefixes=(),
         openapi_changed=None,
@@ -66,7 +64,6 @@ class PluginHost:
         self.security = security
         self.validate_responses = validate_responses
         self.binding_update = binding_update
-        self.runtime_update = runtime_update
         self.occupied = frozenset(occupied)
         self.reserved_prefixes = tuple(reserved_prefixes)
         self.router = EndpointSnapshotRouter(openapi_changed)
@@ -79,50 +76,25 @@ class PluginHost:
         self.states = {}
         for name, spec in plan.plugins.items():
             saved = persisted.get(name, {})
-            running = bool(saved.get("running", spec.runtime_enabled))
+            if saved.get("running") is False:
+                raise ValueError(
+                    f"legacy plugin state has a stopped runtime: {name}; "
+                    "remove this plugin from the startup declaration, then "
+                    "remove its obsolete running field from plugin state"
+                )
             binding = bool(
                 spec.agent is not None
                 and saved.get("binding_enabled", spec.binding_enabled)
             )
-            if not running:
-                binding = False
-            if spec.runtime_required:
-                running = True
             if spec.binding_required:
                 binding = True
             self.states[name] = {
                 "loaded": True,
-                "running": running,
+                "running": True,
                 "binding_enabled": binding,
             }
-        exports = {
-            capability.name: owner
-            for owner, spec in plan.plugins.items()
-            for capability in spec.capabilities
-        }
-        order = dependency_order({
-            name: tuple(exports[requirement.name] for requirement in spec.requires)
-            for name, spec in plan.plugins.items()
-        }, kind="plugin")
-        for name in order:
-            spec = plan.plugins[name]
-            if not self.states[name]["running"]:
-                continue
-            for requirement in spec.requires:
-                owner = exports[requirement.name]
-                if not self.states[owner]["running"]:
-                    if spec.runtime_required:
-                        raise ValueError(
-                            f"required plugin {name} requires stopped capability: "
-                            f"{requirement.name}"
-                        )
-                    self.states[name]["running"] = False
-                    self.states[name]["binding_enabled"] = False
-                    break
         self.started = []
-        self.router.swap(self._build_snapshot(
-            name for name, state in self.states.items() if state["running"]
-        ))
+        self.router.swap(self._build_snapshot(self.plan.plugins))
 
     def status(self, name=None):
         names = (name,) if name is not None else tuple(self.plan.plugins)
@@ -138,14 +110,16 @@ class PluginHost:
                 loaded=state["loaded"],
                 running=state["running"],
                 binding_enabled=state["binding_enabled"],
-                runtime_required=spec.runtime_required,
                 binding_required=spec.binding_required,
             ))
         return result[0] if name is not None else result
 
     def _save(self):
         if self.store is not None:
-            self.store.save(self.states)
+            self.store.save({
+                name: {"binding_enabled": state["binding_enabled"]}
+                for name, state in self.states.items()
+            })
 
     def _runtime_order(self, names):
         names = tuple(names)
@@ -238,19 +212,11 @@ class PluginHost:
             raise ExceptionGroup(f"plugin {name} runtime shutdown failed", failures)
 
     async def start(self):
-        running = [
-            name for name, state in self.states.items() if state["running"]
-        ]
-        snapshot = self._build_snapshot(running)
+        snapshot = self._build_snapshot(self.plan.plugins)
         try:
-            for name in self._runtime_order(running):
+            for name in self._runtime_order(self.plan.plugins):
                 await self._start_extensions(name)
                 self.started.append(name)
-            if self.runtime_update is not None:
-                for name, state in self.states.items():
-                    result = self.runtime_update(name, state["running"])
-                    if inspect.isawaitable(result):
-                        await result
         except Exception:
             await self.stop()
             raise
@@ -278,8 +244,6 @@ class PluginHost:
         enabled = bool(enabled)
         if enabled and spec.agent is None:
             raise RuntimeError(f"plugin has no agent binding: {name}")
-        if enabled and not state["running"]:
-            raise RuntimeError(f"plugin runtime is stopped: {name}")
         if not enabled and spec.binding_required:
             raise RuntimeError(f"plugin binding is required: {name}")
         if state["binding_enabled"] == enabled:
@@ -300,110 +264,5 @@ class PluginHost:
                     await result
             raise
         return self.status(name)
-
-    async def stop_runtime(self, name):
-        spec = self.plan.plugins.get(name)
-        if spec is None:
-            raise ValueError(f"unknown plugin: {name}")
-        if spec.runtime_required:
-            raise RuntimeError(f"plugin runtime is required: {name}")
-        exported = {capability.name for capability in spec.capabilities}
-        dependents = [
-            candidate_name
-            for candidate_name, candidate in self.plan.plugins.items()
-            if self.states[candidate_name]["running"]
-            and candidate_name != name
-            and any(requirement.name in exported for requirement in candidate.requires)
-        ]
-        if dependents:
-            raise RuntimeError(
-                f"plugin runtime is required by: {', '.join(sorted(dependents))}"
-            )
-        state = self.states[name]
-        if not state["running"]:
-            return self.status(name)
-        previous_binding = state["binding_enabled"]
-        if previous_binding:
-            if self.binding_update is not None:
-                result = self.binding_update(name, False)
-                if inspect.isawaitable(result):
-                    await result
-            state["binding_enabled"] = False
-        try:
-            if self.runtime_update is not None:
-                result = self.runtime_update(name, False)
-                if inspect.isawaitable(result):
-                    await result
-            await self._stop_extensions(name)
-            running = [
-                item for item, value in self.states.items()
-                if value["running"] and item != name
-            ]
-            snapshot = self._build_snapshot(running)
-            state["running"] = False
-            state["binding_enabled"] = False
-            self._save()
-        except Exception:
-            state["running"] = True
-            state["binding_enabled"] = previous_binding
-            await self._start_extensions(name)
-            if self.runtime_update is not None:
-                result = self.runtime_update(name, True)
-                if inspect.isawaitable(result):
-                    await result
-            if previous_binding and self.binding_update is not None:
-                result = self.binding_update(name, True)
-                if inspect.isawaitable(result):
-                    await result
-            raise
-        self.router.swap(snapshot)
-        if name in self.started:
-            self.started.remove(name)
-        return self.status(name)
-
-    async def start_runtime(self, name):
-        spec = self.plan.plugins.get(name)
-        if spec is None:
-            raise ValueError(f"unknown plugin: {name}")
-        state = self.states[name]
-        if state["running"]:
-            return self.status(name)
-        for requirement in spec.requires:
-            owner = next((
-                item for item, candidate in self.plan.plugins.items()
-                if any(capability.name == requirement.name
-                       and capability.version >= requirement.min_version
-                       for capability in candidate.capabilities)
-            ), None)
-            if owner is None or not self.states[owner]["running"]:
-                raise RuntimeError(
-                    f"plugin capability is unavailable: {requirement.name}"
-                )
-        running = [
-            item for item, value in self.states.items() if value["running"]
-        ]
-        snapshot = self._build_snapshot((*running, name))
-        try:
-            await self._start_extensions(name)
-            if self.runtime_update is not None:
-                result = self.runtime_update(name, True)
-                if inspect.isawaitable(result):
-                    await result
-            state["running"] = True
-            state["binding_enabled"] = False
-            self._save()
-        except Exception:
-            state["running"] = False
-            state["binding_enabled"] = False
-            if self.runtime_update is not None:
-                result = self.runtime_update(name, False)
-                if inspect.isawaitable(result):
-                    await result
-            await self._stop_extensions(name)
-            raise
-        self.router.swap(snapshot)
-        self.started.append(name)
-        return self.status(name)
-
 
 __all__ = ["EndpointSnapshotRouter", "PluginHost", "PluginStatus"]

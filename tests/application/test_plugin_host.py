@@ -63,22 +63,17 @@ def declaration(service, **plugin_options):
     )
 
 
-def test_runtime_and_binding_transitions_are_independent_and_persistent(tmp_path):
+def test_binding_changes_do_not_stop_runtime_and_persist(tmp_path):
     async def scenario():
         events = []
         bindings = []
-        private_agents = []
 
         async def update_binding(name, enabled):
             bindings.append((name, enabled))
 
-        async def update_runtime(name, running):
-            private_agents.append((name, running))
-
         context = BuildContext({
             "plugin_state_path": tmp_path / "plugins.json",
             "plugin_binding_update": update_binding,
-            "plugin_runtime_update": update_runtime,
         })
         app = declaration(Service(events)).build(context)
         async with app.router.lifespan_context(app):
@@ -89,22 +84,14 @@ def test_runtime_and_binding_transitions_are_independent_and_persistent(tmp_path
                 assert (await client.get("/plugin/value")).status_code == 200
                 await host.set_binding("example", False)
                 assert (await client.get("/plugin/value")).status_code == 200
-                await host.stop_runtime("example")
-                assert (await client.get("/plugin/value")).status_code == 404
-                status = await host.start_runtime("example")
-                assert status.binding_enabled is False
-                assert (await client.get("/plugin/value")).status_code == 200
+                assert host.status("example").binding_enabled is False
+                assert host.status("example").running is True
                 await host.set_binding("example", True)
         assert bindings == [
             ("example", False),
             ("example", True),
         ]
-        assert private_agents == [
-            ("example", True),
-            ("example", False),
-            ("example", True),
-        ]
-        assert events == ["start", "stop", "start", "stop"]
+        assert events == ["start", "stop"]
 
         restored = declaration(Service([])).build(context)
         status = restored.state.application.plugin_host.status("example")
@@ -114,7 +101,7 @@ def test_runtime_and_binding_transitions_are_independent_and_persistent(tmp_path
     asyncio.run(scenario())
 
 
-def test_plugin_owns_multiple_ordered_server_components_and_hot_routes():
+def test_plugin_owns_multiple_ordered_server_components_and_static_routes():
     async def scenario():
         events = []
 
@@ -161,12 +148,7 @@ def test_plugin_owns_multiple_ordered_server_components_and_hot_routes():
                 transport=ASGITransport(app=app), base_url="http://test"
             ) as client:
                 assert (await client.get("/plugin/value")).status_code == 200
-                await host.stop_runtime("feature")
-                assert (await client.get("/plugin/value")).status_code == 404
-                await host.start_runtime("feature")
-                assert (await client.get("/plugin/value")).status_code == 200
         assert events == [
-            "start:store", "start:api", "stop:api", "stop:store",
             "start:store", "start:api", "stop:api", "stop:store",
         ]
 
@@ -199,32 +181,30 @@ def test_grouped_plugin_start_failure_rolls_back_earlier_services():
     asyncio.run(scenario())
 
 
-def test_full_stop_does_not_reenable_binding_after_restart(tmp_path):
+def test_binding_disable_does_not_reenable_after_restart(tmp_path):
     async def scenario():
         context = BuildContext({
             "plugin_state_path": tmp_path / "plugins.json",
         })
         app = declaration(Service([])).build(context)
         async with app.router.lifespan_context(app):
-            await app.state.application.plugin_host.stop_runtime("example")
+            await app.state.application.plugin_host.set_binding("example", False)
 
         restored = declaration(Service([])).build(context)
         status = restored.state.application.plugin_host.status("example")
-        assert status.running is False
+        assert status.running is True
         assert status.binding_enabled is False
 
     asyncio.run(scenario())
 
 
-def test_required_runtime_and_binding_are_protected():
+def test_required_binding_is_protected():
     async def scenario():
         app = declaration(
-            Service([]), runtime_required=True, binding_required=True
+            Service([]), binding_required=True
         ).build()
         async with app.router.lifespan_context(app):
             host = app.state.application.plugin_host
-            with pytest.raises(RuntimeError, match="runtime is required"):
-                await host.stop_runtime("example")
             with pytest.raises(RuntimeError, match="binding is required"):
                 await host.set_binding("example", False)
 
@@ -253,46 +233,6 @@ def test_binding_persistence_failure_rolls_back_worker_and_memory_state(tmp_path
                 await host.set_binding("example", False)
             assert host.status("example").binding_enabled is True
             assert bindings == [("example", False), ("example", True)]
-
-    asyncio.run(scenario())
-
-
-def test_runtime_persistence_failure_rolls_back_the_complete_transaction(tmp_path):
-    async def scenario():
-        events = []
-        bindings = []
-        private_agents = []
-        app = declaration(Service(events)).build(BuildContext({
-            "plugin_state_path": tmp_path / "plugins.json",
-            "plugin_binding_update": (
-                lambda name, enabled: bindings.append((name, enabled))
-            ),
-            "plugin_runtime_update": (
-                lambda name, running: private_agents.append((name, running))
-            ),
-        }))
-        async with app.router.lifespan_context(app):
-            host = app.state.application.plugin_host
-
-            def fail(_payload):
-                raise OSError("disk full")
-
-            host.store.save = fail
-            with pytest.raises(OSError, match="disk full"):
-                await host.stop_runtime("example")
-            status = host.status("example")
-            assert status.running is True
-            assert status.binding_enabled is True
-            async with AsyncClient(
-                transport=ASGITransport(app=app), base_url="http://test"
-            ) as client:
-                assert (await client.get("/plugin/value")).status_code == 200
-
-        assert events == ["start", "stop", "start", "stop"]
-        assert bindings == [("example", False), ("example", True)]
-        assert private_agents == [
-            ("example", True), ("example", False), ("example", True),
-        ]
 
     asyncio.run(scenario())
 
@@ -412,15 +352,14 @@ def test_plugin_service_factory_can_depend_on_another_plugin_capability():
     assert events == ["start", "start", "stop", "stop"]
 
 
-def test_running_plugin_requires_running_capability_provider():
+def test_declared_plugin_requires_declared_capability_provider():
     declaration = AgentApplication(
         name="Dependencies",
         version="1",
         primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
         plugins=(
             Plugin(
-                name="base", capabilities=(Capability(name="base.api"),),
-                runtime_enabled=False, binding_enabled=False,
+                name="base", binding_enabled=False,
             ),
             Plugin(
                 name="dependent",
@@ -428,11 +367,11 @@ def test_running_plugin_requires_running_capability_provider():
             ),
         ),
     )
-    with pytest.raises(ValueError, match="requires stopped capability"):
+    with pytest.raises(ValueError, match="requires unavailable capability"):
         declaration.build()
 
 
-def test_persisted_plugin_state_stops_dependent_without_its_provider(tmp_path):
+def test_legacy_stopped_runtime_requires_explicit_startup_migration(tmp_path):
     from the_framework.utils.persistence import MappingStore
 
     state_path = tmp_path / "plugins.json"
@@ -452,18 +391,11 @@ def test_persisted_plugin_state_stops_dependent_without_its_provider(tmp_path):
             Plugin(name="independent"),
         ),
     )
-    app = declaration.build(BuildContext({"plugin_state_path": state_path}))
-    from fastapi.testclient import TestClient
-    with TestClient(app):
-        status = {item.name: item for item in app.state.application.plugin_host.status()}
-        assert status["base"].running is False
-        assert status["dependent"].running is False
-        assert status["independent"].running is True
-    saved = MappingStore(state_path, field="plugins").load()
-    assert saved["dependent"]["running"] is False
+    with pytest.raises(ValueError, match="legacy plugin state has a stopped runtime: base"):
+        declaration.build(BuildContext({"plugin_state_path": state_path}))
 
 
-def test_authenticated_plugin_api_controls_binding_and_runtime():
+def test_authenticated_plugin_api_controls_only_binding():
     async def scenario():
         application = declaration(Service([]))
         application = AgentApplication(
@@ -489,7 +421,7 @@ def test_authenticated_plugin_api_controls_binding_and_runtime():
                 runtime = await client.put(
                     "/api/v1/plugins/example/runtime", json={"running": False}
                 )
-                assert runtime.status_code == 200
-                assert runtime.json()["running"] is False
+                assert runtime.status_code == 404
+                assert (await client.get("/plugin/value")).status_code == 200
 
     asyncio.run(scenario())

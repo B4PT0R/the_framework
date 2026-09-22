@@ -145,14 +145,6 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None):
             if name == "scheduler":
                 scheduler.active = enabled
 
-    async def plugin_runtime(name, running):
-        if name == "realtime" and not running:
-            await voice.stop()
-        if name == "scheduler":
-            scheduler.active = running and app.state.application.plugin_host.status(name).binding_enabled
-        if runtime.fleet is not None:
-            await runtime.fleet.set_plugin_running(name, running)
-
     definition = AgentApplication({**application, "security": security}).with_extensions(
         Extension(name="runtime", service=runtime),
         Extension(name="voice", service=controller, requires=("runtime",),
@@ -166,7 +158,6 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None):
     app = definition.build(BuildContext({
         "plugin_state_path": root / "plugins.json",
         "plugin_binding_update": binding,
-        "plugin_runtime_update": plugin_runtime,
         "surface_root": root / "surfaces",
         "surface_notify": lambda payload: runtime.publish({**payload, "type": "interface_refresh_requested"}),
         "surface_progress": runtime.publish,

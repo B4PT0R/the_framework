@@ -238,7 +238,7 @@ def test_extension_factory_receives_declared_service_dependencies():
         Extension(name="invalid", service=object(), service_factory=lambda: object())
 
 
-def test_disabled_plugin_bundle_is_inert_on_the_server_side():
+def test_plugin_agent_binding_can_be_disabled_while_runtime_is_installed():
     app = build_application(application(
         "Disabled Bundle",
         "1",
@@ -246,13 +246,13 @@ def test_disabled_plugin_bundle_is_inert_on_the_server_side():
             name="echo",
             agent=object,
             runtime=Extension(name="echo_api", endpoints=(echo,)),
-            runtime_enabled=False,
             binding_enabled=False,
         ),),
+        security=Security(),
     ))
 
-    assert not any(route.path == "/echo/{item_id}" for route in app.routes)
-    assert app.state.application.plugins["echo"].runtime_enabled is False
+    assert app.state.application.plugins["echo"].binding_enabled is False
+    assert app.state.application.plugin_host.status("echo").running is True
 
 
 def test_compiler_keeps_server_factories_out_of_worker_projection():

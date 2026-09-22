@@ -239,8 +239,9 @@ class Agent:
 
     def add_plugin(self, plugin, *, activate=None):
         plugin = self.load_plugin(plugin)
-        if activate is None:
-            activate = self.session.plugins.get(plugin.title, True)
+        activate = self.session.plugins.get(
+            plugin.title, True if activate is None else activate
+        )
         if not activate:
             return plugin
         try:

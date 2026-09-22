@@ -203,10 +203,10 @@ realtime = Extension(
 The same dependency injection applies to an `Extension` returned by a plugin's
 server runtime factory. A plugin requiring another plugin's service must also
 declare the corresponding versioned public `CapabilityRequirement`; the
-capability dependency determines startup order, and an enabled dependent may
-not start while its provider runtime is stopped. A stale persisted state that
-requests an optional dependent without its provider is reconciled to stopped
-at startup; unrelated plugins can still start.
+capability dependency determines startup order. A dependent cannot be declared
+without its provider. Installed plugin runtimes are fixed for the server
+lifetime; removing a provider requires updating the startup declaration and
+restarting the server.
 
 Runtime lookup goes through the single application context:
 
@@ -262,23 +262,20 @@ an HTTP API, while the application supplies only process-local objects through
 `AgentApplication.extensions` until the high-level plugin API absorbs their
 ownership cleanly.
 
-The runtime and agent binding have distinct initial states. Disabling a binding
-removes the plugin from the agent while its server routes and state may remain
-available. Stopping the runtime also disables its binding. Runtime transitions
-are implemented by the plugin host rather than by mutating global registries.
-Server-only plugins have no agent binding to enable or disable.
+Each declared plugin runtime starts with the server and remains installed until
+shutdown. Its agent binding can be enabled or disabled live and persists across
+restarts; disabling it removes tools and context from the agent but leaves
+routes and services available. A server-only plugin has no binding. To remove
+a runtime entirely, remove the plugin from the declaration and restart. A legacy
+state file containing `running=false` is rejected with a migration error rather
+than silently reactivating a previously stopped runtime.
 Public inter-plugin dependencies use versioned `Capability` contracts; private
 agents are identified as `plugin.agent` and cannot be depended on directly.
 
-The generic plugin host tracks three runtime states (`installed`, `loaded`,
-`running`) independently from each agent's persistent `enabled`/`disabled`
-binding. Route snapshots are validated globally and exchanged atomically;
-OpenAPI always reflects the active snapshot.
-
-A full runtime stop transaction removes bindings, private agents, services,
-routes and capabilities before persisting the stopped state. Restarting that
-runtime does not silently re-enable its agent bindings. Required runtime and
-binding contributions, such as the system boundary, reject those transitions.
+The plugin host reports runtime status separately from each agent's persistent
+binding. It validates all installed routes together before startup, and OpenAPI
+reflects that fixed route set. Required bindings, such as the system boundary,
+cannot be disabled.
 
 ## Agent construction
 

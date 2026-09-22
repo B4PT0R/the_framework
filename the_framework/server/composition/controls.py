@@ -18,13 +18,6 @@ def bind_application_controls(runtime, app, *, ui_root=None):
         name = str(payload.get("name") or "")
         if method == "set_binding":
             return await plugin_host.set_binding(name, bool(payload.get("enabled")))
-        if method == "set_runtime":
-            transition = (
-                plugin_host.start_runtime
-                if bool(payload.get("running"))
-                else plugin_host.stop_runtime
-            )
-            return await transition(name)
         raise ValueError(f"unknown plugin operation: {method}")
 
     async def handle_surfaces(method, payload):

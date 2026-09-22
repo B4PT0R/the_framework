@@ -24,9 +24,11 @@ file records the constraints to preserve when changing the framework.
   tested migration. A client reconnection or worker restart must not create a
   second main conversation or bypass safety controls.
 - Plugins contribute through the framework's declarations and lifecycle, not
-  by mutating FastAPI internals or global registries. Loading a plugin is
-  separate from exposing its tools to an agent; server routes may remain
-  available when an agent binding is disabled.
+  by mutating FastAPI internals or global registries. The complete declared
+  plugin graph starts with the server and keeps its routes and services until
+  shutdown; removing a runtime requires a new composition and server restart.
+  Only a plugin's binding to an agent changes live. Disabling that binding must
+  leave the plugin's server routes and services available.
 
 ## Making changes
 

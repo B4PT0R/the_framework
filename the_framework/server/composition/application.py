@@ -143,18 +143,12 @@ class Plugin(modict):
     agents: tuple[AgentSpec, ...] = ()
     capabilities: tuple[Capability, ...] = ()
     requires: tuple[CapabilityRequirement, ...] = ()
-    runtime_enabled: bool = True
     binding_enabled: bool = True
-    runtime_required: bool = False
     binding_required: bool = False
 
     @modict.model_validator(mode="after")
     def validate_declaration(self):
         _identifier(self.name, "plugin name")
-        if self.binding_enabled and not self.runtime_enabled:
-            raise ValueError("an agent binding cannot be enabled for a stopped runtime")
-        if self.runtime_required and not self.runtime_enabled:
-            raise ValueError("a required plugin runtime cannot start disabled")
         if self.binding_required and not self.binding_enabled:
             raise ValueError("a required plugin binding cannot start disabled")
         if self.binding_required and self.agent is None:
@@ -184,7 +178,7 @@ class Plugin(modict):
         return _tuple(value) if key in {"agents", "capabilities", "requires"} else value
 
     def runtime_extension(self, context: BuildContext):
-        if not self.runtime_enabled or self.runtime is None:
+        if self.runtime is None:
             return None
         extension = self.runtime
         if isinstance(extension, str):
@@ -200,8 +194,6 @@ class Plugin(modict):
         return extensions
 
     def agent_plugin(self):
-        if not self.runtime_enabled or not self.binding_enabled:
-            return None
         return self.agent
 
 
@@ -289,7 +281,6 @@ class ApplicationContext:
 def _compile_application(application):
     plugins = {}
     capabilities = {}
-    capability_owners = {}
     extensions = list(application.extensions)
     extension_map = {}
     for extension in extensions:
@@ -340,11 +331,10 @@ def _compile_application(application):
             if capability.name in capabilities:
                 raise ValueError(f"duplicate plugin capability: {capability.name}")
             capabilities[capability.name] = capability
-            capability_owners[capability.name] = plugin.name
         # A worker must be able to compile the agent projection without
         # constructing server-only resources or needing server credentials.
         static_runtime = plugin.runtime if isinstance(plugin.runtime, (Extension, tuple)) else ()
-        static_extensions = _tuple(static_runtime) if plugin.runtime_enabled else ()
+        static_extensions = _tuple(static_runtime)
         if not all(isinstance(item, Extension) for item in static_extensions):
             raise TypeError(f"plugin {plugin.name} runtime must contain Extensions")
         for extension in static_extensions:
@@ -364,11 +354,6 @@ def _compile_application(application):
                 raise ValueError(
                     f"plugin {plugin.name} requires unavailable capability "
                     f"{requirement.name}>={requirement.min_version}"
-                )
-            if plugin.runtime_enabled and not plugins[capability_owners[requirement.name]].runtime_enabled:
-                raise ValueError(
-                    f"plugin {plugin.name} requires stopped capability: "
-                    f"{requirement.name}"
                 )
     _plugin_dependency_order(plugins)
 
@@ -650,7 +635,6 @@ def build_application(
         validate_responses=application.validate_responses,
         state_path=build_context.get("plugin_state_path"),
         binding_update=build_context.get("plugin_binding_update"),
-        runtime_update=build_context.get("plugin_runtime_update"),
         occupied=occupied,
         reserved_prefixes=(*mounted_paths, *surface_paths),
         openapi_changed=openapi_changed,

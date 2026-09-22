@@ -134,13 +134,3 @@ class SystemPlugin(AgentPlugin):
             {"name": name, "enabled": enabled},
             timeout_ms=10_000,
         )
-
-    @tool
-    async def set_plugin_runtime(self, name: str, running: bool):
-        """Start or fully stop one already installed plugin runtime."""
-        return await self.agent.application.call(
-            "plugins",
-            "set_runtime",
-            {"name": name, "running": running},
-            timeout_ms=10_000,
-        )

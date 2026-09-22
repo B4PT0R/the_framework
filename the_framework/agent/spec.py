@@ -242,7 +242,10 @@ class AgentSpec(modict):
         for contribution in self.plugins:
             plugin = self._plugin(contribution, agent)
             if plugin is not None:
-                agent.add_plugin(plugin)
+                agent.add_plugin(
+                    plugin,
+                    activate=getattr(contribution, "binding_enabled", None),
+                )
         for initialize in self.initializers:
             result = initialize(agent)
             if result is not None and result is not agent:

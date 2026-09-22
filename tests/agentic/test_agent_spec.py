@@ -289,7 +289,7 @@ def test_agent_spec_owns_named_session_projections():
     assert worker.projections.project("ids", ["drop", "keep"]) == ["keep"]
 
 
-def test_disabled_plugin_binding_is_inert_on_the_agent_side():
+def test_disabled_plugin_binding_is_loaded_but_can_be_activated_later():
     spec = AgentSpec(
         name="agent",
         description="Test agent.",
@@ -302,7 +302,10 @@ def test_disabled_plugin_binding_is_inert_on_the_agent_side():
 
     agent = spec.build_agent(resources=AgentResources(client=object()))
 
-    assert agent.plugins == []
+    assert [plugin.title for plugin in agent.plugins] == ["example"]
+    assert agent.plugins[0].activated is False
+    agent.activate_plugin("example")
+    assert agent.plugins[0].activated is True
 
 
 def test_agent_spec_accepts_a_plugin_factory():

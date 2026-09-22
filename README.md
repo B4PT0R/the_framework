@@ -50,9 +50,11 @@ or refresh while the main conversation remains intact.
 
 To implement agent-side tools and hooks, subclass `AgentPlugin` from
 `the_framework.agent` and pass that class as `Plugin(agent=...)`. A plugin may
-have agent-side behavior, server-side behavior, or both. Its
-plugin's runtime state and its binding to an agent are separate: turning off its
-tools for the agent need not remove routes that a settings screen still uses.
+have agent-side behavior, server-side behavior, or both. Every plugin declared
+at startup keeps its server routes and services until shutdown. Its binding to
+the agent can change live: turning off tools does not remove routes that a
+settings screen or safety control still uses. To remove the runtime, remove
+the plugin from the startup declaration and restart the server.
 Specialists, durable task delivery and versioned public capabilities are
 available when a simple plugin is not enough. More detail is in the
 [framework guide](https://github.com/B4PT0R/the_framework/blob/main/docs/framework.md).
