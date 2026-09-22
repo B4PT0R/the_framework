@@ -15,6 +15,8 @@ Until a stable release, minor versions may revise the public composition API.
   injection. Validate versioned cross-plugin service dependencies.
 - Keep the starter's chat and voice features independently installable, and
   expose server-only plugins distinctly from agent bindings.
+- Serialize concurrent agent-binding changes and keep the starter scheduler's
+  server service running when its agent binding is hidden.
 - Preserve the supervised worker, session, HTTP/WebSocket and editable surface
   contracts while simplifying application assembly. This release revises the
   public composition API from 0.1.0.
