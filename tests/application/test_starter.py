@@ -1,4 +1,5 @@
 from the_framework import AgentApplication, AgentResources
+from the_framework.agent.context.session import Session
 from the_framework.utils.persistence import MappingStore
 from starter.application import application, resources, scheduler_runtime, system_runtime
 
@@ -14,6 +15,9 @@ class FakeRuntime:
 
     def register_observer(self, observer):
         pass
+
+    def plugin_bindings(self):
+        return {}
 
     async def start(self):
         self.running = True
@@ -145,8 +149,9 @@ def test_starter_worker_uses_declared_primary_agent_name(tmp_path):
 
     app = create_app(tmp_path, token="test", origin="http://testserver")
     runtime = app.state.application.extensions["runtime"].service
-    assert runtime.supervisor.command[-2:] == [
+    assert runtime.supervisor.command[-4:] == [
         "--agent", application.primary_agent.name,
+        "--plugin-state", str(tmp_path / "plugins.json"),
     ]
 
 
@@ -292,6 +297,30 @@ def test_starter_real_worker_starts_and_restores_configuration(tmp_path):
                 assert restored["config"]["bash"]["default_cwd"] == str(tmp_path)
                 plugins = client.get("/api/v1/plugins", headers=headers).json()["plugins"]
                 assert next(plugin for plugin in plugins if plugin["name"] == "registry")["binding_enabled"] is False
+
+
+def test_starter_migrates_worker_binding_and_restores_it_after_session_loss(tmp_path):
+    from fastapi.testclient import TestClient
+    from starter.server import create_app
+
+    session_path = tmp_path / "session.json"
+    Session.open(session_path).set_plugin("registry", False)
+    headers = {"authorization": "Bearer private-test-secret"}
+
+    first = create_app(tmp_path, token="private-test-secret", origin="http://testserver")
+    with TestClient(first) as client:
+        plugins = client.get("/api/v1/plugins", headers=headers).json()["plugins"]
+        assert next(item for item in plugins if item["name"] == "registry")["binding_enabled"] is False
+        assert next(item for item in first.state.application.service("runtime").ready.plugins
+                    if item["name"] == "registry")["activated"] is False
+
+    session_path.unlink()
+    second = create_app(tmp_path, token="private-test-secret", origin="http://testserver")
+    with TestClient(second) as client:
+        plugins = client.get("/api/v1/plugins", headers=headers).json()["plugins"]
+        assert next(item for item in plugins if item["name"] == "registry")["binding_enabled"] is False
+        assert next(item for item in second.state.application.service("runtime").ready.plugins
+                    if item["name"] == "registry")["activated"] is False
 
 
 def test_starter_voice_transcript_is_committed_once_and_restored(tmp_path):

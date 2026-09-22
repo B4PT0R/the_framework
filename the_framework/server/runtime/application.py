@@ -114,6 +114,15 @@ class ApplicationRuntime:
             raise TypeError("reset hooks must be callable")
         self.reset_hooks.append((suspend, resume))
 
+    def plugin_bindings(self):
+        """Agent binding states confirmed by the current worker startup."""
+        if self.ready is None:
+            raise RuntimeError("canonical worker is not ready")
+        return {
+            item["name"]: item["activated"]
+            for item in self.ready.plugins
+        }
+
     async def start(self):
         self.stopping = False
         self.ready = await self.supervisor.start()

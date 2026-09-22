@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+from collections.abc import Mapping
 from modict import modict
 
 from ...utils.persistence import MappingStore
@@ -29,9 +30,11 @@ class PluginHost:
         *,
         state_path=None,
         binding_update=None,
+        binding_snapshot=None,
     ):
         self.plan = plan
         self.binding_update = binding_update
+        self.binding_snapshot = binding_snapshot
         self._binding_lock = asyncio.Lock()
         self.store = (
             MappingStore(state_path, field="plugins")
@@ -39,6 +42,7 @@ class PluginHost:
             else None
         )
         persisted = self.store.load() if self.store is not None else {}
+        self._stored_bindings = set(persisted)
         self.states = {}
         for name, spec in plan.plugins.items():
             saved = persisted.get(name, {})
@@ -87,7 +91,34 @@ class PluginHost:
             })
 
     async def start(self):
-        self._save()
+        snapshot = self.binding_snapshot() if self.binding_snapshot is not None else {}
+        if inspect.isawaitable(snapshot):
+            snapshot = await snapshot
+        if not isinstance(snapshot, Mapping):
+            raise TypeError("plugin binding snapshot must be a mapping")
+        previous = {
+            name: state["binding_enabled"] for name, state in self.states.items()
+        }
+        try:
+            for name, enabled in snapshot.items():
+                spec = self.plan.plugins.get(name)
+                if spec is None or spec.agent is None:
+                    continue
+                if not isinstance(enabled, bool):
+                    raise TypeError(f"worker plugin binding must be boolean: {name}")
+                if name in self._stored_bindings or spec.binding_required:
+                    if enabled != self.states[name]["binding_enabled"]:
+                        raise RuntimeError(
+                            f"worker binding differs from persisted plugin state: {name}"
+                        )
+                else:
+                    self.states[name]["binding_enabled"] = enabled
+            self._save()
+        except Exception:
+            for name, enabled in previous.items():
+                self.states[name]["binding_enabled"] = enabled
+            raise
+        self._stored_bindings.update(self.states)
         return self
 
     async def set_binding(self, name, enabled):

@@ -4,6 +4,7 @@ import json
 import sys
 from importlib import import_module
 
+from ...utils.persistence import MappingStore
 from .agent import Agent
 from .protocol import ShutdownRequest
 from .worker import Worker
@@ -45,9 +46,12 @@ async def run(
     application_reference=None,
     agent_name=None,
     profile_path=None,
+    plugin_state_path=None,
 ):
     transport = JsonLines()
     spec = None
+    plan = None
+    identity = None
     if application_reference is not None:
         plan = load_application(application_reference).compile()
         identity = agent_name or plan.primary_agent.name
@@ -73,7 +77,19 @@ async def run(
             "configuration": {**spec.configuration, **configured.configuration},
         })
     if spec is not None:
-        agent = spec.build_agent(session_path)
+        binding_overrides = None
+        if plugin_state_path is not None:
+            if plan is None or identity != plan.primary_agent.name:
+                raise ValueError("plugin state can only be supplied for the primary agent")
+            saved = MappingStore(plugin_state_path, field="plugins").load()
+            binding_overrides = {}
+            for name, state in saved.items():
+                if not isinstance(state, dict) or not isinstance(
+                    state.get("binding_enabled"), bool
+                ):
+                    raise ValueError(f"invalid persisted plugin binding: {name}")
+                binding_overrides[name] = state["binding_enabled"]
+        agent = spec.build_agent(session_path, binding_overrides=binding_overrides)
         worker = spec.build_worker(agent, transport.receive, transport.send)
     else:
         agent = Agent(session_path=session_path)
@@ -87,12 +103,14 @@ def main():
     parser.add_argument("--application")
     parser.add_argument("--agent")
     parser.add_argument("--profile")
+    parser.add_argument("--plugin-state")
     args = parser.parse_args()
     asyncio.run(run(
         args.session,
         application_reference=args.application,
         agent_name=args.agent,
         profile_path=args.profile,
+        plugin_state_path=args.plugin_state,
     ))
 
 

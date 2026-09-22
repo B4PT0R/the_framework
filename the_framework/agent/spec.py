@@ -211,6 +211,7 @@ class AgentSpec(modict):
         session_path=None,
         *,
         resources: AgentResources | None = None,
+        binding_overrides: Mapping[str, bool] | None = None,
     ):
         from .runtime.agent import Agent
         # Explicit resources replace the factory as a whole; there is no hidden
@@ -233,6 +234,18 @@ class AgentSpec(modict):
         )
         agent.persist_config = resources.persist_config
         agent.persist_state = resources.persist_state
+        if binding_overrides is not None:
+            if not isinstance(binding_overrides, Mapping):
+                raise TypeError("binding overrides must be a mapping")
+            declared = {
+                getattr(contribution, "name", None)
+                for contribution in self.plugins
+            }
+            for name, enabled in binding_overrides.items():
+                if not isinstance(name, str) or not isinstance(enabled, bool):
+                    raise TypeError("binding overrides must map plugin names to booleans")
+                if name in declared:
+                    agent.session.set_plugin(name, enabled)
         for instruction in self.instructions:
             agent.add_instruction(
                 instruction
@@ -245,6 +258,7 @@ class AgentSpec(modict):
                 agent.add_plugin(
                     plugin,
                     activate=getattr(contribution, "binding_enabled", None),
+                    required=getattr(contribution, "binding_required", False),
                 )
         for initialize in self.initializers:
             result = initialize(agent)

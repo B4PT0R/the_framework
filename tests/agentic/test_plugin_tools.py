@@ -42,6 +42,7 @@ class FakeAgent:
         ))
         self.session = Session()
         self.plugins = []
+        self.required_plugins = set()
 
     def add_tool(self, value):
         return self.tools.add(value)
@@ -712,6 +713,7 @@ def test_add_plugin_honors_the_persisted_session_preference():
     agent.states = States()
     agent.session = Session(plugins={"lights": False})
     agent.plugins = []
+    agent.required_plugins = set()
 
     plugin = agent.add_plugin(Lights)
 
@@ -734,6 +736,7 @@ def test_inactive_plugin_config_remains_registered_and_live():
     agent.persist_config = None
     agent.session = Session(plugins={"configured": False})
     agent.plugins = []
+    agent.required_plugins = set()
 
     plugin = agent.add_plugin(Configured)
     namespace = plugin.config

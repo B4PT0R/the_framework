@@ -357,6 +357,15 @@ are installed on one server at startup; route and mount collisions fail before
 any service starts. OpenAPI includes the complete fixed endpoint set. Required
 bindings, such as the system boundary, cannot be disabled.
 
+When launching the generic primary worker, pass `--plugin-state` the same
+`plugins.json` path supplied under `plugin_state_path` in the server's
+`BuildContext`.
+The worker applies that persisted binding state before constructing its agent,
+including after a crash or session reset. If the file does not yet exist, the
+server imports the worker's existing session bindings on first startup; after
+that, the server's plugin state is authoritative. Private specialist workers
+do not receive this argument. The starter demonstrates the complete wiring.
+
 ## Agent construction
 
 ```python

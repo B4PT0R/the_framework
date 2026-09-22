@@ -867,6 +867,7 @@ def build_application(
         plan,
         state_path=build_context.get("plugin_state_path"),
         binding_update=build_context.get("plugin_binding_update"),
+        binding_snapshot=build_context.get("plugin_binding_snapshot"),
     )
     runtime.plugin_host = plugin_host
 

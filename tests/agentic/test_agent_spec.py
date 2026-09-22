@@ -4,6 +4,7 @@ import json
 
 from the_framework.agent import AgentResources, AgentSpec, Instruction, AgentPlugin, QueuePolicy, SessionPolicy
 from the_framework.agent.runtime.protocol import PluginBindingRequest, PromptRequest
+from the_framework.agent.context.session import Session
 from the_framework.server.composition.application import Plugin
 
 
@@ -306,6 +307,42 @@ def test_disabled_plugin_binding_is_loaded_but_can_be_activated_later():
     assert agent.plugins[0].activated is False
     agent.activate_plugin("example")
     assert agent.plugins[0].activated is True
+
+
+def test_required_plugin_binding_overrides_stale_session_state(tmp_path):
+    path = tmp_path / "session.json"
+    Session.open(path).set_plugin("example", False)
+    spec = AgentSpec(
+        name="agent",
+        session=SessionPolicy.durable(),
+        plugins=(Plugin(
+            name="example", agent=ExamplePlugin, binding_required=True,
+        ),),
+    )
+
+    agent = spec.build_agent(path, resources=AgentResources(client=object()))
+
+    assert agent.plugin("example").activated is True
+    assert Session.open(path).plugins["example"] is True
+    with pytest.raises(RuntimeError, match="binding is required"):
+        agent.deactivate_plugin("example")
+
+
+def test_server_binding_overrides_stale_worker_session(tmp_path):
+    path = tmp_path / "session.json"
+    Session.open(path).set_plugin("example", True)
+    spec = AgentSpec(
+        name="agent", session=SessionPolicy.durable(),
+        plugins=(Plugin(name="example", agent=ExamplePlugin),),
+    )
+
+    agent = spec.build_agent(
+        path, resources=AgentResources(client=object()),
+        binding_overrides={"example": False},
+    )
+
+    assert not agent.plugin("example").activated
+    assert Session.open(path).plugins["example"] is False
 
 
 def test_agent_spec_accepts_a_plugin_factory():

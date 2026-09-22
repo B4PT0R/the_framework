@@ -30,6 +30,7 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None):
             sys.executable, "-m", "the_framework.agent.runtime.worker_process",
             "--session", str(root / "session.json"),
             "--application", REFERENCE, "--agent", application.primary_agent.name,
+            "--plugin-state", str(root / "plugins.json"),
         ])
         runtime = ApplicationRuntime(supervisor, fleet_factory=lambda path, profiles: FleetSupervisor(
             path, profiles, application_reference=REFERENCE,
@@ -66,6 +67,7 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None):
     app = definition.build(BuildContext({
         "plugin_state_path": root / "plugins.json",
         "plugin_binding_update": binding,
+        "plugin_binding_snapshot": runtime.plugin_bindings,
         "surface_root": root / "surfaces",
         "surface_notify": lambda payload: runtime.publish({**payload, "type": "interface_refresh_requested"}),
         "surface_progress": runtime.publish,

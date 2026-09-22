@@ -75,6 +75,7 @@ class Agent:
         self.agentic_loop = AgenticLoop(self)
         self.providers = Providers()
         self.plugins = []
+        self.required_plugins = set()
         self.tools = Tools()
         self.persist_config = None
         self.persist_state = None
@@ -237,10 +238,15 @@ class Agent:
         self.plugins.append(plugin)
         return plugin
 
-    def add_plugin(self, plugin, *, activate=None):
+    def add_plugin(self, plugin, *, activate=None, required=False):
         plugin = self.load_plugin(plugin)
-        activate = self.session.plugins.get(
-            plugin.title, True if activate is None else activate
+        if required:
+            self.required_plugins.add(plugin.title)
+        activate = (
+            True if plugin.title in self.required_plugins
+            else self.session.plugins.get(
+                plugin.title, True if activate is None else activate
+            )
         )
         if not activate:
             return plugin
@@ -248,6 +254,8 @@ class Agent:
             return plugin.activate()
         except Exception:
             self.plugins.remove(plugin)
+            if required:
+                self.required_plugins.discard(plugin.title)
             raise
 
     def registry(self, name):
@@ -283,6 +291,8 @@ class Agent:
         plugin = self.plugin(plugin)
         if plugin is None:
             raise ValueError("unknown plugin")
+        if plugin.title in self.required_plugins:
+            raise RuntimeError(f"plugin binding is required: {plugin.title}")
         return plugin.deactivate()
 
     def on(self, event_type: str, callback=None):

@@ -104,6 +104,43 @@ def test_binding_changes_do_not_stop_runtime_and_persist(tmp_path):
     asyncio.run(scenario())
 
 
+def test_first_start_imports_existing_worker_binding(tmp_path):
+    async def scenario():
+        context = BuildContext({
+            "plugin_state_path": tmp_path / "plugins.json",
+            "plugin_binding_snapshot": lambda: {"example": False},
+        })
+        app = declaration(Service([])).build(context)
+        async with app.router.lifespan_context(app):
+            assert not app.state.application.plugin_host.status("example").binding_enabled
+        restored = declaration(Service([])).build(BuildContext({
+            "plugin_state_path": tmp_path / "plugins.json",
+        }))
+        assert not restored.state.application.plugin_host.status("example").binding_enabled
+
+    asyncio.run(scenario())
+
+
+def test_persisted_binding_rejects_worker_mismatch(tmp_path):
+    async def scenario():
+        context = BuildContext({
+            "plugin_state_path": tmp_path / "plugins.json",
+            "plugin_binding_snapshot": lambda: {"example": False},
+        })
+        first = declaration(Service([])).build(context)
+        async with first.router.lifespan_context(first):
+            pass
+        mismatch = declaration(Service([])).build(BuildContext({
+            "plugin_state_path": tmp_path / "plugins.json",
+            "plugin_binding_snapshot": lambda: {"example": True},
+        }))
+        with pytest.raises(RuntimeError, match="worker binding differs"):
+            async with mismatch.router.lifespan_context(mismatch):
+                pass
+
+    asyncio.run(scenario())
+
+
 def test_concurrent_binding_changes_are_serialized_and_persisted(tmp_path):
     async def scenario():
         first_started = asyncio.Event()
