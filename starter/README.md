@@ -116,9 +116,10 @@ permission behavior still depend on the user's environment.
 Add an agent-only plugin class to the declaration, or use `Plugin` when the
 feature also needs server services, routes or an activation policy. The
 `scheduler` and `system` declarations in `application.py` show this pattern:
-their server factories receive process-local services when `server.py` builds
-the app, while the worker reads the same declaration without constructing those
-services. Keep application policy in its own instructions and plugins; do not
+their server factories construct their own services from the declared runtime
+dependency and the data directory supplied by `server.py`. The worker reads the
+same declaration without constructing those server services. Keep application
+policy in its own instructions and plugins; do not
 add product imports to `the_framework`. Backend contributions use the framework's
 `Extension` and `@endpoint` primitives. The canonical worker remains the sole
 writer of conversation history.

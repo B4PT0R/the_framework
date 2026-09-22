@@ -8,8 +8,6 @@ from the_framework import AgentApplication, BuildContext, Extension, endpoint
 from the_framework.agent.models.responses import Image, Message
 from the_framework.agent.runtime.protocol import PluginBindingRequest, PromptRequest
 from the_framework.utils.ids import timestamp_id
-from the_framework.plugins.scheduler.service import SchedulerService
-from the_framework.plugins.system.service import SystemControlService
 from the_framework.server import (
     ApplicationHealthApi,
     CanonicalAgentApi,
@@ -124,12 +122,6 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None):
     security = LocalSecurity(token, origin=origin)
     controller = RealtimeController(runtime)
     voice = VoiceApi(runtime, controller)
-    scheduler = SchedulerService(root / "scheduler.json", runtime.submit)
-    system = SystemControlService(root / "system.json", runtime.submit, restart=restart)
-    runtime.application.register("scheduler", scheduler.handle)
-    runtime.application.register("system", system.handle, contextual=True)
-    runtime.register_observer(scheduler.observe)
-    runtime.register_observer(system.observe)
     sockets = CanonicalTransportSockets(runtime, event_handshake=security.handshake,
                                         application_handshake=security.handshake)
 
@@ -143,7 +135,7 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None):
             if result is None or result.type != "agent.plugin.binding.updated":
                 raise RuntimeError("worker did not confirm plugin activation")
             if name == "scheduler":
-                scheduler.active = enabled
+                app.state.application.service("scheduler").active = enabled
 
     definition = AgentApplication({**application, "security": security}).with_extensions(
         Extension(name="runtime", service=runtime),
@@ -164,8 +156,8 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None):
         "surface_root": root / "surfaces",
         "surface_notify": lambda payload: runtime.publish({**payload, "type": "interface_refresh_requested"}),
         "surface_progress": runtime.publish,
-        "scheduler": scheduler,
-        "system": system,
+        "data_root": root,
+        "restart": restart,
         "voice_api": voice,
     }))
     bind_application_controls(runtime, app, ui_root=ROOT / "ui/dist")

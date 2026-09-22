@@ -168,10 +168,24 @@ def test_starter_real_worker_starts_and_restores_configuration(tmp_path):
         app = create_app(tmp_path, token="private-test-secret", origin="http://testserver")
         with TestClient(app) as client:
             assert client.get("/api/v1/health", headers=headers).json()["status"] == "ok"
+            scheduler = app.state.application.service("scheduler")
+            system = app.state.application.service("system")
+            assert scheduler.path == tmp_path / "scheduler.json"
+            assert system.path == tmp_path / "system.json"
             assert client.get("/api/v1/status", headers=headers).status_code == 200
             response = client.get("/api/v1/session", headers=headers)
             assert response.status_code == 200
             if iteration == 0:
+                assert client.put(
+                    "/api/v1/plugins/scheduler/binding", headers=headers,
+                    json={"enabled": False},
+                ).status_code == 200
+                assert scheduler.active is False
+                assert client.put(
+                    "/api/v1/plugins/scheduler/binding", headers=headers,
+                    json={"enabled": True},
+                ).status_code == 200
+                assert scheduler.active is True
                 response = client.patch("/api/v1/config", headers=headers,
                                         json={"bash": {"default_cwd": str(tmp_path)}})
                 assert response.status_code == 200, response.text

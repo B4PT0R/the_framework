@@ -19,7 +19,9 @@ from the_framework.plugins.memory.plugin import MemoryPlugin
 from the_framework.plugins.realtime import RealtimePlugin
 from the_framework.plugins.registry import RegistryPlugin
 from the_framework.plugins.scheduler import SchedulerPlugin
+from the_framework.plugins.scheduler.service import SchedulerService
 from the_framework.plugins.system import SystemPlugin
+from the_framework.plugins.system.service import SystemControlService
 from the_framework.plugins.web_search import WebSearchPlugin
 
 ROOT = Path(__file__).resolve().parent
@@ -34,18 +36,37 @@ def browser(agent):
 
 
 def scheduler_runtime(context):
+    root = Path(context.require("data_root"))
+
+    def create(runtime):
+        scheduler = SchedulerService(root / "scheduler.json", runtime.submit)
+        runtime.application.register("scheduler", scheduler.handle)
+        runtime.register_observer(scheduler.observe)
+        return scheduler
+
     return Extension(
         name="scheduler",
-        service=context.require("scheduler"),
+        service_factory=create,
         requires=("runtime",),
         start=lambda service, _context: service.start(active=False),
     )
 
 
 def system_runtime(context):
+    root = Path(context.require("data_root"))
+    restart = context.get("restart")
+
+    def create(runtime):
+        system = SystemControlService(
+            root / "system.json", runtime.submit, restart=restart,
+        )
+        runtime.application.register("system", system.handle, contextual=True)
+        runtime.register_observer(system.observe)
+        return system
+
     return Extension(
         name="system",
-        service=context.require("system"),
+        service_factory=create,
         requires=("runtime",),
     )
 
