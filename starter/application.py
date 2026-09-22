@@ -53,7 +53,6 @@ def scheduler_runtime(context):
         name="scheduler",
         service_factory=create,
         requires=("runtime",),
-        start=lambda service, _context: service.start(active=False),
     )
 
 

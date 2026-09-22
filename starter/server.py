@@ -55,8 +55,6 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None):
             ))
             if result is None or result.type != "agent.plugin.binding.updated":
                 raise RuntimeError("worker did not confirm plugin activation")
-            if name == "scheduler":
-                app.state.application.service("scheduler").active = enabled
 
     definition = AgentApplication({**application, "security": security}).with_extensions(
         Extension(name="runtime", service=runtime),

@@ -265,6 +265,7 @@ def test_starter_real_worker_starts_and_restores_configuration(tmp_path):
             scheduler = app.state.application.service("scheduler")
             system = app.state.application.service("system")
             assert scheduler.path == tmp_path / "scheduler.json"
+            assert scheduler.active is True
             assert system.path == tmp_path / "system.json"
             assert client.get("/api/v1/status", headers=headers).status_code == 200
             response = client.get("/api/v1/session", headers=headers)
@@ -274,7 +275,7 @@ def test_starter_real_worker_starts_and_restores_configuration(tmp_path):
                     "/api/v1/plugins/scheduler/binding", headers=headers,
                     json={"enabled": False},
                 ).status_code == 200
-                assert scheduler.active is False
+                assert scheduler.active is True
                 assert client.put(
                     "/api/v1/plugins/scheduler/binding", headers=headers,
                     json={"enabled": True},
