@@ -74,7 +74,7 @@ def test_text_joins_voice_and_attachments_do_not_start_a_parallel_turn(tmp_path)
         runtime = SimpleNamespace(submit=submit)
         controller = SimpleNamespace(active=True, send_text=send_text)
         voice = VoiceApi(runtime, controller)
-        chat = ChatApi(runtime, tmp_path, lambda: voice)
+        chat = ChatApi(runtime, tmp_path, voice)
         await chat.prompt("typed", "Hello")
         assert spoken == ["Hello"]
         assert submitted == []
@@ -100,7 +100,7 @@ def test_text_and_attachments_work_without_voice(tmp_path):
         async def submit(command):
             submitted.append(command)
 
-        chat = ChatApi(SimpleNamespace(submit=submit), tmp_path, lambda: None)
+        chat = ChatApi(SimpleNamespace(submit=submit), tmp_path)
         await chat.prompt("text", "Hello without voice")
         file = UploadFile(filename="notes.txt", file=BytesIO(b"notes"))
         result = await chat.attachments("files", [file], "Read this")

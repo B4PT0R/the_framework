@@ -44,10 +44,10 @@ def prepare_attachments(files, workfolder):
 
 
 class ChatApi:
-    def __init__(self, runtime, workfolder, voice_service, *, text_lock=None):
+    def __init__(self, runtime, workfolder, voice=None, *, text_lock=None):
         self.runtime = runtime
         self.workfolder = workfolder
-        self.voice_service = voice_service
+        self.voice = voice
         self.text_lock = text_lock if text_lock is not None else asyncio.Lock()
 
     @endpoint("post", "/api/v1/agent/prompt", status_code=202,
@@ -58,7 +58,7 @@ class ChatApi:
               response={"type": "object"})
     async def prompt(self, id: str, prompt: str):
         """Submit a client-correlated turn to the canonical single-writer queue."""
-        voice = self.voice_service()
+        voice = self.voice
         async with (voice.lock if voice is not None else self.text_lock):
             if voice is not None and voice.controller.active:
                 await voice.controller.send_text(prompt)
@@ -75,7 +75,7 @@ class ChatApi:
               response={"type": "object"})
     async def attachments(self, id: str, files: list, prompt: str = ""):
         """Store attachments before submitting one ordered conversation turn."""
-        voice = self.voice_service()
+        voice = self.voice
         async with (voice.lock if voice is not None else self.text_lock):
             if voice is not None and voice.controller.active:
                 for upload in files:
@@ -152,11 +152,12 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None):
         ), websockets=(sockets.events_socket, sockets.application_socket)),
         Extension(
             name="chat",
-            service_factory=lambda runtime: ChatApi(
-                runtime, root / "files", voice_service, text_lock=text_mode_lock,
+            service_factory=lambda runtime, voice=None: ChatApi(
+                runtime, root / "files", voice, text_lock=text_mode_lock,
             ),
             endpoints="service",
             requires=("runtime",),
+            optional_requires=("voice",),
         ),
     )
     app = definition.build(BuildContext({

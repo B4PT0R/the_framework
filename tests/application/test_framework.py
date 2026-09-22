@@ -426,6 +426,40 @@ def test_optional_capability_orders_present_provider_without_requiring_installat
                optional_requires=(CapabilityRequirement(name="example.provider"),))
 
 
+def test_optional_extension_service_is_ordered_and_injected_only_if_installed():
+    observed = []
+    provider = object()
+
+    def build_consumer(provider_service=None):
+        observed.append(provider_service)
+        return object()
+
+    consumer = Extension(
+        name="consumer", service_factory=build_consumer,
+        optional_requires=("provider_service",),
+    )
+    installed = application("With service", extensions=(
+        consumer, Extension(name="provider_service", service=provider),
+    )).build()
+    assert installed.state.application.plan.extension_order == (
+        "provider_service", "consumer",
+    )
+    assert observed == [provider]
+
+    absent = application("Without service", extensions=(consumer,)).build()
+    assert absent.state.application.plan.extension_order == ("consumer",)
+    assert observed == [provider, None]
+
+    with pytest.raises(ValueError, match="cyclic application extension"):
+        application("Optional cycle", extensions=(
+            consumer,
+            Extension(name="provider_service", requires=("consumer",)),
+        )).build()
+    with pytest.raises(ValueError, match="duplicate extension dependency"):
+        Extension(name="duplicate", requires=("provider_service",),
+                  optional_requires=("provider_service",))
+
+
 def test_extension_discovers_decorated_methods_from_an_object():
     class Api:
         @endpoint("get", "/object-endpoint", authenticated=False)

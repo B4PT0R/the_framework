@@ -150,6 +150,7 @@ class Extension(modict):
     endpoints: tuple[object, ...] | Literal["service"] = ()
     websockets: tuple[object, ...] | Literal["service"] = ()
     requires: tuple[str, ...] = ()
+    optional_requires: tuple[str, ...] = ()
     critical: bool = True
     start: Callable | None = None
     stop: Callable | None = None
@@ -160,8 +161,11 @@ class Extension(modict):
     @modict.model_validator(mode="after")
     def validate_declaration(self):
         _identifier(self.name, "extension name")
-        if self.name in self.requires:
+        dependencies = (*self.requires, *self.optional_requires)
+        if self.name in dependencies:
             raise ValueError(f"extension cannot depend on itself: {self.name}")
+        if len(dependencies) != len(set(dependencies)):
+            raise ValueError(f"duplicate extension dependency: {self.name}")
         if self.service is not None and self.service_factory is not None:
             raise ValueError("extension service and factory are mutually exclusive")
         if isinstance(self.endpoints, str) and self.endpoints != "service":
@@ -178,7 +182,7 @@ class Extension(modict):
     def normalize_sequences(self, key, value):
         if key in {"endpoints", "websockets"} and value == "service":
             return value
-        return _tuple(value) if key in {"endpoints", "websockets", "requires", "middleware", "mounts"} else value
+        return _tuple(value) if key in {"endpoints", "websockets", "requires", "optional_requires", "middleware", "mounts"} else value
 
 
 class Plugin(modict):
@@ -425,9 +429,11 @@ def _compile_application(application):
 
     extension_order = dependency_order(
         {
-            name: tuple(
-                dependency for dependency in extension.requires
-                if dependency in extension_map
+            name: (
+                *(dependency for dependency in extension.requires
+                  if dependency in extension_map),
+                *(dependency for dependency in extension.optional_requires
+                  if dependency in extension_map),
             )
             for name, extension in extension_map.items()
         },
@@ -518,22 +524,33 @@ def _resolve_plugin_extensions(plan, context):
                 raise ValueError(f"duplicate plugin runtime extension: {extension.name}")
             names.add(extension.name)
         extensions[plugin.name] = plugin_runtime
-    dependency_order({
-        extension.name: extension.requires
-        for extension in (*plan.extensions, *(item for group in extensions.values() for item in group))
-    }, kind="application extension")
+    dependency_order(
+        _extension_dependencies(plan, extensions), kind="application extension",
+    )
     return extensions
 
 
 def _extension_dependencies(plan, plugin_extensions):
     """One startup DAG for application and plugin-owned server components."""
+    all_extensions = (
+        *plan.extensions,
+        *(extension for group in plugin_extensions.values() for extension in group),
+    )
+    names = {extension.name for extension in all_extensions}
+
+    def direct_dependencies(extension):
+        return (
+            *extension.requires,
+            *(name for name in extension.optional_requires if name in names),
+        )
+
     exports = {
         capability.name: name
         for name, plugin in plan.plugins.items()
         for capability in plugin.capabilities
     }
     dependencies = {
-        extension.name: extension.requires
+        extension.name: direct_dependencies(extension)
         for extension in plan.extensions
     }
     for name, group in plugin_extensions.items():
@@ -552,7 +569,7 @@ def _extension_dependencies(plan, plugin_extensions):
         )
         for extension in group:
             dependencies[extension.name] = tuple(dict.fromkeys((
-                *extension.requires, *provider_extensions,
+                *direct_dependencies(extension), *provider_extensions,
             )))
     return dependencies
 
@@ -578,7 +595,7 @@ def _construct_extension_service(extension, services):
     if extension.service_factory is not None:
         dependencies = {
             dependency: services[dependency]
-            for dependency in extension.requires
+            for dependency in (*extension.requires, *extension.optional_requires)
             if dependency in services
         }
         service = extension.service_factory(**dependencies)
