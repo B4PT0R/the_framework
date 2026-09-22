@@ -17,7 +17,7 @@ from the_framework.agent.extensions.endpoints import Endpoints
 from the_framework.agent.runtime.event_loop import EventLoop
 from the_framework.agent.extensions.hooks import Hooks, hook
 from the_framework.agent.extensions.instructions import Instructions
-from the_framework.agent.extensions.plugin import Plugin, endpoint
+from the_framework.agent.extensions.plugin import AgentPlugin, endpoint
 from the_framework.agent.extensions.providers import Providers, provider
 from the_framework.agent.models.responses import CommandOutput, FunctionCall, Image, ProviderOutput, ToolOutput
 from the_framework.agent.context.session import Session
@@ -63,7 +63,7 @@ class FakeAgent:
         return Agent.add_plugin(self, plugin, activate=activate)
 
 
-class Lights(Plugin):
+class Lights(AgentPlugin):
     name = "lights"
     description = "Lighting controls."
 
@@ -78,7 +78,7 @@ class Lights(Plugin):
         return intensity
 
 
-class Haptics(Plugin):
+class Haptics(AgentPlugin):
     name = "haptics"
 
     @tool
@@ -87,7 +87,7 @@ class Haptics(Plugin):
         return "idle"
 
 
-class AsyncLights(Plugin):
+class AsyncLights(AgentPlugin):
     name = "async_lights"
 
     @tool
@@ -97,17 +97,17 @@ class AsyncLights(Plugin):
         return intensity
 
 
-class FirstInstructions(Plugin):
+class FirstInstructions(AgentPlugin):
     name = "first"
     instructions = "First plugin instructions."
 
 
-class SecondInstructions(Plugin):
+class SecondInstructions(AgentPlugin):
     name = "second"
     instructions = "Second plugin instructions."
 
 
-class VocalInstructions(Plugin):
+class VocalInstructions(AgentPlugin):
     name = "vocal_plugin"
     instructions = Instruction(
         name="plugin_prompt",
@@ -116,7 +116,7 @@ class VocalInstructions(Plugin):
     )
 
 
-class FileInstructions(Plugin):
+class FileInstructions(AgentPlugin):
     name = "file_instruction"
     instruction_scope = "general"
 
@@ -131,12 +131,12 @@ class DeviceConfig(Config):
     limits: LimitsConfig = modict.factory(LimitsConfig)
 
 
-class Configured(Plugin):
+class Configured(AgentPlugin):
     name = "configured"
     config = DeviceConfig
 
 
-class Complete(Plugin):
+class Complete(AgentPlugin):
     name = "complete"
     description = "A complete plugin."
     instructions = "Use the complete plugin carefully."
@@ -164,7 +164,7 @@ class Complete(Plugin):
         return {"ok": True}
 
 
-class MemoryCurator(Plugin):
+class MemoryCurator(AgentPlugin):
     name = "memory"
 
     def __init__(self, agent):
@@ -827,7 +827,7 @@ def test_plugin_rejects_ambiguous_inline_and_file_instructions(tmp_path):
     prompt = tmp_path / "instructions.md"
     prompt.write_text("File instructions.", encoding="utf-8")
 
-    class AmbiguousInstructions(Plugin):
+    class AmbiguousInstructions(AgentPlugin):
         instructions = "Inline instructions."
         instructions_file = prompt
 

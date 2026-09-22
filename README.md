@@ -36,8 +36,8 @@ separately when you run the starter.
 | --- | --- | --- |
 | `AgentApplication` | Validates and assembles one application | Name, version, plugins, server services, security and client surfaces |
 | `AgentSpec` | Describes an agent and its session policy | Instructions, model configuration, tools and resources |
-| `Plugin` / `PluginSpec` | Adds agent tools, context, hooks and optional server runtime | Which capabilities exist and when they are exposed |
-| `Extension` / `@endpoint` | Starts services and exposes validated API routes | Application state, route schemas and authorization |
+| `Plugin` | Owns one modular feature, including its agent binding, server runtime and dependencies | Which capabilities exist and when they are exposed |
+| `Extension` / `@endpoint` | Describes a server component and its validated API routes inside a plugin | Service lifecycle, route schemas and authorization |
 | `ClientSurface` | Builds, previews, publishes and rolls back an editable web UI | Source, build command, routes and release policy |
 
 There is exactly **one primary, durable conversation**. Private specialist
@@ -48,7 +48,9 @@ workers own inference and their own sessions; a browser client owns its local
 interface and device/media execution. This separation lets a client reconnect
 or refresh while the main conversation remains intact.
 
-Plugins may provide agent-facing tools without a server runtime, or both. A
+To implement agent-side tools and hooks, subclass `AgentPlugin` from
+`the_framework.agent` and pass that class as `Plugin(agent=...)`. A plugin may
+have agent-side behavior, server-side behavior, or both. Its
 plugin's runtime state and its binding to an agent are separate: turning off its
 tools for the agent need not remove routes that a settings screen still uses.
 Specialists, durable task delivery and versioned public capabilities are
@@ -103,7 +105,7 @@ repository also includes an [expanded version](https://github.com/B4PT0R/the_fra
 with `modict` request/response models and a health endpoint.
 
 ```python
-from the_framework import AgentApplication, AgentSpec, Extension, SessionPolicy, endpoint
+from the_framework import AgentApplication, AgentSpec, Extension, Plugin, SessionPolicy, endpoint
 from the_framework.server.api.endpoints import Principal
 
 
@@ -152,8 +154,10 @@ application = AgentApplication(
         session=SessionPolicy.durable(),
     ),
     security=BearerSecurity(),
-    extensions=(Extension(name="counter", service=counter,
-                          endpoints=(counter.increment,)),),
+    plugins=(Plugin(name="counter", runtime=Extension(
+        name="counter_runtime", service=counter,
+        endpoints=(counter.increment,),
+    )),),
 )
 app = application.build()
 ```

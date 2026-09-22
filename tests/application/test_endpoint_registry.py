@@ -2,11 +2,11 @@ from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 from fastapi.testclient import TestClient
 
-from the_framework.agent.extensions.plugin import Plugin, endpoint
+from the_framework.agent.extensions.plugin import AgentPlugin, endpoint
 from the_framework.server.api.endpoints import PermitAllSecurity, register_plugin_endpoints
 
 
-class EndpointPlugin(Plugin):
+class EndpointPlugin(AgentPlugin):
     @endpoint(
         "post",
         "/upload",

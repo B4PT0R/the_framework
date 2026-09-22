@@ -7,7 +7,7 @@ from .composition.application import (
     CapabilityRequirement,
     ClientSurface,
     Extension,
-    PluginSpec,
+    Plugin,
     build_application,
 )
 from .api.health import ApplicationHealthApi
@@ -32,7 +32,7 @@ __all__ = [
     "WorkerExited",
     "WorkerSupervisor",
     "WorkerTransportError",
-    "PluginSpec",
+    "Plugin",
     "PluginHost",
     "PluginHostApi",
     "PluginStatus",

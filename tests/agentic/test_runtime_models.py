@@ -13,7 +13,7 @@ from the_framework.server.clients.browser import BrowserSession
 from the_framework.server.clients.remote import (
     CapabilityLease, ClientApplicationConnection, PendingPairing,
 )
-from the_framework.server.composition.application import AgentApplication, Extension, PluginSpec
+from the_framework.server.composition.application import AgentApplication, Extension, Plugin
 from the_framework.server.api.endpoints import EndpointContext, Principal
 from the_framework.server.composition.services import ServiceSpec
 from the_framework.server.clients.surfaces import ClientSurface
@@ -23,7 +23,7 @@ from the_framework.server.api.websockets import WebSocketEndpoint
 @pytest.mark.parametrize("make", [
     lambda: AgentSpec(name="main"),
     lambda: Extension(name="runtime", service=object()),
-    lambda: PluginSpec(name="plugin"),
+    lambda: Plugin(name="plugin"),
     lambda: ServiceSpec(name="service", service=object()),
     lambda: WebSocketEndpoint(path="/events", handler=lambda: None),
     lambda: EndpointContext(request=Request({"type": "http"}), principal=Principal(id="caller")),

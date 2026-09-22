@@ -1,4 +1,4 @@
-from the_framework.agent import Config, Plugin, WebSearchTool
+from the_framework.agent import Config, AgentPlugin, WebSearchTool
 
 
 class WebSearchConfig(Config):
@@ -6,7 +6,7 @@ class WebSearchConfig(Config):
     external_web_access: bool = True
 
 
-class WebSearchPlugin(Plugin):
+class WebSearchPlugin(AgentPlugin):
     """Expose the backend-hosted Responses web search tool."""
 
     name = "web_search"

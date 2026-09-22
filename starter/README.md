@@ -113,7 +113,7 @@ permission behavior still depend on the user's environment.
 | `ui/src/settings.jsx` | Model, plugin activation and editable configuration |
 | `ui/src/session.js` | Display projection of canonical items and streaming events |
 
-Add an agent-only plugin class to the declaration, or use `PluginSpec` when the
+Add an agent-only plugin class to the declaration, or use `Plugin` when the
 feature also needs server services, routes or an activation policy. The
 `scheduler` and `system` declarations in `application.py` show this pattern:
 their server factories receive process-local services when `server.py` builds

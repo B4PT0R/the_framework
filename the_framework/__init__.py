@@ -1,6 +1,6 @@
 """Short public API for composing agent applications."""
 
-from .agent import AgentResources, AgentSpec, Plugin, QueuePolicy, SessionPolicy, endpoint, provider, tool
+from .agent import AgentResources, AgentSpec, QueuePolicy, SessionPolicy, endpoint, provider, tool
 from .server import (
     AgentApplication,
     BuildContext,
@@ -8,7 +8,7 @@ from .server import (
     CapabilityRequirement,
     ClientSurface,
     Extension,
-    PluginSpec,
+    Plugin,
 )
 
 __all__ = [
@@ -21,7 +21,6 @@ __all__ = [
     "ClientSurface",
     "Extension",
     "Plugin",
-    "PluginSpec",
     "QueuePolicy",
     "SessionPolicy",
     "endpoint",

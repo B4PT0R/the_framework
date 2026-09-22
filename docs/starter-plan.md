@@ -17,7 +17,7 @@ hardware. Its data directory, instructions, UI and identity are independent.
 - [Setup and extension guide](../starter/README.md).
 
 The smallest useful public primitives were reused: AgentApplication, AgentSpec,
-AgentResources, PluginSpec, Extension, endpoint and ClientSurface. No alternate
+AgentResources, Plugin, Extension, endpoint and ClientSurface. No alternate
 session, memory format, browser sidecar or product-policy adapter was introduced.
 
 ## Requirement-by-requirement evidence

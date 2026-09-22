@@ -8,7 +8,7 @@ from the_framework import (
     AgentSpec,
     ClientSurface,
     Extension,
-    PluginSpec,
+    Plugin,
     SessionPolicy,
 )
 from the_framework.agent import Worker
@@ -78,10 +78,10 @@ application = AgentApplication(
     ),
     plugins=(
         BashPlugin, RegistryPlugin, WebSearchPlugin, Memory,
-        PluginSpec(name="scheduler", agent=SchedulerPlugin, runtime=scheduler_runtime),
-        PluginSpec(name="system", agent=SystemPlugin, runtime=system_runtime),
+        Plugin(name="scheduler", agent=SchedulerPlugin, runtime=scheduler_runtime),
+        Plugin(name="system", agent=SystemPlugin, runtime=system_runtime),
         RealtimePlugin,
-        PluginSpec(name="chromium", agent=browser),
+        Plugin(name="chromium", agent=browser),
     ),
     surfaces=(ClientSurface(name="main", source=ROOT / "ui",
                             build=("npm", "run", "build"), artifact="dist",

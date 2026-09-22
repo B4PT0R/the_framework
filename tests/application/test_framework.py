@@ -9,7 +9,7 @@ from the_framework.server.composition.application import (
     Capability,
     CapabilityRequirement,
     Extension,
-    PluginSpec,
+    Plugin,
     build_application,
 )
 from the_framework.server.api.health import ApplicationHealthApi
@@ -57,8 +57,8 @@ def test_compile_rejects_shared_service_names_before_construction(application_ow
         "collision",
         extensions=(extension,) if application_owned else (),
         plugins=(
-            *((PluginSpec(name="first", runtime=extension),) if not application_owned else ()),
-            PluginSpec(name="second", runtime=extension),
+            *((Plugin(name="first", runtime=extension),) if not application_owned else ()),
+            Plugin(name="second", runtime=extension),
         ),
     )
     with pytest.raises(ValueError, match="duplicate plugin runtime extension: shared"):
@@ -68,8 +68,8 @@ def test_compile_rejects_shared_service_names_before_construction(application_ow
 
 def test_compile_allows_runtime_name_equal_to_another_plugin_identity():
     plan = application("distinct", plugins=(
-        PluginSpec(name="first", runtime=Extension(name="second")),
-        PluginSpec(name="second", runtime=Extension(name="third")),
+        Plugin(name="first", runtime=Extension(name="second")),
+        Plugin(name="second", runtime=Extension(name="third")),
     )).compile()
     assert plan.plugin_extensions["first"][0].name == "second"
     assert plan.plugin_extensions["second"][0].name == "third"
@@ -79,7 +79,7 @@ def test_compile_rejects_private_agent_shadowing_primary():
     spec = AgentApplication(
         name="collision", version="1",
         primary_agent=AgentSpec(name="plugin.agent", session=SessionPolicy.durable()),
-        plugins=(PluginSpec(name="plugin", agents=(AgentSpec(name="agent"),)),),
+        plugins=(Plugin(name="plugin", agents=(AgentSpec(name="agent"),)),),
     )
     with pytest.raises(ValueError, match="duplicate private agent identity"):
         spec.compile()
@@ -121,7 +121,7 @@ def test_application_spec_builds_a_small_complete_server():
         version="1.0",
         security=Security(),
         plugins=(
-            PluginSpec(
+            Plugin(
                 name="echo",
                 agent=object,
                 runtime=Extension(
@@ -242,7 +242,7 @@ def test_disabled_plugin_bundle_is_inert_on_the_server_side():
     app = build_application(application(
         "Disabled Bundle",
         "1",
-        plugins=(PluginSpec(
+        plugins=(Plugin(
             name="echo",
             agent=object,
             runtime=Extension(name="echo_api", endpoints=(echo,)),
@@ -265,13 +265,13 @@ def test_compiler_keeps_server_factories_out_of_worker_projection():
     spec = application(
         "Compiled",
         plugins=(
-            PluginSpec(
+            Plugin(
                 name="memory",
                 runtime=runtime,
                 agents=(AgentSpec(name="curator", description="Private memory curator."),),
                 capabilities=(Capability(name="memory.curate", version=2),),
             ),
-            PluginSpec(
+            Plugin(
                 name="consumer",
                 requires=(CapabilityRequirement(name="memory.curate", min_version=2),),
             ),
@@ -301,7 +301,7 @@ def test_importable_runtime_factory_is_resolved_only_for_server_build(monkeypatc
         ))
 
     monkeypatch.setattr(composition, "import_module", load)
-    spec = application("Lazy runtime", plugins=(PluginSpec(
+    spec = application("Lazy runtime", plugins=(Plugin(
         name="feature", runtime="feature.server:factory",
     ),))
     assert spec.compile().plugin_extensions == {}
@@ -311,7 +311,7 @@ def test_importable_runtime_factory_is_resolved_only_for_server_build(monkeypatc
     assert app.state.application.plan.plugin_extensions["feature"][0].name == "feature_runtime"
 
     with pytest.raises(ValueError, match="module:factory"):
-        PluginSpec(name="invalid", runtime="feature.server.factory")
+        Plugin(name="invalid", runtime="feature.server.factory")
 
 
 def test_extension_discovers_decorated_methods_from_an_object():
@@ -347,9 +347,9 @@ def test_primary_agent_must_be_durable():
 
 @pytest.mark.parametrize("short_form", [False, True])
 def test_plugin_private_agent_identities_are_namespaced_and_ephemeral_by_default(short_form):
-    from the_framework.agent import Plugin, agent_trigger
+    from the_framework.agent import AgentPlugin, agent_trigger
 
-    class Owner(Plugin):
+    class Owner(AgentPlugin):
         name = "owner"
 
         @agent_trigger(
@@ -363,7 +363,7 @@ def test_plugin_private_agent_identities_are_namespaced_and_ephemeral_by_default
             return result
 
     plan = application(
-        "Private agents", plugins=(Owner if short_form else PluginSpec(name="owner", agent=Owner),)
+        "Private agents", plugins=(Owner if short_form else Plugin(name="owner", agent=Owner),)
     ).compile()
 
     assert "owner.observer" in plan.agents
@@ -375,25 +375,25 @@ def test_plugin_private_agent_identities_are_namespaced_and_ephemeral_by_default
 
 
 def test_plugin_shorthand_normalizes_without_instantiating_the_plugin():
-    from the_framework.agent import Plugin
+    from the_framework.agent import AgentPlugin
 
-    class Example(Plugin):
+    class Example(AgentPlugin):
         name = "example"
 
         def __init__(self, _agent):
             raise AssertionError("compilation must not construct plugins")
 
     app = application("short", plugins=Example)
-    assert app.plugins == (PluginSpec(name="example", agent=Example),)
+    assert app.plugins == (Plugin(name="example", agent=Example),)
     assert app.compile().plugins["example"].agent is Example
     with pytest.raises(ValueError, match="duplicate plugin"):
-        application("duplicate", plugins=(Example, PluginSpec(name="example"))).compile()
+        application("duplicate", plugins=(Example, Plugin(name="example"))).compile()
 
 
 def test_plugin_shorthand_requires_a_declared_identity():
-    from the_framework.agent import Plugin
+    from the_framework.agent import AgentPlugin
 
-    class Anonymous(Plugin):
+    class Anonymous(AgentPlugin):
         pass
 
     with pytest.raises(ValueError, match="explicit name"):

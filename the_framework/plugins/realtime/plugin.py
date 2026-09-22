@@ -4,7 +4,7 @@ from xml.etree import ElementTree
 
 from modict import modict
 
-from the_framework.agent import Config, Image, Message, Plugin, hook, token_count
+from the_framework.agent import Config, Image, Message, AgentPlugin, hook, token_count
 
 class RealtimeConfig(Config):
     model: str = "gpt-live-1-codex"
@@ -43,7 +43,7 @@ class RealtimeConfig(Config):
             raise ValueError("realtime.instruction_max_tokens must be positive")
         return value
 
-class RealtimePlugin(Plugin):
+class RealtimePlugin(AgentPlugin):
     """Project the canonical text agent into an ephemeral Realtime v3 session."""
 
     name = "realtime"

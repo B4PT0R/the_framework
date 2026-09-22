@@ -18,7 +18,7 @@ from ..models.events import Event
 from ..extensions.hooks import Hooks
 from ..extensions.instructions import Instruction, Instructions
 from ..models.lifecycle import AgentResponseItemAdded
-from ..extensions.plugin import Plugin
+from ..extensions.plugin import AgentPlugin
 from .protocol import AgentConfigUpdated, AgentStateUpdated
 from ..extensions.providers import Providers
 from ..models.responses import Message, ResponseItem
@@ -229,8 +229,8 @@ class Agent:
     def load_plugin(self, plugin):
         if isinstance(plugin, type):
             plugin = plugin(self)
-        if not isinstance(plugin, Plugin):
-            raise ValueError("Must be a Plugin class or instance")
+        if not isinstance(plugin, AgentPlugin):
+            raise ValueError("Must be an AgentPlugin class or instance")
         if any(value.title == plugin.title for value in self.plugins):
             raise ValueError(f"duplicate plugin: {plugin.title}")
         plugin.load()
@@ -265,7 +265,7 @@ class Agent:
         return registry
 
     def plugin(self, plugin):
-        if isinstance(plugin, Plugin):
+        if isinstance(plugin, AgentPlugin):
             return plugin
         return next(
             (value for value in self.plugins if value.title == plugin),

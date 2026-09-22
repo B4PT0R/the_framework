@@ -10,7 +10,7 @@ from the_framework import (
     Capability,
     CapabilityRequirement,
     Extension,
-    PluginSpec,
+    Plugin,
     SessionPolicy,
     endpoint,
 )
@@ -54,7 +54,7 @@ def declaration(service, **plugin_options):
         primary_agent=AgentSpec(
             name="primary", description="Primary test agent.", session=SessionPolicy.durable()
         ),
-        plugins=(PluginSpec(
+        plugins=(Plugin(
             name="example",
             agent=object,
             runtime=Extension(name="example_runtime", service=service, endpoints=(Api(),)),
@@ -145,7 +145,7 @@ def test_plugin_owns_multiple_ordered_server_components_and_hot_routes():
             primary_agent=AgentSpec(
                 name="primary", session=SessionPolicy.durable()
             ),
-            plugins=(PluginSpec(name="feature", runtime=runtime),),
+            plugins=(Plugin(name="feature", runtime=runtime),),
         )
         assert spec.compile().plugin_extensions == {}
         app = spec.build()
@@ -177,7 +177,7 @@ def test_grouped_plugin_start_failure_rolls_back_earlier_services():
     async def scenario():
         events = []
         base = declaration(Service(events))
-        plugin = PluginSpec(
+        plugin = Plugin(
             name="example",
             runtime=(
                 Extension(name="first", service=Service(events)),
@@ -305,7 +305,7 @@ def test_plugin_route_collision_fails_before_start():
             primary_agent=AgentSpec(
                 name="primary", description="Primary test agent.", session=SessionPolicy.durable()
             ),
-            plugins=(PluginSpec(
+            plugins=(Plugin(
                 name="example",
                 runtime=Extension(name="plugin_api", endpoints=(Api(),)),
             ),),
@@ -324,11 +324,11 @@ def test_failed_plugin_start_rolls_back_started_runtimes():
                 name="primary", description="Primary test agent.", session=SessionPolicy.durable()
             ),
             plugins=(
-                PluginSpec(
+                Plugin(
                     name="first",
                     runtime=Extension(name="first_runtime", service=Service(first)),
                 ),
-                PluginSpec(
+                Plugin(
                     name="second",
                     runtime=Extension(
                         name="second_runtime", service=Service(second, fail=True)
@@ -359,7 +359,7 @@ def test_plugin_service_factory_receives_application_dependency_and_starts():
         version="1",
         primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
         extensions=(Extension(name="dependency", service=dependency),),
-        plugins=(PluginSpec(
+        plugins=(Plugin(
             name="feature",
             runtime=Extension(
                 name="feature_runtime",
@@ -390,7 +390,7 @@ def test_plugin_service_factory_can_depend_on_another_plugin_capability():
         name="Chained factories", version="1",
         primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
         plugins=(
-            PluginSpec(
+            Plugin(
                 name="consumer",
                 requires=(CapabilityRequirement(name="provider.api"),),
                 runtime=Extension(
@@ -398,7 +398,7 @@ def test_plugin_service_factory_can_depend_on_another_plugin_capability():
                     requires=("provider_runtime",),
                 ),
             ),
-            PluginSpec(
+            Plugin(
                 name="provider", capabilities=(Capability(name="provider.api"),),
                 runtime=Extension(name="provider_runtime", service=provider),
             ),
@@ -418,11 +418,11 @@ def test_running_plugin_requires_running_capability_provider():
         version="1",
         primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
         plugins=(
-            PluginSpec(
+            Plugin(
                 name="base", capabilities=(Capability(name="base.api"),),
                 runtime_enabled=False, binding_enabled=False,
             ),
-            PluginSpec(
+            Plugin(
                 name="dependent",
                 requires=(CapabilityRequirement(name="base.api"),),
             ),
@@ -444,12 +444,12 @@ def test_persisted_plugin_state_stops_dependent_without_its_provider(tmp_path):
         name="Restored dependencies", version="1",
         primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
         plugins=(
-            PluginSpec(name="base", capabilities=(Capability(name="base.api"),)),
-            PluginSpec(
+            Plugin(name="base", capabilities=(Capability(name="base.api"),)),
+            Plugin(
                 name="dependent",
                 requires=(CapabilityRequirement(name="base.api"),),
             ),
-            PluginSpec(name="independent"),
+            Plugin(name="independent"),
         ),
     )
     app = declaration.build(BuildContext({"plugin_state_path": state_path}))

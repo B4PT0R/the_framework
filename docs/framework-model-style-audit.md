@@ -15,7 +15,7 @@ declarations, independent defaults and private browser attributes.
   PendingPairing, Principal. Prefer the model itself as the payload; distinguish
   private connection identifiers/paths from public data.
 - Declarations: SessionPolicy, QueuePolicy, AgentSpec, BuildContext, Capability,
-  CapabilityRequirement, Extension, PluginSpec, ApplicationPlan, AgentApplication,
+  CapabilityRequirement, Extension, Plugin, ApplicationPlan, AgentApplication,
   ServiceSpec, ClientSurface, WebSocketEndpoint. Inspect frozen semantics,
   validation ordering, positional consumers and callable identity before migration.
 - Runtime holders: PendingSteering, BrowserSession, ClientApplicationConnection,
@@ -100,7 +100,7 @@ dataclasses. No dataclass remains in `the_framework`. Keeping a second conventio
 merely because a record is not JSON added cognitive cost without a demonstrated
 technical benefit.
 
-- AgentSpec, Extension, PluginSpec, AgentApplication, ApplicationPlan, ServiceSpec,
+- AgentSpec, Extension, Plugin, AgentApplication, ApplicationPlan, ServiceSpec,
   WebSocketEndpoint, EndpointContext and ClientSurface are frozen strict modict
   declarations. Their non-JSON object references remain unchanged; normalization
   uses native validators instead of bypassing frozen setters.

@@ -13,7 +13,7 @@ from fastapi import FastAPI
 from modict import modict
 
 from ...agent.extensions.endpoints import Endpoint
-from ...agent.extensions.plugin import Plugin
+from ...agent.extensions.plugin import AgentPlugin
 from ...agent.spec import AgentSpec
 from ...agent.extensions.specialists import AgentTrigger
 
@@ -132,7 +132,7 @@ class Extension(modict):
         return _tuple(value) if key in {"endpoints", "websockets", "requires", "middleware", "mounts"} else value
 
 
-class PluginSpec(modict):
+class Plugin(modict):
     """Agent bindings, runtime and private agents owned by one plugin."""
 
     _config = modict.config(frozen=True, strict=True, extra="forbid", auto_convert=False)
@@ -213,7 +213,7 @@ class ApplicationPlan(modict):
     application: AgentApplication
     primary_agent: AgentSpec
     agents: Mapping[str, AgentSpec]
-    plugins: Mapping[str, PluginSpec]
+    plugins: Mapping[str, Plugin]
     plugin_extensions: Mapping[str, tuple[Extension, ...]]
     extensions: tuple[Extension, ...]
     capabilities: Mapping[str, Capability]
@@ -228,7 +228,7 @@ class AgentApplication(modict):
     name: str
     version: str
     primary_agent: AgentSpec
-    plugins: tuple[PluginSpec, ...] = ()
+    plugins: tuple[Plugin, ...] = ()
     extensions: tuple[Extension, ...] = ()
     surfaces: tuple[ClientSurface, ...] = ()
     security: SecurityPolicy | None = None
@@ -254,10 +254,10 @@ class AgentApplication(modict):
         if key == "plugins":
             plugins = []
             for declaration in _tuple(value):
-                if isinstance(declaration, type) and issubclass(declaration, Plugin):
+                if isinstance(declaration, type) and issubclass(declaration, AgentPlugin):
                     if not declaration.name:
                         raise ValueError("a plugin class declaration requires an explicit name")
-                    declaration = PluginSpec(name=declaration.name, agent=declaration)
+                    declaration = Plugin(name=declaration.name, agent=declaration)
                 plugins.append(declaration)
             return tuple(plugins)
         return _tuple(value) if key in {"plugins", "extensions", "surfaces"} else value
@@ -305,8 +305,8 @@ def _compile_application(application):
     agents = {}
     specialist_profiles = []
     for plugin in application.plugins:
-        if not isinstance(plugin, PluginSpec):
-            raise TypeError("application plugins must be PluginSpec instances")
+        if not isinstance(plugin, Plugin):
+            raise TypeError("application plugins must be Plugin instances")
         if plugin.name in plugins:
             raise ValueError(f"duplicate plugin: {plugin.name}")
         plugins[plugin.name] = plugin
@@ -695,6 +695,6 @@ __all__ = [
     "CapabilityRequirement",
     "ClientSurface",
     "Extension",
-    "PluginSpec",
+    "Plugin",
     "build_application",
 ]

@@ -10,7 +10,7 @@ from the_framework import (
     BuildContext,
     ClientSurface,
     Extension,
-    PluginSpec,
+    Plugin,
     SessionPolicy,
     endpoint,
 )
@@ -265,7 +265,7 @@ def test_surface_mounts_reject_nested_routes_and_shadowed_plugin_endpoints(tmp_p
             primary_agent=AgentSpec(
                 name="primary", description="Primary.", session=SessionPolicy.durable(),
             ),
-            plugins=(PluginSpec(
+            plugins=(Plugin(
                 name="example",
                 runtime=Extension(
                     name="example_runtime", endpoints=(shadowed_plugin_endpoint,),

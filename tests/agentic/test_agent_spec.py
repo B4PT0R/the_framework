@@ -2,12 +2,12 @@ import asyncio
 import pytest
 import json
 
-from the_framework.agent import AgentResources, AgentSpec, Instruction, Plugin, QueuePolicy, SessionPolicy
+from the_framework.agent import AgentResources, AgentSpec, Instruction, AgentPlugin, QueuePolicy, SessionPolicy
 from the_framework.agent.runtime.protocol import PluginBindingRequest, PromptRequest
-from the_framework.server.composition.application import PluginSpec
+from the_framework.server.composition.application import Plugin
 
 
-class ExamplePlugin(Plugin):
+class ExamplePlugin(AgentPlugin):
     name = "example"
 
 
@@ -293,7 +293,7 @@ def test_disabled_plugin_binding_is_inert_on_the_agent_side():
     spec = AgentSpec(
         name="agent",
         description="Test agent.",
-        plugins=(PluginSpec(
+        plugins=(Plugin(
             name="example",
             agent=ExamplePlugin,
             binding_enabled=False,

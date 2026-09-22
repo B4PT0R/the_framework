@@ -4,7 +4,7 @@ import json
 import math
 from pathlib import Path
 
-from the_framework.agent import AgentResult, Message, Plugin, agent_trigger
+from the_framework.agent import AgentResult, Message, AgentPlugin, agent_trigger
 from ...agent.models.config import Config
 from ...agent.models.lifecycle import AgentTaskRequested
 from ...agent.extensions.providers import provider
@@ -59,7 +59,7 @@ def message_text(message):
     ).strip()
 
 
-class MemoryPlugin(Plugin):
+class MemoryPlugin(AgentPlugin):
     curator_instructions: str | None = None
     name = "memory"
     description = "Relational memory retrieval, deliberate recall, and autonomous curation."

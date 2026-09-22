@@ -45,7 +45,7 @@ from .models.lifecycle import (
     AgentTurnStart,
     LocalEvent,
 )
-from .extensions.plugin import Plugin
+from .extensions.plugin import AgentPlugin
 from .runtime.protocol import (
     AgentConfigUpdated,
     AgentStateUpdated,
@@ -207,7 +207,7 @@ __all__ = [
     "OutputText",
     "Param",
     "Parameters",
-    "Plugin",
+    "AgentPlugin",
     "PromptRequest",
     "PluginBindingRequest",
     "PluginBindingUpdated",

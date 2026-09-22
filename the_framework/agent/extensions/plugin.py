@@ -12,7 +12,7 @@ from ..models.state import State
 from .tools import NamespaceTool
 
 
-class Plugin:
+class AgentPlugin:
     config = Config
     state_schema = State
     name: str | None = None

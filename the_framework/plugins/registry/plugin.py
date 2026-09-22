@@ -8,7 +8,7 @@ from modict import Path as ModictPath
 from modict import modict
 
 from ...agent.models.config import Config
-from ...agent.extensions.plugin import Plugin
+from ...agent.extensions.plugin import AgentPlugin
 from ...utils.persistence import atomic_text_writer
 from ...agent.extensions.providers import provider
 from ...agent.models.responses import ToolOutput
@@ -292,7 +292,7 @@ class RegistryStore:
             return self._persist(content)
 
 
-class RegistryPlugin(Plugin):
+class RegistryPlugin(AgentPlugin):
     name = "registry"
     description = "Persistent structured notes with atomic JSONPath mutations."
     config = RegistryConfig

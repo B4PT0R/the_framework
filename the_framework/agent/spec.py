@@ -179,7 +179,7 @@ class AgentSpec(modict):
 
     @staticmethod
     def _plugin(contribution, agent):
-        from .extensions.plugin import Plugin
+        from .extensions.plugin import AgentPlugin
         resolver = getattr(contribution, "agent_plugin", None)
         if resolver is not None:
             contribution = resolver()
@@ -195,14 +195,14 @@ class AgentSpec(modict):
                     "agent plugin references must use module:attribute"
                 ) from error
             contribution = getattr(import_module(module_name), attribute)
-        if isinstance(contribution, Plugin):
+        if isinstance(contribution, AgentPlugin):
             return contribution
-        if isinstance(contribution, type) and issubclass(contribution, Plugin):
+        if isinstance(contribution, type) and issubclass(contribution, AgentPlugin):
             return contribution
         if callable(contribution):
             plugin = contribution(agent)
-            if not isinstance(plugin, Plugin):
-                raise TypeError("agent plugin factory must return a Plugin instance")
+            if not isinstance(plugin, AgentPlugin):
+                raise TypeError("agent plugin factory must return an AgentPlugin instance")
             return plugin
         return contribution
 

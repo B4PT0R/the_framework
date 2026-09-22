@@ -1,10 +1,10 @@
 import pytest
 
 from the_framework.agent.extensions.endpoints import Endpoints
-from the_framework.agent.extensions.plugin import Plugin, endpoint
+from the_framework.agent.extensions.plugin import AgentPlugin, endpoint
 
 
-class ApiPlugin(Plugin):
+class ApiPlugin(AgentPlugin):
     @endpoint("get", "/status", authorization={"scope": "status"})
     def status(self):
         """

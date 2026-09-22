@@ -1,7 +1,7 @@
 from modict import modict
 
 from ...agent.models.config import Config
-from ...agent.extensions.plugin import Plugin
+from ...agent.extensions.plugin import AgentPlugin
 from ...agent.extensions.tools import tool
 from the_framework.utils.ids import timestamp_id
 
@@ -23,7 +23,7 @@ class SchedulerConfig(Config):
         return value
 
 
-class SchedulerPlugin(Plugin):
+class SchedulerPlugin(AgentPlugin):
     name = "scheduler"
     description = "Persistent one-time and periodic autonomous agent wake-ups."
     config = SchedulerConfig

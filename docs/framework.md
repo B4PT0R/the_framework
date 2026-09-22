@@ -88,6 +88,7 @@ from the_framework import (
     AgentApplication,
     AgentSpec,
     Extension,
+    Plugin,
     SessionPolicy,
     endpoint,
 )
@@ -116,7 +117,9 @@ application = AgentApplication(
         description="Example primary agent.",
         session=SessionPolicy.durable(),
     ),
-    extensions=(Extension(name="greeting", endpoints=(greeting,)),),
+    plugins=(Plugin(name="greeting", runtime=Extension(
+        name="greeting_api", endpoints=(greeting,),
+    )),),
 )
 
 app = application.build()
@@ -225,16 +228,16 @@ application = AgentApplication(
 ```
 
 The class must declare its `name`. The application normalizes it into a
-`PluginSpec` without constructing or activating the plugin. Duplicate identities,
+`Plugin` without constructing or activating the plugin. Duplicate identities,
 private-agent discovery and lifecycle validation are identical to the full form.
 Use the full form when adding server runtime, dependencies or activation policy;
 there is no second installation path.
 
-`PluginSpec` records that a product capability has an agent binding, a runtime,
+`Plugin` records that a product capability has an agent binding, a runtime,
 private specialist agents, or any combination of those:
 
 ```python
-images = PluginSpec(
+images = Plugin(
     name="images",
     agent=ImageGenerationPlugin,
     runtime=Extension(
@@ -463,7 +466,7 @@ The public `the_framework.server` package exports reusable pieces for common age
 - `ApplicationHealthApi` for aggregate and per-service lifecycle health;
 - `CanonicalTransportSockets` for ordered agent events and the application
   capability bridge;
-- `AgentApplication`, `Extension`, `PluginSpec`, `WebSocketEndpoint` and
+- `AgentApplication`, `Extension`, `Plugin`, `WebSocketEndpoint` and
   `build_application` for composition.
 
 ## Versioned client surfaces
@@ -532,7 +535,7 @@ composition is imported back into `the_framework`.
 
 The framework follows progressive disclosure:
 
-- **simple:** `AgentApplication`, `Extension`, `PluginSpec`, conventional
+- **simple:** `AgentApplication`, `Extension`, `Plugin`, conventional
   service lifecycle;
 - **composable:** capabilities, dependencies, decorated endpoint objects,
   middleware, mounts, named projections and plugin specifications;
