@@ -48,10 +48,11 @@ per model, not via mechanical decorator replacement.
   Removed duplicate id naming, payload copying, and an unused local path; owners
   resolve paths through SurfaceService. Build/publish/rollback wire shape retained.
 - Capability and CapabilityRequirement use strict frozen JSON models and native
-  model validation. BuildContext is directly a frozen homogeneous mapping with
-  auto-conversion disabled: runtime objects and nested dictionaries keep identity,
-  while top-level membership is snapshotted. Removed its backing wrapper and get
-  forwarding method; the useful missing-input diagnostic remains in require.
+  model validation. BuildContext keeps its initial homogeneous mapping frozen
+  with auto-conversion disabled, so runtime objects and nested dictionaries
+  retain identity. Its separate construction-time exports and contribution
+  channels let ordered plugin factories cooperate without changing those
+  initial inputs; `require` still reports missing values explicitly.
 - ResponseUsage delegates nested TokenDetails reconstruction to its typed fields;
   removed the private helper and manual payload rebuild. SDK to_dict/model_dump
   adapters and identity-preserving recasts remain covered.

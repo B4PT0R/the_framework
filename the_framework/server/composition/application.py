@@ -62,15 +62,45 @@ def _path_within_mount(path, mount):
 
 
 class BuildContext(modict[str, object]):
-    """Explicit process-local inputs used while compiling an application."""
+    """Process-local inputs and ordered plugin construction-time exports."""
 
     _config = modict.config(frozen=True, auto_convert=False)
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        object.__setattr__(self, "_provided", {})
+        object.__setattr__(self, "_contributions", {})
+
+    def provide(self, name, value):
+        """Expose a prepared value to plugins resolved later in the dependency DAG."""
+        if not isinstance(name, str) or not name:
+            raise ValueError("provided build context name must be a nonempty string")
+        if name in self or name in self._provided:
+            raise ValueError(f"duplicate build context value: {name}")
+        self._provided[name] = value
+        return value
+
+    def contribute(self, name, value):
+        """Collect a feature contribution independent of plugin resolution order."""
+        if not isinstance(name, str) or not name:
+            raise ValueError("contribution name must be a nonempty string")
+        self._contributions.setdefault(name, []).append(value)
+        return value
+
+    def contributions(self, name):
+        return tuple(self._contributions.get(name, ()))
+
+    def get(self, name, default=None):
+        if name in self._provided:
+            return self._provided[name]
+        return super().get(name, default)
+
     def require(self, name):
-        try:
+        if name in self._provided:
+            return self._provided[name]
+        if name in self:
             return self[name]
-        except KeyError as error:
-            raise KeyError(f"missing build context value: {name}") from error
+        raise KeyError(f"missing build context value: {name}")
 
 
 class Capability(modict):
@@ -156,6 +186,7 @@ class Plugin(modict):
     agents: tuple[AgentSpec, ...] = ()
     capabilities: tuple[Capability, ...] = ()
     requires: tuple[CapabilityRequirement, ...] = ()
+    optional_requires: tuple[CapabilityRequirement, ...] = ()
     binding_enabled: bool = True
     binding_required: bool = False
 
@@ -179,6 +210,9 @@ class Plugin(modict):
         names = [agent.name for agent in self.agents]
         if len(names) != len(set(names)):
             raise ValueError(f"duplicate private agent in plugin {self.name}")
+        requirements = [item.name for item in (*self.requires, *self.optional_requires)]
+        if len(requirements) != len(set(requirements)):
+            raise ValueError(f"duplicate plugin capability requirement: {self.name}")
 
     @modict.any_validator(mode="before")
     def normalize_sequences(self, key, value):
@@ -188,7 +222,7 @@ class Plugin(modict):
                 for _, member in inspect.getmembers(self.agent)
                 if getattr(member, "agent_trigger", None) is not None
             )
-        return _tuple(value) if key in {"agents", "capabilities", "requires"} else value
+        return _tuple(value) if key in {"agents", "capabilities", "requires", "optional_requires"} else value
 
     def runtime_extension(self, context: BuildContext):
         if self.runtime is None:
@@ -374,6 +408,13 @@ def _compile_application(application):
                     f"plugin {plugin.name} requires unavailable capability "
                     f"{requirement.name}>={requirement.min_version}"
                 )
+        for requirement in plugin.optional_requires:
+            capability = capabilities.get(requirement.name)
+            if capability is not None and capability.version < requirement.min_version:
+                raise ValueError(
+                    f"plugin {plugin.name} cannot integrate capability "
+                    f"{requirement.name}>={requirement.min_version}"
+                )
     _plugin_dependency_order(plugins)
 
     extension_order = dependency_order(
@@ -492,7 +533,11 @@ def _extension_dependencies(plan, plugin_extensions):
     for name, group in plugin_extensions.items():
         providers = tuple(dict.fromkeys(
             exports[requirement.name]
-            for requirement in plan.plugins[name].requires
+            for requirement in (
+                *plan.plugins[name].requires,
+                *plan.plugins[name].optional_requires,
+            )
+            if requirement.name in exports
         ))
         provider_extensions = tuple(
             extension.name
@@ -513,7 +558,11 @@ def _plugin_dependency_order(plugins):
         for capability in plugin.capabilities
     }
     return dependency_order({
-        name: tuple(exports[requirement.name] for requirement in plugin.requires)
+        name: tuple(
+            exports[requirement.name]
+            for requirement in (*plugin.requires, *plugin.optional_requires)
+            if requirement.name in exports
+        )
         for name, plugin in plugins.items()
     }, kind="plugin")
 
@@ -572,7 +621,7 @@ def build_application(
     if not isinstance(application, AgentApplication):
         raise TypeError("build_application expects an AgentApplication")
     plan = application.compile()
-    build_context = context or BuildContext()
+    build_context = context if context is not None else BuildContext()
     plugin_extensions = _resolve_plugin_extensions(plan, build_context)
     declarations = {
         extension.name: extension

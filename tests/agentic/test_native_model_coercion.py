@@ -65,6 +65,31 @@ def test_build_context_is_a_frozen_shallow_mapping_of_runtime_objects():
         context.require("missing")
 
 
+def test_build_context_accepts_ordered_exports_without_mutating_inputs():
+    initial = object()
+    exported = object()
+    context = BuildContext({"initial": initial})
+    assert context.provide("prepared", exported) is exported
+    assert context.get("prepared") is exported
+    assert context.require("prepared") is exported
+    assert context.require("initial") is initial
+    assert dict(context) == {"initial": initial}
+    with pytest.raises(ValueError, match="duplicate build context value"):
+        context.provide("prepared", object())
+    with pytest.raises(ValueError, match="duplicate build context value"):
+        context.provide("initial", object())
+    with pytest.raises(ValueError, match="nonempty string"):
+        context.provide("", object())
+
+    first, second = object(), object()
+    context.contribute("feature.policy", first)
+    context.contribute("feature.policy", second)
+    assert context.contributions("feature.policy") == (first, second)
+    assert context.contributions("missing") == ()
+    with pytest.raises(ValueError, match="contribution name"):
+        context.contribute("", object())
+
+
 @pytest.mark.parametrize("model, version", [
     (Capability, "version"), (CapabilityRequirement, "min_version"),
 ])

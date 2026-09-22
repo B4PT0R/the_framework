@@ -287,6 +287,25 @@ an HTTP API, while the application supplies only process-local objects through
 and the application-wide transport boundary. Optional feature services belong
 to their `Plugin`.
 
+Declare a required versioned capability in `Plugin.requires`: compilation fails
+if its provider is absent or too old. Use `Plugin.optional_requires` when an
+integration should be enabled only if its provider is installed; a present
+provider is version-checked and resolved first, but its absence is valid.
+Both forms determine construction and startup order. A plugin runtime factory
+may expose a prepared object to later factories with
+`context.provide("feature.name", value)`; other factories read it with
+`context.require(...)` or `context.get(...)`. Names cannot overwrite initial
+context inputs or another export.
+
+Some integrations are contributions to an owner's policy rather than a service
+dependency. A runtime factory can call `context.contribute("feature.policy",
+contribution)` whether it runs before or after the owner factory. The owner
+reads `context.contributions("feature.policy")` in its service factory, after
+all plugin runtime factories have declared their contributions. Contribution
+names and values are contracts defined by the owning feature; the framework
+transports them without interpreting them. These build-time values are
+process-local, not agent-session state or a hot runtime registry.
+
 In a larger codebase, keep the `Plugin` declaration in the feature's package
 alongside its agent class and server runtime factory. Export that object and
 list it in `AgentApplication.plugins`; the application assembly then chooses
@@ -418,12 +437,14 @@ explicitly to `ClientRemoteService` (which passes it to its credential store).
 Routed and default leased capabilities must be declared exclusive capabilities;
 invalid policy graphs fail at construction. An application with several installed
 features can combine their `RemoteClientPolicy` contributions with
-`RemoteClientPolicy.compose(base, feature, ...)`, or call
-`ClientRemoteService.add_policy(feature)` while constructing each plugin runtime.
+`RemoteClientPolicy.compose(base, feature, ...)` before creating the service.
+Independent features can contribute policies through `BuildContext`; the
+remote-client owner's service factory composes them after all runtime
+declarations have been resolved.
 Duplicate capability or event ownership is rejected, and policy changes are
 forbidden after service startup. Plugin runtime factories run in capability
-dependency order, so a dependent feature can build on its provider's startup
-contribution. Paired-client records are not rewritten by policy composition.
+dependency order, while collected contributions do not rely on that order.
+Paired-client records are not rewritten by policy composition.
 
 Authenticated endpoints require an explicit application `SecurityPolicy`.
 There is no implicit allow-all policy in `AgentApplication`. The registry:

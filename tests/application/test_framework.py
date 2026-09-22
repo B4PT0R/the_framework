@@ -374,6 +374,54 @@ def test_importable_runtime_factory_is_resolved_only_for_server_build(monkeypatc
         Plugin(name="invalid", runtime="feature.server.factory")
 
 
+def test_optional_capability_orders_present_provider_without_requiring_installation():
+    observed = []
+    prepared = object()
+
+    def provider(context):
+        context.provide("prepared", prepared)
+        return Extension(name="provider_runtime", service=prepared)
+
+    def consumer(context):
+        observed.append(context.get("prepared"))
+        return Extension(name="consumer_runtime", service=object())
+
+    consumer_plugin = Plugin(
+        name="consumer",
+        runtime=consumer,
+        optional_requires=(CapabilityRequirement(name="example.provider"),),
+    )
+    provider_plugin = Plugin(
+        name="provider",
+        runtime=provider,
+        capabilities=(Capability(name="example.provider"),),
+    )
+    with_provider = application(
+        "With optional provider", plugins=(consumer_plugin, provider_plugin),
+    ).build(BuildContext())
+    assert observed == [prepared]
+    assert with_provider.state.application.plan.extension_order == (
+        "provider_runtime", "consumer_runtime",
+    )
+
+    without_provider = application(
+        "Without optional provider", plugins=(consumer_plugin,),
+    ).build(BuildContext())
+    assert observed == [prepared, None]
+    assert "provider_runtime" not in without_provider.state.application.extensions
+
+    with pytest.raises(ValueError, match="cannot integrate capability example.provider>=2"):
+        application("Incompatible optional provider", plugins=(
+            Plugin(name="consumer", optional_requires=(
+                CapabilityRequirement(name="example.provider", min_version=2),
+            )),
+            provider_plugin,
+        )).compile()
+    with pytest.raises(ValueError, match="duplicate plugin capability requirement"):
+        Plugin(name="duplicate", requires=(CapabilityRequirement(name="example.provider"),),
+               optional_requires=(CapabilityRequirement(name="example.provider"),))
+
+
 def test_extension_discovers_decorated_methods_from_an_object():
     class Api:
         @endpoint("get", "/object-endpoint", authenticated=False)
