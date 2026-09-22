@@ -104,6 +104,40 @@ def test_binding_changes_do_not_stop_runtime_and_persist(tmp_path):
     asyncio.run(scenario())
 
 
+def test_concurrent_binding_changes_are_serialized_and_persisted(tmp_path):
+    async def scenario():
+        first_started = asyncio.Event()
+        release_first = asyncio.Event()
+        updates = []
+
+        async def update_binding(name, enabled):
+            updates.append((name, enabled))
+            if not enabled:
+                first_started.set()
+                await release_first.wait()
+
+        context = BuildContext({
+            "plugin_state_path": tmp_path / "plugins.json",
+            "plugin_binding_update": update_binding,
+        })
+        app = declaration(Service([])).build(context)
+        async with app.router.lifespan_context(app):
+            host = app.state.application.plugin_host
+            disable = asyncio.create_task(host.set_binding("example", False))
+            await first_started.wait()
+            enable = asyncio.create_task(host.set_binding("example", True))
+            await asyncio.sleep(0)
+            release_first.set()
+            await asyncio.gather(disable, enable)
+            assert host.status("example").binding_enabled is True
+
+        assert updates == [("example", False), ("example", True)]
+        restored = declaration(Service([])).build(context)
+        assert restored.state.application.plugin_host.status("example").binding_enabled is True
+
+    asyncio.run(scenario())
+
+
 def test_plugin_owns_multiple_ordered_server_components_and_static_routes():
     async def scenario():
         events = []

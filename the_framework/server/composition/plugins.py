@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 from modict import modict
 
@@ -31,6 +32,7 @@ class PluginHost:
     ):
         self.plan = plan
         self.binding_update = binding_update
+        self._binding_lock = asyncio.Lock()
         self.store = (
             MappingStore(state_path, field="plugins")
             if state_path is not None
@@ -89,6 +91,10 @@ class PluginHost:
         return self
 
     async def set_binding(self, name, enabled):
+        async with self._binding_lock:
+            return await self._set_binding(name, enabled)
+
+    async def _set_binding(self, name, enabled):
         spec = self.plan.plugins.get(name)
         if spec is None:
             raise ValueError(f"unknown plugin: {name}")
