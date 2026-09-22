@@ -37,7 +37,7 @@ separately when you run the starter.
 | `AgentApplication` | Validates and assembles one application | Name, version, plugins, server services, security and client surfaces |
 | `AgentSpec` | Describes an agent and its session policy | Instructions, model configuration, tools and resources |
 | `Plugin` | Owns one modular feature, including its agent binding, server runtime and dependencies | Which capabilities exist and when they are exposed |
-| `Extension` / `@endpoint` | Describes a server component and its validated API routes inside a plugin | Service lifecycle, route schemas and authorization |
+| `Extension` / `@endpoint` | Describes advanced server components and validated API routes inside a plugin | Service dependencies, route schemas and authorization |
 | `ClientSurface` | Builds, previews, publishes and rolls back an editable web UI | Source, build command, routes and release policy |
 
 There is exactly **one primary, durable conversation**. Private specialist
@@ -107,7 +107,7 @@ repository also includes an [expanded version](https://github.com/B4PT0R/the_fra
 with `modict` request/response models and a health endpoint.
 
 ```python
-from the_framework import AgentApplication, AgentSpec, Extension, Plugin, SessionPolicy, endpoint
+from the_framework import AgentApplication, AgentSpec, Plugin, SessionPolicy, endpoint
 from the_framework.server.api.endpoints import Principal
 
 
@@ -156,10 +156,7 @@ application = AgentApplication(
         session=SessionPolicy.durable(),
     ),
     security=BearerSecurity(),
-    plugins=(Plugin(name="counter", runtime=Extension(
-        name="counter_runtime", service=counter,
-        endpoints="service",
-    )),),
+    plugins=(Plugin(name="counter", runtime=counter),),
 )
 app = application.build()
 ```
@@ -184,11 +181,13 @@ loopback demonstration; use a real authentication policy for an application.
 The primary agent declaration alone does not create a chat API or start
 inference: the starter shows how to add its supervised worker and client
 transport. `@endpoint` validates request and response data and contributes an
-OpenAPI schema. `Extension` manages dependencies and service startup/shutdown;
-`endpoints="service"` explicitly discovers decorated methods on its service,
-including one constructed by `service_factory`. Omitting `endpoints` exposes no
-routes, so adding a method to a service cannot silently expand its HTTP API.
-`AgentApplication.compile()` checks the full graph before runtime startup.
+OpenAPI schema. Passing a service directly to `Plugin.runtime` discovers its
+decorated routes and manages its `start()`/`stop()` lifecycle. For a feature
+with several server components or dependencies on other services, return
+`Extension` declarations instead; there, `endpoints="service"` explicitly
+enables route discovery, and omitting it exposes no routes.
+During build, the combined dependency graph and routes are validated before
+services start.
 
 For the next step, read [composition and runtime](https://github.com/B4PT0R/the_framework/blob/main/docs/framework.md) for
 plugins, private specialists, persistent resources, security, voice and client

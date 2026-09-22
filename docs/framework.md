@@ -264,7 +264,19 @@ Use the full form when adding server runtime, dependencies or activation policy;
 there is no second installation path.
 
 `Plugin` records that a product capability has an agent binding, a runtime,
-private specialist agents, or any combination of those:
+private specialist agents, or any combination of those. For a feature with
+one self-contained server service, pass the service directly. Its decorated
+endpoints and WebSocket declarations are discovered, and its conventional
+`start()` and `stop()` methods participate in application lifecycle:
+
+```python
+images = Plugin(name="images", agent=ImageGenerationPlugin, runtime=image_service)
+```
+
+The service may instead be returned by a server-side factory that receives
+`BuildContext`. Use `Extension` when that service needs explicit dependencies,
+route selection, middleware, mounts or lifecycle adapters, or when the plugin
+owns several server components:
 
 ```python
 images = Plugin(

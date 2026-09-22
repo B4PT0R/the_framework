@@ -186,13 +186,13 @@ class Extension(modict):
 
 
 class Plugin(modict):
-    """Agent bindings, runtime and private agents owned by one plugin."""
+    """One feature's agent binding, server service(s), and private agents."""
 
     _config = modict.config(frozen=True, strict=True, extra="forbid", auto_convert=False)
 
     name: str
     agent: Callable | type | object | None = None
-    runtime: Extension | tuple[Extension, ...] | Callable[[BuildContext], Extension | tuple[Extension, ...]] | str | None = None
+    runtime: object | None = None
     agents: tuple[AgentSpec, ...] = ()
     capabilities: tuple[Capability, ...] = ()
     requires: tuple[CapabilityRequirement, ...] = ()
@@ -237,15 +237,35 @@ class Plugin(modict):
     def runtime_extension(self, context: BuildContext):
         if self.runtime is None:
             return None
-        extension = self.runtime
-        if isinstance(extension, str):
-            module, attribute = extension.split(":", 1)
-            extension = getattr(import_module(module), attribute)
-        if not isinstance(extension, (Extension, tuple)):
-            if not callable(extension):
-                raise TypeError(f"plugin {self.name} runtime factory is not callable")
-            extension = extension(context)
-        extensions = _tuple(extension)
+        runtime = self.runtime
+        if isinstance(runtime, str):
+            module, attribute = runtime.split(":", 1)
+            runtime = getattr(import_module(module), attribute)
+        if not isinstance(runtime, (Extension, tuple)) and callable(runtime):
+            runtime = runtime(context)
+        if not isinstance(runtime, (Extension, tuple)):
+            has_endpoints = _service_declares_endpoints(runtime)
+            if not (
+                has_endpoints
+                or callable(getattr(runtime, "websocket_declarations", None))
+                or callable(getattr(runtime, "start", None))
+                or callable(getattr(runtime, "stop", None))
+                or callable(getattr(runtime, "health", None))
+            ):
+                raise TypeError(
+                    f"plugin {self.name} runtime must be a server service "
+                    "or Extension declaration"
+                )
+            runtime = Extension(
+                name=self.name,
+                service=runtime,
+                endpoints="service" if has_endpoints else (),
+                websockets=(
+                    "service" if callable(getattr(runtime, "websocket_declarations", None))
+                    else ()
+                ),
+            )
+        extensions = _tuple(runtime)
         if not all(isinstance(item, Extension) for item in extensions):
             raise TypeError(f"plugin {self.name} did not produce Extensions")
         return extensions

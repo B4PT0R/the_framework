@@ -102,6 +102,38 @@ def test_plugin_runtime_factories_follow_capability_dependencies():
     assert built == ["provider", "consumer"]
 
 
+@pytest.mark.parametrize("factory", [False, True])
+def test_single_service_plugin_needs_no_extension_boilerplate(factory):
+    events = []
+
+    class Counter(Service):
+        def __init__(self):
+            super().__init__(events)
+            self.value = 0
+
+        @endpoint("post", "/counter", authenticated=False,
+                  request={"type": "object", "properties": {},
+                           "additionalProperties": False})
+        def increment(self):
+            """Increment the test counter."""
+            self.value += 1
+            return {"value": self.value}
+
+    counter = Counter()
+    runtime = (lambda _context: counter) if factory else counter
+    app = application("Counter", plugins=(Plugin(name="counter", runtime=runtime),)).build()
+    extension = app.state.application.plan.plugin_extensions["counter"][0]
+    assert extension.name == "counter"
+    assert extension.service is counter
+    with TestClient(app) as client:
+        assert client.post("/counter").json() == {"value": 1}
+        assert events == ["start"]
+    assert events == ["start", "stop"]
+
+    with pytest.raises(TypeError, match="must be a server service"):
+        application("Invalid", plugins=(Plugin(name="invalid", runtime=object()),)).build()
+
+
 def test_compile_rejects_private_agent_shadowing_primary():
     spec = AgentApplication(
         name="collision", version="1",

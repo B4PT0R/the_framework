@@ -1,6 +1,6 @@
 """Small standalone application built only from the_framework."""
 
-from the_framework import AgentApplication, AgentSpec, Extension, SessionPolicy, endpoint
+from the_framework import AgentApplication, AgentSpec, Extension, Plugin, SessionPolicy, endpoint
 from the_framework.server import ApplicationHealthApi
 from the_framework.server.api.endpoints import Principal
 from modict import modict
@@ -48,11 +48,6 @@ class CounterService:
     def health(self):
         return {"value": self.value}
 
-
-class CounterApi:
-    def __init__(self, counter):
-        self.counter = counter
-
     @endpoint(
         "post", "/api/v1/counter/increment",
         request=Increment,
@@ -61,12 +56,11 @@ class CounterApi:
     )
     def increment(self, amount):
         """Increment the application counter."""
-        self.counter.value += amount
-        return {"value": self.counter.value}
+        self.value += amount
+        return {"value": self.value}
 
 
 counter = CounterService()
-counter_api = CounterApi(counter)
 health_api = ApplicationHealthApi()
 
 application = AgentApplication(
@@ -78,8 +72,8 @@ application = AgentApplication(
         session=SessionPolicy.durable(),
     ),
     security=BearerSecurity(),
+    plugins=(Plugin(name="counter", runtime=counter),),
     extensions=(
-        Extension(name="counter", service=counter, endpoints=(counter_api.increment,)),
         Extension(name="health", endpoints=(health_api.health,), requires=("counter",)),
     ),
 )
