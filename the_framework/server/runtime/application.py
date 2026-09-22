@@ -86,6 +86,7 @@ class ApplicationRuntime:
         self.relay_task = None
         self.reset_lock = asyncio.Lock()
         self.resetting = False
+        self.reset_hooks = []
         self.stopping = False
         self.last_worker_output_at = None
         self.last_worker_output_type = None
@@ -106,6 +107,12 @@ class ApplicationRuntime:
     def register_fleet_result_handler(self, handler):
         self.fleet_result_handlers.add(handler)
         return handler
+
+    def register_reset_hooks(self, *, suspend, resume):
+        """Pause a runtime-dependent service across a canonical session reset."""
+        if not callable(suspend) or not callable(resume):
+            raise TypeError("reset hooks must be callable")
+        self.reset_hooks.append((suspend, resume))
 
     async def start(self):
         self.stopping = False
@@ -169,34 +176,77 @@ class ApplicationRuntime:
             raise RuntimeError("application runtime reset is not configured")
         async with self.reset_lock:
             self.resetting = True
-            staged = None
+            resumes = []
+            result = None
+            failure = None
+            try:
+                for suspend, resume in reversed(tuple(self.reset_hooks)):
+                    value = suspend()
+                    if inspect.isawaitable(value):
+                        await value
+                    resumes.append(resume)
+                result = await self._reset_canonical_runtime()
+            except BaseException as error:
+                failure = error
+            finally:
+                resume_errors = []
+                for resume in reversed(resumes):
+                    try:
+                        value = resume()
+                        if inspect.isawaitable(value):
+                            await value
+                    except BaseException as error:
+                        resume_errors.append(error)
+                self.resetting = False
+            if failure is not None and resume_errors:
+                raise BaseExceptionGroup(
+                    "application reset and service recovery failed",
+                    [failure, *resume_errors],
+                )
+            if failure is not None:
+                raise failure
+            if resume_errors:
+                raise BaseExceptionGroup(
+                    "application services failed to resume after reset",
+                    resume_errors,
+                )
+            return result
+
+    async def _reset_canonical_runtime(self):
+        await self.stop()
+        try:
+            staged = self.reset_transaction_factory(
+                self.supervisor.session_path,
+            ).stage()
+        except Exception as stage_error:
+            try:
+                await self.start()
+            except Exception as recovery_error:
+                raise RuntimeError(
+                    "application reset staging failed and the previous runtime "
+                    f"could not restart: {recovery_error}"
+                ) from stage_error
+            raise
+        try:
+            await self.start()
+        except Exception as reset_error:
             try:
                 await self.stop()
-                staged = self.reset_transaction_factory(
-                    self.supervisor.session_path,
-                ).stage()
-                try:
-                    await self.start()
-                except Exception as reset_error:
-                    try:
-                        await self.stop()
-                    except Exception:
-                        pass
-                    staged.restore(remove_new=True)
-                    try:
-                        await self.start()
-                    except Exception as recovery_error:
-                        raise RuntimeError(
-                            "application reset failed and the previous runtime "
-                            f"could not restart: {recovery_error}"
-                        ) from reset_error
-                    raise RuntimeError(
-                        "application reset failed; the previous state was restored"
-                    ) from reset_error
-                staged.commit()
-                return self.ready
-            finally:
-                self.resetting = False
+            except Exception:
+                pass
+            staged.restore(remove_new=True)
+            try:
+                await self.start()
+            except Exception as recovery_error:
+                raise RuntimeError(
+                    "application reset failed and the previous runtime "
+                    f"could not restart: {recovery_error}"
+                ) from reset_error
+            raise RuntimeError(
+                "application reset failed; the previous state was restored"
+            ) from reset_error
+        staged.commit()
+        return self.ready
 
     async def relay_fleet_results(self):
         while True:

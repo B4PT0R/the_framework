@@ -190,6 +190,14 @@ An `@endpoint` method named `start` or `stop` is an HTTP handler, not a
 lifecycle hook; provide an explicit adapter if that service also needs startup
 or shutdown behavior.
 
+A service that depends on the canonical worker may also need to pause while
+that worker's persisted session is reset. Register a `suspend`/`resume` pair on
+`ApplicationRuntime.register_reset_hooks()` when constructing that service.
+Normal server startup and shutdown still belong to `Extension` lifecycle;
+reset hooks run only around a session reset, suspend in reverse registration
+order, and resume after either a successful reset or restoration of the previous
+session.
+
 When construction itself depends on other declared services, use a synchronous
 factory. Its keyword arguments are exactly the service-bearing names listed in
 `requires`; construction still happens before startup, while the live

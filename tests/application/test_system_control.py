@@ -236,3 +236,19 @@ def test_unfinished_or_interrupted_turn_never_reboots_later(tmp_path):
         assert not path.exists()
 
     asyncio.run(test())
+
+
+def test_reloading_after_reset_clears_stale_state_error(tmp_path):
+    async def scenario():
+        path = tmp_path / "system-control.json"
+        path.write_text("invalid restart state")
+        service = SystemControlService(path, lambda command: None)
+        await service.start()
+        assert service.error is not None
+
+        path.unlink()
+        await service.start()
+        assert service.error is None
+        assert service.intent is None
+
+    asyncio.run(scenario())

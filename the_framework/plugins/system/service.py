@@ -116,6 +116,7 @@ class SystemControlService:
             raise ValueError("invalid server restart resume route")
 
     async def start(self):
+        self.error = None
         try:
             intent = await asyncio.to_thread(self._load)
         except Exception as error:
