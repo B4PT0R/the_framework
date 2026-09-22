@@ -540,27 +540,23 @@ without importing any The Harness product module:
 uvicorn examples.minimal_agent_app:app
 ```
 
-## The Harness as the reference application
+## The Harness as a larger application example
 
-The product declaration lives in the separate sibling The Harness checkout at
-`../the_harness/the_harness/application.py`. It currently
-declares Pandora, fourteen plugins, nine private specialists and the main client
-surface. Server-only process inputs are added in
-`../the_harness/the_harness/app.py`, whose job is deliberately limited
-to orchestration:
+The separate The Harness application uses the same `AgentApplication` and
+`Plugin` API as the starter. Its declaration supplies one primary agent,
+product plugins, their versioned dependencies and a multi-device client
+surface. The server entrypoint supplies process-local inputs through
+`BuildContext` and the few extensions intrinsic to the canonical runtime.
+Each installed plugin constructs its own services and routes through the shared
+dependency graph: for example, the Realtime plugin owns its controller-facing
+APIs and shared call state, while paired-client transport and media services
+belong to their respective plugins. Removing a required capability fails
+compilation before the server starts.
 
-1. build the canonical runtime;
-2. build paired-client services;
-3. build media storage, generation, observation and indexing;
-4. build the HTTP, WebSocket and Chromium-facing API;
-5. compose dependency-grouped extensions;
-6. call `build_application()` with one explicit `BuildContext`.
-
-The implementation for those steps is split by ownership across
-`runtime_composition.py`, `client_composition.py`, `media_composition.py`,
-`api_composition.py`, `remote_composition.py` and
-`extension_composition.py`. Product policy remains in these modules; no product
-composition is imported back into `the_framework`.
+This division is useful when building a larger application: the top-level
+assembly names the features and provides resources, while each feature owns its
+HTTP, WebSocket, service and agent contributions. The framework does not import
+application-specific policy.
 
 ## Design rule
 
