@@ -557,6 +557,11 @@ def _extension_dependencies(plan, plugin_extensions):
         *(extension for group in plugin_extensions.values() for extension in group),
     )
     names = {extension.name for extension in all_extensions}
+    extension_owners = {
+        extension.name: plugin_name
+        for plugin_name, group in plugin_extensions.items()
+        for extension in group
+    }
 
     def direct_dependencies(extension):
         return (
@@ -588,6 +593,13 @@ def _extension_dependencies(plan, plugin_extensions):
             for extension in plugin_extensions.get(provider, ())
         )
         for extension in group:
+            for dependency in direct_dependencies(extension):
+                owner = extension_owners.get(dependency)
+                if owner is not None and owner != name and owner not in providers:
+                    raise ValueError(
+                        f"plugin {name} uses service {dependency} from plugin {owner} "
+                        "without a versioned capability requirement"
+                    )
             dependencies[extension.name] = tuple(dict.fromkeys((
                 *direct_dependencies(extension), *provider_extensions,
             )))

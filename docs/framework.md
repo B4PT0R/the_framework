@@ -222,8 +222,9 @@ service while remaining usable in text-only applications.
 The same dependency injection applies to an `Extension` returned by a plugin's
 server runtime factory. A plugin requiring another plugin's service must also
 declare the corresponding versioned public `CapabilityRequirement`; the
-capability dependency determines startup order. A dependent cannot be declared
-without its provider. Installed plugin runtimes are fixed for the server
+compiler rejects undeclared cross-plugin service edges, and the capability
+dependency determines startup order. A required dependency cannot be declared
+without its provider; an optional one can be absent. Installed plugin runtimes are fixed for the server
 lifetime; removing a provider requires updating the startup declaration and
 restarting the server.
 

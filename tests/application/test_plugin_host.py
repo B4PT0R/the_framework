@@ -505,6 +505,34 @@ def test_plugin_service_factory_can_depend_on_another_plugin_capability():
     assert events == ["start", "start", "stop", "stop"]
 
 
+def test_cross_plugin_service_edge_requires_a_public_capability():
+    consumer = Plugin(
+        name="consumer",
+        runtime=Extension(name="consumer_runtime", requires=("provider_runtime",)),
+    )
+    provider = Plugin(
+        name="provider",
+        capabilities=(Capability(name="provider.api"),),
+        runtime=Extension(name="provider_runtime", service=object()),
+    )
+    spec = AgentApplication(
+        name="Undeclared dependency", version="1",
+        primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
+        plugins=(consumer, provider),
+    )
+    with pytest.raises(ValueError, match="without a versioned capability requirement"):
+        spec.build()
+
+    optional = Plugin({
+        **consumer,
+        "optional_requires": (CapabilityRequirement(name="provider.api"),),
+    })
+    spec = AgentApplication({**spec, "plugins": (optional, provider)})
+    assert spec.build().state.application.plan.extension_order == (
+        "provider_runtime", "consumer_runtime",
+    )
+
+
 def test_declared_plugin_requires_declared_capability_provider():
     declaration = AgentApplication(
         name="Dependencies",

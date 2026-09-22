@@ -7,6 +7,7 @@ from the_framework import (
     AgentResources,
     AgentSpec,
     Capability,
+    CapabilityRequirement,
     ClientSurface,
     Extension,
     Plugin,
@@ -113,7 +114,10 @@ application = AgentApplication(
     ),
     plugins=(
         BashPlugin, RegistryPlugin, WebSearchPlugin, Memory,
-        Plugin(name="chat", runtime="starter.chat:chat_runtime"),
+        Plugin(
+            name="chat", runtime="starter.chat:chat_runtime",
+            optional_requires=(CapabilityRequirement(name="realtime.session", min_version=1),),
+        ),
         Plugin(name="scheduler", agent=SchedulerPlugin, runtime=scheduler_runtime),
         Plugin(name="system", agent=SystemPlugin, runtime=system_runtime),
         Plugin(

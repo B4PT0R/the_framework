@@ -77,6 +77,9 @@ def test_starter_declares_general_plugins_and_memory_specialist():
     assert plan.plugins["scheduler"].runtime is scheduler_runtime
     assert plan.plugins["system"].runtime is system_runtime
     assert plan.plugins["chat"].runtime == "starter.chat:chat_runtime"
+    assert [requirement.name for requirement in plan.plugins["chat"].optional_requires] == [
+        "realtime.session",
+    ]
     assert plan.capabilities["realtime.session"].version == 1
 
 
