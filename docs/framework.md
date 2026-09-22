@@ -275,8 +275,16 @@ the worker should not even import the server module; the reference is resolved
 only by `build(context)`. For example, a media plugin can own a store, an index and
 an HTTP API, while the application supplies only process-local objects through
 `BuildContext` at server build time. Shared core services still live in
-`AgentApplication.extensions` until the high-level plugin API absorbs their
-ownership cleanly.
+`AgentApplication.extensions`: for example, the canonical worker supervisor
+and the application-wide transport boundary. Optional feature services belong
+to their `Plugin`.
+
+In a larger codebase, keep the `Plugin` declaration in the feature's package
+alongside its agent class and server runtime factory. Export that object and
+list it in `AgentApplication.plugins`; the application assembly then chooses
+features without repeating their dependencies or import paths. The starter
+keeps small declarations together in `starter/application.py` so the complete
+example remains easy to read in one place.
 
 Each declared plugin runtime starts with the server and remains installed until
 shutdown. Its agent binding can be enabled or disabled live and persists across
