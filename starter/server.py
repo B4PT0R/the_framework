@@ -19,11 +19,9 @@ from the_framework.server.api.endpoints import HttpError
 from the_framework.server.api.uploads import copied_files_message, copy_uploaded_files
 from the_framework.server.runtime.application import ApplicationRuntime
 from the_framework.server.runtime.fleet import FleetSupervisor
-from the_framework.server.runtime.realtime import RealtimeController
 
 from .application import ROOT, application
 from .security import LocalSecurity
-from .voice import VoiceApi
 
 REFERENCE = "starter.application:application"
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
@@ -120,15 +118,14 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None):
             path, profiles, application_reference=REFERENCE,
         ))
     security = LocalSecurity(token, origin=origin)
-    controller = RealtimeController(runtime)
-    voice = VoiceApi(runtime, controller)
     sockets = CanonicalTransportSockets(runtime, event_handshake=security.handshake,
                                         application_handshake=security.handshake)
 
     async def binding(name, enabled):
+        voice = app.state.application.service("voice")
         async with voice.lock:
             if name == "realtime" and not enabled:
-                await controller.stop()
+                await voice.controller.stop()
             result = await runtime.command(PluginBindingRequest(
                 id=timestamp_id(), plugin=name, enabled=enabled,
             ))
@@ -158,7 +155,6 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None):
         "surface_progress": runtime.publish,
         "data_root": root,
         "restart": restart,
-        "voice_api": voice,
     }))
     bind_application_controls(runtime, app, ui_root=ROOT / "ui/dist")
     app.state.runtime = runtime

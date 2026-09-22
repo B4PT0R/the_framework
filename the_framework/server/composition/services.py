@@ -20,7 +20,7 @@ async def invoke_lifecycle(spec, action, context):
         result = callback(spec.service, context)
     else:
         method = getattr(spec.service, action, None)
-        if method is None:
+        if method is None or getattr(method, "agent_endpoint", None) is not None:
             return None
         result = method()
     return await result if inspect.isawaitable(result) else result

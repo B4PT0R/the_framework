@@ -186,6 +186,9 @@ startup is rolled back. Optional services can set `critical=False`; their
 failure remains visible in the graph health report without taking down the
 application. Explicit `start`, `stop` and `health` adapters exist for advanced
 or third-party services, but are not required by the common path.
+An `@endpoint` method named `start` or `stop` is an HTTP handler, not a
+lifecycle hook; provide an explicit adapter if that service also needs startup
+or shutdown behavior.
 
 When construction itself depends on other declared services, use a synchronous
 factory. Its keyword arguments are exactly the service-bearing names listed in

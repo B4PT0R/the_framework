@@ -23,6 +23,9 @@ from the_framework.plugins.scheduler.service import SchedulerService
 from the_framework.plugins.system import SystemPlugin
 from the_framework.plugins.system.service import SystemControlService
 from the_framework.plugins.web_search import WebSearchPlugin
+from the_framework.server.runtime.realtime import RealtimeController
+
+from .voice import VoiceApi
 
 ROOT = Path(__file__).resolve().parent
 
@@ -71,15 +74,13 @@ def system_runtime(context):
     )
 
 
-def realtime_runtime(context):
-    voice = context.require("voice_api")
+def realtime_runtime(_context):
     return Extension(
         name="voice",
-        service=voice,
+        service_factory=lambda runtime: VoiceApi(runtime, RealtimeController(runtime)),
         requires=("runtime",),
-        start=lambda _service, _context: None,
         stop=lambda service, _context: service.controller.stop(),
-        endpoints=(voice,),
+        endpoints="service",
     )
 
 

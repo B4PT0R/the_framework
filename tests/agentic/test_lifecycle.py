@@ -4,6 +4,7 @@ import asyncio
 
 import pytest
 
+from the_framework import endpoint
 from the_framework.server.composition.application import Extension
 from the_framework.server.composition.services import ServiceContext, ServiceSpec, invoke_lifecycle
 
@@ -49,5 +50,33 @@ def test_lifecycle_propagates_failure_and_cancellation(error):
         with pytest.raises(error):
             await invoke_lifecycle(spec, "start", ServiceContext())
         assert await invoke_lifecycle(spec, "stop", ServiceContext()) is None
+
+    asyncio.run(scenario())
+
+
+def test_http_endpoint_named_start_or_stop_is_not_a_lifecycle_hook():
+    calls = []
+
+    class Service:
+        @endpoint("post", "/feature/start")
+        def start(self):
+            calls.append("start")
+
+        @endpoint("post", "/feature/stop")
+        def stop(self):
+            calls.append("stop")
+
+    async def scenario():
+        service = Service()
+        spec = ServiceSpec(name="feature", service=service)
+        assert await invoke_lifecycle(spec, "start", ServiceContext()) is None
+        assert await invoke_lifecycle(spec, "stop", ServiceContext()) is None
+        assert calls == []
+        explicit = ServiceSpec(
+            name="feature", service=service,
+            start=lambda _service, _context: calls.append("lifecycle"),
+        )
+        await invoke_lifecycle(explicit, "start", ServiceContext())
+        assert calls == ["lifecycle"]
 
     asyncio.run(scenario())
