@@ -5,13 +5,7 @@ from __future__ import annotations
 import inspect
 from modict import modict
 
-from fastapi import FastAPI
-
 from ...utils.persistence import MappingStore
-
-from ..api.endpoints import EndpointRegistry
-from ..api.websockets import WebSocketRegistry
-from .dependencies import dependency_order
 
 
 class PluginStatus(modict):
@@ -25,27 +19,17 @@ class PluginStatus(modict):
 
 
 class PluginHost:
-    """Hold startup-fixed plugin routes and persistent live agent bindings."""
+    """Hold startup-fixed plugin status and persistent live agent bindings."""
 
     def __init__(
         self,
         plan,
-        application_context,
         *,
-        security=None,
-        validate_responses=True,
         state_path=None,
         binding_update=None,
-        occupied=(),
-        reserved_prefixes=(),
     ):
         self.plan = plan
-        self.application_context = application_context
-        self.security = security
-        self.validate_responses = validate_responses
         self.binding_update = binding_update
-        self.occupied = frozenset(occupied)
-        self.reserved_prefixes = tuple(reserved_prefixes)
         self.store = (
             MappingStore(state_path, field="plugins")
             if state_path is not None
@@ -72,7 +56,6 @@ class PluginHost:
                 "running": True,
                 "binding_enabled": binding,
             }
-        self.router = self._build_snapshot(self.plan.plugins)
 
     def status(self, name=None):
         names = (name,) if name is not None else tuple(self.plan.plugins)
@@ -98,56 +81,6 @@ class PluginHost:
                 name: {"binding_enabled": state["binding_enabled"]}
                 for name, state in self.states.items()
             })
-
-    def _runtime_order(self, names):
-        names = tuple(names)
-        selected = set(names)
-        exports = {
-            capability.name: name
-            for name, spec in self.plan.plugins.items()
-            for capability in spec.capabilities
-        }
-        return dependency_order({
-            name: tuple(
-                exports[requirement.name]
-                for requirement in self.plan.plugins[name].requires
-                if exports.get(requirement.name) in selected
-            )
-            for name in names
-        }, kind="plugin")
-
-    def _build_snapshot(self, running):
-        app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
-        registry = EndpointRegistry(
-            app,
-            security=self.security,
-            validate_responses=self.validate_responses,
-            application_context=self.application_context,
-            occupied=self.occupied,
-            reserved_prefixes=self.reserved_prefixes,
-        )
-        sockets = WebSocketRegistry(app, security=self.security)
-        from .application import _declared_endpoints
-
-        for name in self._runtime_order(running):
-            for extension in self.plan.plugin_extensions.get(name, ()):
-                for source in extension.endpoints:
-                    for endpoint in _declared_endpoints(source):
-                        registry.add(endpoint, owner=name)
-                for endpoint in extension.websockets:
-                    if any(
-                        endpoint.path == prefix
-                        or endpoint.path.startswith(f"{prefix.rstrip('/')}/")
-                        for prefix in self.reserved_prefixes
-                    ):
-                        raise ValueError(
-                            "plugin WebSocket is shadowed by a mount: "
-                            f"{endpoint.path}"
-                        )
-                    sockets.add(endpoint, owner=name)
-        registry.install()
-        sockets.install()
-        return app
 
     async def start(self):
         self._save()

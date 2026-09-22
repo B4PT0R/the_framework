@@ -56,6 +56,11 @@ def _paths_overlap(left, right):
     )
 
 
+def _path_within_mount(path, mount):
+    mount = mount.rstrip("/") or "/"
+    return mount == "/" or path == mount or path.startswith(f"{mount}/")
+
+
 class BuildContext(modict[str, object]):
     """Explicit process-local inputs used while compiling an application."""
 
@@ -584,33 +589,73 @@ def build_application(
         docs_url=application.docs_url,
     )
     app.state.application = runtime
-    registry = EndpointRegistry(
-        app,
-        security=application.security,
-        validate_responses=application.validate_responses,
-        application_context=runtime,
+    plugin_owners = {
+        extension.name: plugin_name
+        for plugin_name, group in plan.plugin_extensions.items()
+        for extension in group
+    }
+    all_extensions = tuple(
+        (runtime.extensions[name], plugin_owners.get(name, name))
+        for name in startup_order
     )
-    socket_registry = WebSocketRegistry(app, security=application.security)
-    mounted_paths = set()
     mounts = []
     middleware_entries = []
-    for extension in plan.extensions:
-        for middleware, options in extension.middleware:
-            middleware_entries.append((middleware, dict(options)))
-        for source in extension.endpoints:
-            for declaration in _declared_endpoints(source):
-                registry.add(declaration, owner=extension.name)
-        for endpoint in extension.websockets:
-            socket_registry.add(endpoint, owner=extension.name)
+    for extension, _owner in all_extensions:
+        middleware_entries.extend(
+            (middleware, dict(options))
+            for middleware, options in extension.middleware
+        )
         for path, mounted_app, name in extension.mounts:
             if not path.startswith("/"):
                 raise ValueError(
                     f"extension mount path must start with /: {extension.name}"
                 )
-            if path in mounted_paths:
-                raise ValueError(f"duplicate application mount: {path}")
-            mounted_paths.add(path)
+            if any(_paths_overlap(path, existing) for existing, _, _ in mounts):
+                raise ValueError(f"overlapping application mount: {path}")
+            if any(
+                _paths_overlap(path, route)
+                for surface in application.surfaces
+                for route in (*surface.routes, surface.preview_route)
+            ):
+                raise ValueError(
+                    f"client surface route collides with application mount: {path}"
+                )
             mounts.append((path, mounted_app, name))
+    mount_prefixes = tuple(path for path, _, _ in mounts)
+    surface_prefixes = tuple(
+        route
+        for surface in application.surfaces
+        for route in (*surface.routes, surface.preview_route)
+    )
+    registry = EndpointRegistry(
+        app,
+        security=application.security,
+        validate_responses=application.validate_responses,
+        application_context=runtime,
+        reserved_prefixes=mount_prefixes,
+    )
+    socket_registry = WebSocketRegistry(app, security=application.security)
+    for extension, owner in all_extensions:
+        for source in extension.endpoints:
+            for declaration in _declared_endpoints(source):
+                if extension.name in plugin_owners and any(
+                    _path_within_mount(declaration.path, prefix)
+                    for prefix in surface_prefixes
+                ):
+                    raise ValueError(
+                        f"plugin endpoint is shadowed by a mount: {declaration.path}"
+                    )
+                registry.add(declaration, owner=owner)
+        for endpoint in extension.websockets:
+            prefixes = (
+                (*mount_prefixes, *surface_prefixes)
+                if extension.name in plugin_owners else mount_prefixes
+            )
+            if any(_path_within_mount(endpoint.path, prefix) for prefix in prefixes):
+                raise ValueError(
+                    f"application WebSocket is shadowed by a mount: {endpoint.path}"
+                )
+            socket_registry.add(endpoint, owner=owner)
     if plan.plugins and application.security is not None:
         for endpoint in _declared_endpoints(PluginHostApi(runtime)):
             registry.add(endpoint, owner="plugin_host")
@@ -653,43 +698,12 @@ def build_application(
                 ),
                 name=f"surface-preview:{surface.name}",
             )
-    core_openapi = app.openapi
-
-    occupied = {
-        (method.upper(), route.path)
-        for route in app.routes
-        for method in getattr(route, "methods", set())
-    }
-    surface_paths = tuple(
-        route
-        for surface in application.surfaces
-        for route in (*surface.routes, surface.preview_route)
-    )
     plugin_host = PluginHost(
         plan,
-        runtime,
-        security=application.security,
-        validate_responses=application.validate_responses,
         state_path=build_context.get("plugin_state_path"),
         binding_update=build_context.get("plugin_binding_update"),
-        occupied=occupied,
-        reserved_prefixes=(*mounted_paths, *surface_paths),
     )
     runtime.plugin_host = plugin_host
-    app.mount("/", plugin_host.router, name="plugin-runtime")
-
-    def combined_openapi():
-        if app.openapi_schema is not None:
-            return app.openapi_schema
-        schema = core_openapi()
-        plugin_schema = plugin_host.router.openapi()
-        schema.setdefault("paths", {}).update(plugin_schema.get("paths", {}))
-        for name, values in plugin_schema.get("components", {}).items():
-            schema.setdefault("components", {}).setdefault(name, {}).update(values)
-        app.openapi_schema = schema
-        return schema
-
-    app.openapi = combined_openapi
 
     @asynccontextmanager
     async def lifespan(_app):

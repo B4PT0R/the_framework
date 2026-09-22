@@ -275,9 +275,10 @@ Public inter-plugin dependencies use versioned `Capability` contracts; private
 agents are identified as `plugin.agent` and cannot be depended on directly.
 
 The plugin host reports runtime status separately from each agent's persistent
-binding. It validates all installed routes together before startup, and OpenAPI
-reflects that fixed route set. Required bindings, such as the system boundary,
-cannot be disabled.
+binding. Application and plugin endpoints, WebSockets, middleware and mounts
+are installed on one server at startup; route and mount collisions fail before
+any service starts. OpenAPI includes the complete fixed endpoint set. Required
+bindings, such as the system boundary, cannot be disabled.
 
 ## Agent construction
 
@@ -498,8 +499,11 @@ rollback swaps back without rebuilding. Build success is evidence only: the
 agent remains responsible for inspecting the preview before publication.
 
 Middleware and mounted ASGI applications belong on an `Extension`, so they are
-validated and installed with the rest of the graph. Product code should not add
-routes, middleware or mounts after `build_application()`.
+validated and installed with the rest of the graph, whether that extension is
+declared directly by the application or owned by a plugin. Mounted ASGI apps
+handle their own request authentication; the framework's `@endpoint` security
+policy does not automatically wrap arbitrary mounts. Product code should not
+add routes, middleware or mounts after `build_application()`.
 
 ## Standalone example
 

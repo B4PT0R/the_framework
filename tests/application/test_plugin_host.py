@@ -1,7 +1,9 @@
 import asyncio
 
 import pytest
+from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from the_framework import (
     AgentApplication,
@@ -153,6 +155,81 @@ def test_plugin_owns_multiple_ordered_server_components_and_static_routes():
         ]
 
     asyncio.run(scenario())
+
+
+def test_plugin_runtime_installs_mount_middleware_and_openapi_on_main_app():
+    class TraceMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request, call_next):
+            response = await call_next(request)
+            response.headers["X-Plugin-Trace"] = "installed"
+            return response
+
+    assets = FastAPI()
+
+    @assets.get("/item")
+    def item():
+        return {"asset": True}
+
+    @endpoint("get", "/core/value", authenticated=False)
+    def core_value():
+        return {"core": True}
+
+    app = AgentApplication(
+        name="Vertical surface", version="1",
+        primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
+        plugins=(Plugin(
+            name="feature",
+            runtime=Extension(
+                name="feature_runtime", endpoints=(Api(),),
+                middleware=((TraceMiddleware, {}),),
+                mounts=(("/plugin/assets", assets, "feature-assets"),),
+            ),
+        ),),
+        extensions=(Extension(name="core_api", endpoints=(core_value,)),),
+    ).build()
+
+    async def scenario():
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            route = await client.get("/plugin/value")
+            core_route = await client.get("/core/value")
+            mounted = await client.get("/plugin/assets/item")
+            schema = (await client.get("/openapi.json")).json()
+        assert route.status_code == 200
+        assert mounted.json() == {"asset": True}
+        assert route.headers["X-Plugin-Trace"] == "installed"
+        assert core_route.headers["X-Plugin-Trace"] == "installed"
+        assert mounted.headers["X-Plugin-Trace"] == "installed"
+        assert "/plugin/value" in schema["paths"]
+        assert "/core/value" in schema["paths"]
+
+    asyncio.run(scenario())
+
+
+def test_plugin_mount_collision_is_rejected_before_start():
+    app = FastAPI()
+    declaration = AgentApplication(
+        name="Mount collision", version="1",
+        primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
+        plugins=(Plugin(
+            name="feature",
+            runtime=Extension(
+                name="feature_runtime", mounts=(("/plugin", app, None),),
+            ),
+        ),),
+        extensions=(Extension(name="api", endpoints=(Api(),)),),
+    )
+    with pytest.raises(ValueError, match="shadowed by a mount"):
+        declaration.build()
+
+    nested = AgentApplication({**declaration,
+        "extensions": (Extension(
+            name="assets", mounts=(("/plugin/assets", app, None),),
+        ),),
+    })
+    with pytest.raises(ValueError, match="overlapping application mount"):
+        nested.build()
 
 
 def test_application_service_can_depend_on_plugin_owned_service():

@@ -274,3 +274,28 @@ def test_surface_mounts_reject_nested_routes_and_shadowed_plugin_endpoints(tmp_p
             surfaces=(first,),
             security=Security(),
         ).build(BuildContext({"surface_root": tmp_path / "runtime"}))
+
+
+def test_application_bootstrap_endpoint_may_precede_its_surface_mount(tmp_path):
+    @endpoint("get", "/ui/bootstrap", authenticated=False)
+    def bootstrap():
+        return {"ready": True}
+
+    source = source_tree(tmp_path)
+    specification = declaration(source).with_extensions(
+        Extension(name="bootstrap", endpoints=(bootstrap,)),
+    )
+    app = specification.build(BuildContext({
+        "surface_root": tmp_path / "runtime",
+    }))
+
+    async def scenario():
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.get("/ui/bootstrap")
+            schema = (await client.get("/openapi.json")).json()
+        assert response.json() == {"ready": True}
+        assert "/ui/bootstrap" in schema["paths"]
+
+    asyncio.run(scenario())
