@@ -7,7 +7,7 @@ from importlib import import_module
 from collections.abc import Callable, Mapping
 from contextlib import asynccontextmanager
 from types import MappingProxyType
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import FastAPI
 from modict import modict
@@ -111,7 +111,7 @@ class Extension(modict):
     name: str
     service: object | None = None
     service_factory: Callable[..., object] | None = None
-    endpoints: tuple[object, ...] = ()
+    endpoints: tuple[object, ...] | Literal["service"] = ()
     websockets: tuple[object, ...] = ()
     requires: tuple[str, ...] = ()
     critical: bool = True
@@ -128,12 +128,18 @@ class Extension(modict):
             raise ValueError(f"extension cannot depend on itself: {self.name}")
         if self.service is not None and self.service_factory is not None:
             raise ValueError("extension service and factory are mutually exclusive")
+        if isinstance(self.endpoints, str) and self.endpoints != "service":
+            raise ValueError("extension endpoints must use 'service' or declarations")
 
     def with_endpoints(self, *endpoints):
+        if self.endpoints == "service":
+            raise ValueError("cannot append endpoints to automatic service discovery")
         return type(self)({**self, "endpoints": (*self.endpoints, *endpoints)})
 
     @modict.any_validator(mode="before")
     def normalize_sequences(self, key, value):
+        if key == "endpoints" and value == "service":
+            return value
         return _tuple(value) if key in {"endpoints", "websockets", "requires", "middleware", "mounts"} else value
 
 
@@ -436,6 +442,20 @@ def _declared_endpoints(source):
     raise TypeError("extension endpoint must be decorated or expose endpoint declarations")
 
 
+def _service_declares_endpoints(service):
+    """Recognize endpoint-bearing services without invoking their handlers."""
+    if isinstance(service, Endpoint):
+        return True
+    if callable(service) and getattr(service, "agent_endpoint", None) is not None:
+        return True
+    if callable(getattr(service, "endpoint_declarations", None)):
+        return True
+    return any(
+        getattr(member, "agent_endpoint", None) is not None
+        for _, member in inspect.getmembers(type(service))
+    )
+
+
 def _resolve_plugin_extensions(plan, context):
     names = {extension.name for extension in plan.extensions}
     extensions = {}
@@ -496,19 +516,34 @@ def _plugin_dependency_order(plugins):
 
 
 def _construct_extension_service(extension, services):
-    if extension.service_factory is None:
+    service = extension.service
+    if extension.service_factory is not None:
+        dependencies = {
+            dependency: services[dependency]
+            for dependency in extension.requires
+            if dependency in services
+        }
+        service = extension.service_factory(**dependencies)
+        if inspect.isawaitable(service):
+            raise TypeError(
+                f"extension factory must be synchronous: {extension.name}"
+            )
+    endpoints = extension.endpoints
+    if endpoints == "service":
+        if service is None or not _service_declares_endpoints(service):
+            raise ValueError(
+                f"extension {extension.name} requested service endpoints "
+                "without a decorated service"
+            )
+        endpoints = (service,)
+    if service is extension.service and endpoints is extension.endpoints:
         return extension
-    dependencies = {
-        dependency: services[dependency]
-        for dependency in extension.requires
-        if dependency in services
-    }
-    service = extension.service_factory(**dependencies)
-    if inspect.isawaitable(service):
-        raise TypeError(
-            f"extension factory must be synchronous: {extension.name}"
-        )
-    return Extension({**extension, "service": service, "service_factory": None})
+    return Extension({
+        **extension,
+        "service": service,
+        "service_factory": None,
+        "endpoints": endpoints,
+    })
 
 
 def build_application(

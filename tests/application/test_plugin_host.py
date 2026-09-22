@@ -576,3 +576,100 @@ def test_authenticated_plugin_api_controls_only_binding():
                 assert (await client.get("/plugin/value")).status_code == 200
 
     asyncio.run(scenario())
+
+
+def test_factory_service_exposes_its_decorated_routes_without_endpoint_copy():
+    events = []
+
+    class FeatureService(Service):
+        def __init__(self, dependency):
+            super().__init__(events)
+            self.dependency = dependency
+
+        @endpoint("get", "/feature/from-service", authenticated=False)
+        def value(self):
+            """Return the service dependency through its own HTTP route."""
+            return {"value": self.dependency}
+
+    definition = AgentApplication(
+        name="Factory routes", version="1",
+        primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
+        extensions=(Extension(name="dependency", service="ready"),),
+        plugins=(Plugin(
+            name="feature",
+            runtime=Extension(
+                name="feature_runtime",
+                service_factory=lambda dependency: FeatureService(dependency),
+                endpoints="service",
+                requires=("dependency",),
+            ),
+        ),),
+    )
+    app = definition.build()
+    service = app.state.application.plan.plugin_extensions["feature"][0].service
+    assert isinstance(service, FeatureService)
+    assert app.state.application.plan.plugin_extensions["feature"][0].endpoints == (service,)
+
+    async def scenario():
+        async with app.router.lifespan_context(app):
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                response = await client.get("/feature/from-service")
+                assert response.status_code == 200
+                assert response.json() == {"value": "ready"}
+                schema = (await client.get("/openapi.json")).json()
+                assert "/feature/from-service" in schema["paths"]
+    asyncio.run(scenario())
+    assert events == ["start", "stop"]
+
+
+def test_prebuilt_plugin_service_exposes_decorated_routes_without_endpoint_copy():
+    app = AgentApplication(
+        name="Prebuilt routes", version="1",
+        primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
+        plugins=(Plugin(
+            name="feature",
+            runtime=Extension(name="feature_runtime", service=Api(), endpoints="service"),
+        ),),
+    ).build()
+
+    async def scenario():
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.get("/plugin/value")
+            assert response.status_code == 200
+            assert response.json() == {"value": 1}
+
+    asyncio.run(scenario())
+
+
+def test_service_routes_require_explicit_opt_in():
+    app = AgentApplication(
+        name="Private service", version="1",
+        primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
+        plugins=(Plugin(
+            name="feature",
+            runtime=Extension(name="feature_runtime", service=Api()),
+        ),),
+    ).build()
+
+    async def scenario():
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            assert (await client.get("/plugin/value")).status_code == 404
+
+    asyncio.run(scenario())
+    with pytest.raises(ValueError, match="without a decorated service"):
+        AgentApplication(
+            name="Invalid service", version="1",
+            primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
+            plugins=(Plugin(
+                name="feature",
+                runtime=Extension(
+                    name="feature_runtime", service=object(), endpoints="service",
+                ),
+            ),),
+        ).build()

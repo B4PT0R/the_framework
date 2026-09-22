@@ -208,6 +208,12 @@ without its provider. Installed plugin runtimes are fixed for the server
 lifetime; removing a provider requires updating the startup declaration and
 restarting the server.
 
+If a service has `@endpoint` methods, set `endpoints="service"` to discover
+them on the constructed instance, including one returned by `service_factory`.
+Omitting `endpoints` exposes no routes; use an explicit tuple when routes come
+from another object or you intend to expose only a subset. Route collisions
+and invalid schemas are still checked before startup.
+
 Runtime lookup goes through the single application context:
 
 ```python

@@ -148,9 +148,15 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None):
     definition = AgentApplication({**application, "security": security}).with_extensions(
         Extension(name="runtime", service=runtime),
         Extension(name="conversation", requires=("runtime",), endpoints=(
-            CanonicalAgentApi(runtime, session_projection="display"), ChatApi(runtime, root / "files", voice),
+            CanonicalAgentApi(runtime, session_projection="display"),
             ApplicationHealthApi(),
         ), websockets=(sockets.events_socket, sockets.application_socket)),
+        Extension(
+            name="chat",
+            service_factory=lambda runtime, voice: ChatApi(runtime, root / "files", voice),
+            endpoints="service",
+            requires=("runtime", "voice"),
+        ),
     )
     app = definition.build(BuildContext({
         "plugin_state_path": root / "plugins.json",
@@ -160,7 +166,6 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None):
         "surface_progress": runtime.publish,
         "scheduler": scheduler,
         "system": system,
-        "voice_controller": controller,
         "voice_api": voice,
     }))
     bind_application_controls(runtime, app, ui_root=ROOT / "ui/dist")

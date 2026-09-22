@@ -51,13 +51,14 @@ def system_runtime(context):
 
 
 def realtime_runtime(context):
+    voice = context.require("voice_api")
     return Extension(
         name="voice",
-        service=context.require("voice_controller"),
+        service=voice,
         requires=("runtime",),
         start=lambda _service, _context: None,
-        stop=lambda service, _context: service.stop(),
-        endpoints=(context.require("voice_api"),),
+        stop=lambda service, _context: service.controller.stop(),
+        endpoints=(voice,),
     )
 
 

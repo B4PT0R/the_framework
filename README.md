@@ -158,7 +158,7 @@ application = AgentApplication(
     security=BearerSecurity(),
     plugins=(Plugin(name="counter", runtime=Extension(
         name="counter_runtime", service=counter,
-        endpoints=(counter.increment,),
+        endpoints="service",
     )),),
 )
 app = application.build()
@@ -185,6 +185,9 @@ The primary agent declaration alone does not create a chat API or start
 inference: the starter shows how to add its supervised worker and client
 transport. `@endpoint` validates request and response data and contributes an
 OpenAPI schema. `Extension` manages dependencies and service startup/shutdown;
+`endpoints="service"` explicitly discovers decorated methods on its service,
+including one constructed by `service_factory`. Omitting `endpoints` exposes no
+routes, so adding a method to a service cannot silently expand its HTTP API.
 `AgentApplication.compile()` checks the full graph before runtime startup.
 
 For the next step, read [composition and runtime](https://github.com/B4PT0R/the_framework/blob/main/docs/framework.md) for
