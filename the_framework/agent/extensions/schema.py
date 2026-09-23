@@ -107,14 +107,28 @@ def signature_parameters(func):
     }
 
 
+_SCHEMA_SHAPE_KEYS = {
+    "$ref", "type", "anyOf", "oneOf", "allOf", "not", "const",
+    "items", "properties", "additionalProperties", "required", "enum",
+}
+_SCHEMA_SHAPE_SELECTORS = {"$ref", "type", "anyOf", "oneOf", "allOf", "const"}
+
+
+def merge_property_schema(inferred, documented):
+    """Let an explicitly documented shape replace a best-effort annotation shape."""
+    if _SCHEMA_SHAPE_SELECTORS.intersection(documented):
+        inferred = {
+            key: value for key, value in inferred.items()
+            if key not in _SCHEMA_SHAPE_KEYS
+        }
+    return {**inferred, **documented}
+
+
 def merge_parameters(signature_data, docstring_data):
     docstring_data = docstring_data or {}
     properties = signature_data.get("properties", {}).copy()
     for name, schema in docstring_data.get("properties", {}).items():
-        properties[name] = {
-            **properties.get(name, {}),
-            **schema,
-        }
+        properties[name] = merge_property_schema(properties.get(name, {}), schema)
     required = docstring_data.get("required", signature_data.get("required", []))
     return {
         "type": docstring_data.get("type", signature_data.get("type", "object")),

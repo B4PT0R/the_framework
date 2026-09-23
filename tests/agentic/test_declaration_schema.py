@@ -49,3 +49,50 @@ def test_nullable_literal_accepts_null_without_weakening_enum():
         assert validator.is_valid(value)
     for value in ("other", 0, False):
         assert not validator.is_valid(value)
+
+
+def test_documented_shape_replaces_approximate_annotation_shape():
+    def create(segments: list[dict] | None):
+        """
+        parameters:
+          properties:
+            segments:
+              type: [array, "null"]
+              items:
+                type: object
+                properties:
+                  intensity: {type: number}
+                required: [intensity]
+                additionalProperties: false
+        """
+
+    schema = parse_function_specs(create)["parameters"]["properties"]["segments"]
+
+    assert "anyOf" not in schema
+    assert schema == {
+        "type": ["array", "null"],
+        "items": {
+            "type": "object",
+            "properties": {"intensity": {"type": "number"}},
+            "required": ["intensity"],
+            "additionalProperties": False,
+        },
+    }
+
+
+def test_documented_description_preserves_inferred_shape():
+    def create(segments: list[str] | None):
+        """
+        parameters:
+          properties:
+            segments:
+              description: Optional labels.
+        """
+
+    schema = parse_function_specs(create)["parameters"]["properties"]["segments"]
+
+    assert schema["anyOf"] == [
+        {"type": "array", "items": {"type": "string"}},
+        {"type": "null"},
+    ]
+    assert schema["description"] == "Optional labels."
