@@ -4,6 +4,12 @@ Notable changes to the Python distribution are recorded here. Versions follow
 the distribution `b4pt0r-the-framework`; the import remains `the_framework`.
 Until a stable release, minor versions may revise the public composition API.
 
+## 0.2.1 - 2026-09-24
+
+- Let an explicit YAML schema shape replace incompatible structure inferred
+  from a Python annotation while retaining compatible metadata. Strict nested
+  function-tool schemas no longer leak obsolete union branches.
+
 ## 0.2.0 - 2026-09-23
 
 - Make `Plugin` the single declaration for a modular feature's agent binding,

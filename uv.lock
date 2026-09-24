@@ -44,7 +44,7 @@ wheels = [
 
 [[package]]
 name = "b4pt0r-the-framework"
-version = "0.2.0"
+version = "0.2.1"
 source = { editable = "." }
 dependencies = [
     { name = "codex-backend-sdk" },
