@@ -71,6 +71,7 @@ class Worker:
         self.tasks = set()
         self.live = {}
         self.application_calls = {}
+        self.binding_lock = asyncio.Lock()
         self.quota = {"quota_5h": None, "quota_7d": None, "quota_updated_at": None}
         self.quota_refresh_task = None
         if hasattr(agent, "application"):
@@ -109,6 +110,8 @@ class Worker:
             yield event
 
     async def request_application(self, request):
+        async with self.binding_lock:
+            await self.commands.checkpoint(lambda command: isinstance(command, PluginBindingRequest))
         future = asyncio.get_running_loop().create_future()
         self.application_calls[request.id] = future
         active = self.commands.active
@@ -120,18 +123,21 @@ class Worker:
         ))
         try:
             return await asyncio.wait_for(future, request.timeout_ms / 1000)
-        except TimeoutError as error:
+        except (TimeoutError, asyncio.CancelledError) as error:
             await self.send(ApplicationCancel(
                 request_id=request.id,
                 command_id=command_id,
                 call_id=request.id,
-                reason="timeout",
+                reason="timeout" if isinstance(error, TimeoutError) else "cancelled",
             ))
+            if isinstance(error, asyncio.CancelledError):
+                raise
             raise ApplicationError(
                 f"application call timed out: {request.capability}.{request.method}"
             ) from error
         finally:
-            self.application_calls.pop(request.id, None)
+            async with self.binding_lock:
+                self.application_calls.pop(request.id, None)
 
     async def resolve_application(self, result):
         future = self.application_calls.get(result.id)
@@ -373,6 +379,23 @@ class Worker:
                 request.id,
                 "queued",
             )
+            if isinstance(request, PluginBindingRequest) and (
+                request.application_call_id is not None
+                or any(not future.done() for future in self.application_calls.values())
+            ):
+                command = self.commands.prepare_pending(request)
+                self.live[command.id] = command
+                await self.send(CommandAccepted(request_id=request.id, command=command))
+                async with self.binding_lock:
+                    future = self.application_calls.get(request.application_call_id)
+                    if request.application_call_id is not None and (future is None or future.done()):
+                        error = "originating application call is no longer waiting"
+                        await self.commands.set_status(command, "failed", error)
+                        command.future.set_exception(ValueError(error))
+                    else:
+                        await self.commands.run_command(command)
+                await self.completed(request, command)
+                return True
             if self.can_steer(request):
                 command = self.commands.prepare_pending(request)
                 self.live[command.id] = command

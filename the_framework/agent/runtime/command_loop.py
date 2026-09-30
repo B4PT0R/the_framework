@@ -59,24 +59,51 @@ class CommandLoop:
             if command is None:
                 self.queue.task_done()
                 return
-            self.active = command
-            await self.set_status(command, "active")
-            events = []
             try:
-                async for event in self.execute(command):
-                    events.append(event)
-                    if self.on_event:
-                        result = self.on_event(command, event)
-                        if inspect.isawaitable(result):
-                            await result
-                if command.status != "interrupted":
-                    await self.set_status(command, "completed")
-                if not command.future.done():
-                    command.future.set_result(events)
-            except Exception as error:
-                await self.set_status(command, "failed", str(error))
-                if not command.future.done():
-                    command.future.set_exception(error)
+                await self.run_command(command)
             finally:
-                self.active = None
                 self.queue.task_done()
+
+    async def checkpoint(self, accepts):
+        """Run eligible controls while preserving the remaining queue's order."""
+        pending, deferred = [], []
+        for _ in range(self.queue.qsize()):
+            entry = self.queue.get_nowait()
+            command = entry[2]
+            if command is not None and accepts(command):
+                pending.append(command)
+            else:
+                deferred.append(entry)
+        for entry in deferred:
+            self.queue.task_done()
+            self.queue.put_nowait(entry)
+        for command in pending:
+            try:
+                await self.run_command(command)
+            finally:
+                self.queue.task_done()
+
+    async def run_command(self, command):
+        """Execute a prepared command, preserving a suspended parent command."""
+        previous = self.active
+        if previous is None:
+            self.active = command
+        await self.set_status(command, "active")
+        events = []
+        try:
+            async for event in self.execute(command):
+                events.append(event)
+                if self.on_event:
+                    result = self.on_event(command, event)
+                    if inspect.isawaitable(result):
+                        await result
+            if command.status != "interrupted":
+                await self.set_status(command, "completed")
+            if not command.future.done():
+                command.future.set_result(events)
+        except Exception as error:
+            await self.set_status(command, "failed", str(error))
+            if not command.future.done():
+                command.future.set_exception(error)
+        finally:
+            self.active = previous

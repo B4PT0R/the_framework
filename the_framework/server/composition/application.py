@@ -20,6 +20,8 @@ from ...agent.extensions.specialists import AgentTrigger
 from ..api.endpoints import EndpointRegistry, SecurityPolicy
 from ..api.plugins import PluginHostApi
 from .plugins import PluginHost
+from .controls import _bind_application_controls
+from ..runtime.application import ApplicationRuntime
 from .dependencies import dependency_order
 from .services import ServiceContext, ServiceGraph, ServiceSpec
 from ..api.websockets import WebSocketRegistry
@@ -68,7 +70,6 @@ class BuildContext(modict[str, object]):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        object.__setattr__(self, "_provided", {})
         object.__setattr__(self, "_contributions", {})
         object.__setattr__(self, "_capabilities", MappingProxyType({}))
 
@@ -81,9 +82,10 @@ class BuildContext(modict[str, object]):
         """Expose a prepared value to plugins resolved later in the dependency DAG."""
         if not isinstance(name, str) or not name:
             raise ValueError("provided build context name must be a nonempty string")
-        if name in self or name in self._provided:
+        if name in self:
             raise ValueError(f"duplicate build context value: {name}")
-        self._provided[name] = value
+        # Only provide() may append names; ordinary mapping writes stay frozen.
+        dict.__setitem__(self, name, value)
         return value
 
     def contribute(self, name, value):
@@ -96,17 +98,11 @@ class BuildContext(modict[str, object]):
     def contributions(self, name):
         return tuple(self._contributions.get(name, ()))
 
-    def get(self, name, default=None):
-        if name in self._provided:
-            return self._provided[name]
-        return super().get(name, default)
-
     def require(self, name):
-        if name in self._provided:
-            return self._provided[name]
-        if name in self:
+        try:
             return self[name]
-        raise KeyError(f"missing build context value: {name}")
+        except KeyError as error:
+            raise KeyError(f"missing build context value: {name}") from error
 
 
 class Capability(modict):
@@ -863,13 +859,19 @@ def build_application(
                 ),
                 name=f"surface-preview:{surface.name}",
             )
+    agent_runtimes = [service for service in resolved_services.values() if isinstance(service, ApplicationRuntime)]
+    if len(agent_runtimes) > 1:
+        raise ValueError("an application may install only one primary agent runtime")
+    agent_runtime = agent_runtimes[0] if agent_runtimes else None
     plugin_host = PluginHost(
         plan,
         state_path=build_context.get("plugin_state_path"),
-        binding_update=build_context.get("plugin_binding_update"),
-        binding_snapshot=build_context.get("plugin_binding_snapshot"),
+        binding_update=build_context.get("plugin_binding_update", agent_runtime.set_plugin_binding if agent_runtime else None),
+        binding_snapshot=build_context.get("plugin_binding_snapshot", agent_runtime.plugin_bindings if agent_runtime else None),
     )
     runtime.plugin_host = plugin_host
+    if agent_runtime is not None:
+        _bind_application_controls(agent_runtime, app, ui_root=build_context.get("ui_root"))
 
     @asynccontextmanager
     async def lifespan(_app):

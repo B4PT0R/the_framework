@@ -121,11 +121,11 @@ class PluginHost:
         self._stored_bindings.update(self.states)
         return self
 
-    async def set_binding(self, name, enabled):
+    async def set_binding(self, name, enabled, *, call=None):
         async with self._binding_lock:
-            return await self._set_binding(name, enabled)
+            return await self._set_binding(name, enabled, call=call)
 
-    async def _set_binding(self, name, enabled):
+    async def _set_binding(self, name, enabled, *, call=None):
         spec = self.plan.plugins.get(name)
         if spec is None:
             raise ValueError(f"unknown plugin: {name}")
@@ -139,7 +139,7 @@ class PluginHost:
             return self.status(name)
         previous = state["binding_enabled"]
         if self.binding_update is not None:
-            result = self.binding_update(name, enabled)
+            result = self.binding_update(name, enabled, call=call)
             if inspect.isawaitable(result):
                 await result
         state["binding_enabled"] = enabled
@@ -148,7 +148,7 @@ class PluginHost:
         except Exception:
             state["binding_enabled"] = previous
             if self.binding_update is not None:
-                result = self.binding_update(name, previous)
+                result = self.binding_update(name, previous, call=call)
                 if inspect.isawaitable(result):
                     await result
             raise

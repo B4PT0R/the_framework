@@ -95,3 +95,87 @@ def test_stop_releases_pending_requests_commands_and_streams():
         assert not runtime.subscribers
 
     asyncio.run(run())
+
+
+def test_server_call_can_wait_for_worker_without_blocking_reception():
+    from the_framework.agent.runtime.protocol import ApplicationCall, ApplicationCancel, ApplicationRequest, WorkerStatus
+
+    async def run():
+        class Supervisor:
+            def __init__(self):
+                self.outputs = asyncio.Queue()
+                self.sent = asyncio.Queue()
+
+            async def send(self, request):
+                await self.sent.put(request)
+                if isinstance(request, StatusRequest):
+                    await self.outputs.put(WorkerStatus(request_id=request.id))
+
+        supervisor = Supervisor()
+        runtime = ApplicationRuntime(supervisor)
+        entered = asyncio.Event()
+        cancelled = asyncio.Event()
+
+        async def handler(method, payload):
+            if method == "status":
+                response = await runtime.request(StatusRequest(id="status"))
+                return {"request_id": response.request_id}
+            entered.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.set()
+
+        runtime.application.register("control", handler)
+        relay = asyncio.create_task(runtime.relay())
+        try:
+            await supervisor.outputs.put(ApplicationCall(request=ApplicationRequest(
+                id="status-call", capability="control", method="status",
+            )))
+            assert isinstance(await asyncio.wait_for(supervisor.sent.get(), 1), StatusRequest)
+            result = await asyncio.wait_for(supervisor.sent.get(), 1)
+            assert result.status == "success"
+            assert result.result["request_id"] == "status"
+            await supervisor.outputs.put(ApplicationCall(request=ApplicationRequest(
+                id="slow-call", capability="control", method="wait",
+            )))
+            await asyncio.wait_for(entered.wait(), 1)
+            await supervisor.outputs.put(ApplicationCancel(call_id="slow-call", reason="timeout"))
+            await asyncio.wait_for(cancelled.wait(), 1)
+            assert supervisor.sent.empty()
+        finally:
+            relay.cancel()
+            await asyncio.gather(relay, return_exceptions=True)
+            await runtime.application.stop()
+
+    asyncio.run(run())
+
+
+def test_failed_observer_does_not_lose_worker_response(caplog):
+    from the_framework.agent.runtime.protocol import WorkerStatus
+
+    async def run():
+        class Supervisor:
+            def __init__(self):
+                self.outputs = asyncio.Queue()
+
+            async def send(self, request):
+                await self.outputs.put(WorkerStatus(request_id=request.id))
+
+        runtime = ApplicationRuntime(Supervisor())
+
+        def failed(_output):
+            raise RuntimeError("observer broke")
+
+        runtime.register_observer(failed)
+        relay = asyncio.create_task(runtime.relay())
+        try:
+            response = await runtime.request(StatusRequest(id="probe"), timeout=1)
+            assert response.request_id == "probe"
+            assert not relay.done()
+        finally:
+            relay.cancel()
+            await asyncio.gather(relay, return_exceptions=True)
+
+    asyncio.run(run())
+    assert "observer broke" in caplog.text

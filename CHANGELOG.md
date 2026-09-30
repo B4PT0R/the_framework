@@ -4,6 +4,21 @@ Notable changes to the Python distribution are recorded here. Versions follow
 the distribution `b4pt0r-the-framework`; the import remains `the_framework`.
 Until a stable release, minor versions may revise the public composition API.
 
+## Unreleased
+
+- Execute application calls independently of worker reception, with bounded
+  concurrency, cancellation and cleanup across worker recovery.
+- Keep receiving worker responses when an output observer fails, and roll back
+  cancelled service startup without masking the original failure.
+- Store build-context exports alongside inputs so all mapping operations agree.
+- Apply plugin-binding controls while agent tools are suspended, preserving
+  durable receipts and rejecting expired originating calls.
+- Connect an installed primary runtime to plugin bindings and agent-facing
+  controls automatically. Remove the former public `bind_application_controls`
+  post-build step; pass an initial surface artifact as `BuildContext.ui_root`.
+  Binding callback overrides accept `call=None` and forward it to
+  `ApplicationRuntime.set_plugin_binding`.
+
 ## 0.2.1 - 2026-09-24
 
 - Let an explicit YAML schema shape replace incompatible structure inferred

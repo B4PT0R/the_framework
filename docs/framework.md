@@ -49,14 +49,6 @@ Runtime prompt resources live next to that runtime and are verified from the
 built wheel. Moving Python modules does not change persisted JSON discriminators
 or the HTTP/WebSocket protocol.
 
-Reorganization verification: 875 application/agentic Python tests pass, including
-real worker subprocesses and wheel isolation. All 90 framework modules import
-without the product package. The public facade export sets remain unchanged
-(14 root, 138 agent and 22 server symbols); architecture checks protect model
-independence and the the_framework/product boundary. Ruff's import/name/error checks and
-`git diff --check` pass. This is a source/package verification, not a production
-restart or a new device acceptance run.
-
 This repository distributes the `the_framework` import package as `b4pt0r-the-framework` and bundles the neutral `starter`
 template, without the product application. Run `the-framework bootstrap` (or
 `python -m the_framework bootstrap`) to copy the editable starter into a code
@@ -160,6 +152,43 @@ See `examples/minimal_agent_app.py` for a complete authenticated example. No
 Pydantic DTO, model serialization layer or second validation implementation is
 introduced; model metadata is adapted only at the HTTP/OpenAPI boundary.
 
+### Primary runtime integration
+
+Installing one `ApplicationRuntime` service through an `Extension` automatically
+connects the plugin host's binding updates and startup snapshot to its worker,
+and registers the agent-facing plugin and installed surface controls. Supply
+`ui_root` in `BuildContext` to bootstrap a surface's initial artifact. There is
+no separate post-build control-registration call.
+
+An application may override `plugin_binding_update` for its own modality or
+policy barriers. The callback accepts `(name, enabled, *, call=None)` and should
+invoke `runtime.set_plugin_binding(name, enabled, call=call)`. The optional
+`ApplicationCall` identifies a tool that is suspended awaiting this operation.
+Ordinary HTTP changes have no originating call.
+
+Binding controls have default priority 5 (ordinary commands use 10). They may
+execute at an application-call suspension point, including before that call is
+sent; other queued commands retain their priority and FIFO ordering. Correlated
+binding requests whose tool call is no longer waiting fail instead of becoming
+late queued mutations. The worker remains the owner of activation and durable
+session writes, and confirms application before the server persists its binding.
+
+### Application calls
+
+`ApplicationBridge.dispatch()` accepts a worker call and executes it independently
+of worker reception. Results still return through the correlated application
+protocol. Register with `contextual="call"` to receive the complete
+`ApplicationCall` as the `call` keyword; `contextual=True` supplies only
+`command_id`. A slow asynchronous service must not prevent status replies or call
+cancellations from being received. The bridge limits concurrent calls, cancels
+running calls on `ApplicationCancel`, and drains them on shutdown or worker
+recovery. Service handlers must cooperate with cancellation; synchronous work
+that blocks the event loop should use an asynchronous adapter.
+
+Worker-output observers are ordered with reception. Their exceptions are logged
+without losing the worker response; observers must not wait for replies from
+that same worker.
+
 ### Service lifecycle
 
 Use constructor callbacks for permanent service relationships and the existing
@@ -182,7 +211,9 @@ media = Extension(
 ```
 
 Services start in dependency order and stop in exact reverse order. A partial
-startup is rolled back. Optional services can set `critical=False`; their
+startup is rolled back, including cancellation; startup and cleanup failures
+are both preserved when rollback fails. A service must release any resources
+acquired by its own unsuccessful `start()`. Optional services can set `critical=False`; their
 failure remains visible in the graph health report without taking down the
 application. Explicit `start`, `stop` and `health` adapters exist for advanced
 or third-party services, but are not required by the common path.
@@ -321,7 +352,8 @@ compilation before the factory runs.
 The runtime factory may also expose a prepared object to later factories with
 `context.provide("feature.name", value)`; other factories read it with
 `context.require(...)` or `context.get(...)`. Names cannot overwrite initial
-context inputs or another export.
+context inputs or another export. Exports become ordinary entries in the same
+read-only mapping: indexing, membership, iteration and `get()` all see them.
 
 Some integrations are contributions to an owner's policy rather than a service
 dependency. A runtime factory can call `context.contribute("feature.policy",

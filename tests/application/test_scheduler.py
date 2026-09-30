@@ -170,10 +170,10 @@ def test_application_bridge_resolves_server_capabilities_without_frontend_runtim
     async def test():
         class Supervisor:
             def __init__(self):
-                self.sent = []
+                self.sent = asyncio.Queue()
 
             async def send(self, request):
-                self.sent.append(request)
+                await self.sent.put(request)
 
         supervisor = Supervisor()
         bridge = ApplicationBridge(supervisor)
@@ -193,8 +193,7 @@ def test_application_bridge_resolves_server_capabilities_without_frontend_runtim
         ))
 
         assert bridge.connected is False
-        assert len(supervisor.sent) == 1
-        result = supervisor.sent[0]
+        result = await asyncio.wait_for(supervisor.sent.get(), 1)
         assert isinstance(result, ApplicationResult)
         assert result.status == "success"
         assert result.result == {"method": "echo", "value": 42}
@@ -206,10 +205,10 @@ def test_application_bridge_passes_the_active_command_to_contextual_capabilities
     async def test():
         class Supervisor:
             def __init__(self):
-                self.sent = []
+                self.sent = asyncio.Queue()
 
             async def send(self, request):
-                self.sent.append(request)
+                await self.sent.put(request)
 
         supervisor = Supervisor()
         bridge = ApplicationBridge(supervisor)
@@ -231,12 +230,13 @@ def test_application_bridge_passes_the_active_command_to_contextual_capabilities
             ),
         ))
 
+        result = await asyncio.wait_for(supervisor.sent.get(), 1)
         assert contexts == [(
             "reboot_server",
             {"action_id": "restart-42"},
             "turn-42",
         )]
-        assert supervisor.sent[0].status == "success"
+        assert result.status == "success"
 
     asyncio.run(test())
 

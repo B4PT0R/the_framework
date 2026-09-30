@@ -154,8 +154,14 @@ class ServiceGraph:
                 else:
                     self.context.add(name, spec.service)
                     self.started.append(name)
-        except Exception:
-            await self.stop()
+        except BaseException as startup_error:
+            try:
+                await self.stop()
+            except BaseException as cleanup_error:
+                raise BaseExceptionGroup(
+                    "application service startup and cleanup failed",
+                    [startup_error, cleanup_error],
+                ) from None
             raise
         return self.context
 
@@ -164,14 +170,14 @@ class ServiceGraph:
         for name in reversed(self.started):
             try:
                 await invoke_lifecycle(self.specs[name], "stop", self.context)
-            except Exception as error:
+            except BaseException as error:
                 self.errors[name] = str(error)
                 failures.append(error)
             finally:
                 self.context.remove(name, self.specs[name].service)
         self.started.clear()
         if failures:
-            raise ExceptionGroup("application service shutdown failed", failures)
+            raise BaseExceptionGroup("application service shutdown failed", failures)
 
     async def health(self):
         result = {}

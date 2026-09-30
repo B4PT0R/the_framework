@@ -87,6 +87,9 @@ class ConfigUpdateRequest(QueuedRequest):
 
 
 class PluginBindingRequest(QueuedRequest):
+    priority: int = 5
+    # A binding requested by a waiting tool is part of that tool, not a new turn.
+    application_call_id: str | None = None
     plugin: str = modict.field(required="always")
     enabled: bool = modict.field(required="always")
 

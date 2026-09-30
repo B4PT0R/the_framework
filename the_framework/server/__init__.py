@@ -1,5 +1,4 @@
 from .api.agent import CanonicalAgentApi
-from .composition.controls import bind_application_controls
 from .composition.application import (
     AgentApplication,
     BuildContext,
@@ -41,6 +40,5 @@ __all__ = [
     "SurfaceService",
     "WebSocketEndpoint",
     "build_application",
-    "bind_application_controls",
     "websocket",
 ]

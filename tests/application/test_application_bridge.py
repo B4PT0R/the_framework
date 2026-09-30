@@ -136,3 +136,74 @@ def test_application_event_ack_returns_to_its_originating_connection():
         await bridge.stop()
 
     asyncio.run(test())
+
+
+def test_stopping_bridge_cancels_server_calls_without_late_results():
+    from the_framework.agent.runtime.protocol import ApplicationCall, ApplicationRequest
+
+    async def run():
+        results = asyncio.Queue()
+        entered = asyncio.Event()
+        closed = asyncio.Event()
+
+        class RecordingSupervisor:
+            async def send(self, result):
+                await results.put(result)
+
+        async def wait(method, payload):
+            entered.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                closed.set()
+
+        bridge = ApplicationBridge(RecordingSupervisor())
+        bridge.register("slow", wait)
+        await bridge.dispatch(ApplicationCall(request=ApplicationRequest(
+            id="pending", capability="slow", method="wait",
+        )))
+        await asyncio.wait_for(entered.wait(), 1)
+        await bridge.stop()
+        assert closed.is_set()
+        assert results.empty()
+
+    asyncio.run(run())
+
+
+def test_invalid_server_result_is_reported_as_call_failure():
+    from the_framework.agent.runtime.protocol import ApplicationCall, ApplicationRequest
+
+    async def run():
+        results = asyncio.Queue()
+
+        class RecordingSupervisor:
+            async def send(self, result):
+                await results.put(result)
+
+        bridge = ApplicationBridge(RecordingSupervisor())
+        bridge.register("invalid", lambda method, payload: object())
+        await bridge.dispatch(ApplicationCall(request=ApplicationRequest(
+            id="invalid", capability="invalid", method="read",
+        )))
+        result = await asyncio.wait_for(results.get(), 1)
+        assert result.status == "failure"
+        assert "non-JSON" in result.error
+        await bridge.stop()
+
+    asyncio.run(run())
+
+
+def test_stopping_bridge_releases_server_requests_to_client():
+    import pytest
+    from the_framework.agent.runtime.application import ApplicationError
+
+    async def run():
+        bridge = ApplicationBridge(Supervisor())
+        bridge.websocket = object()
+        request = asyncio.create_task(bridge.call("client", "read", timeout_ms=60_000))
+        await asyncio.wait_for(bridge.outgoing.get(), 1)
+        await bridge.stop()
+        with pytest.raises(ApplicationError, match="runtime stopped"):
+            await asyncio.wait_for(request, 1)
+
+    asyncio.run(run())

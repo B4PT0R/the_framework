@@ -73,7 +73,12 @@ def test_build_context_accepts_ordered_exports_without_mutating_inputs():
     assert context.get("prepared") is exported
     assert context.require("prepared") is exported
     assert context.require("initial") is initial
-    assert dict(context) == {"initial": initial}
+    assert dict(context) == {"initial": initial, "prepared": exported}
+    assert "prepared" in context
+    assert context["prepared"] is exported
+    assert tuple(context.keys()) == ("initial", "prepared")
+    with pytest.raises(TypeError):
+        context["prepared"] = object()
     with pytest.raises(ValueError, match="duplicate build context value"):
         context.provide("prepared", object())
     with pytest.raises(ValueError, match="duplicate build context value"):

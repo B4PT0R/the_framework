@@ -122,3 +122,44 @@ def test_failed_optional_dependency_is_not_exposed_or_started_downstream():
         assert events == ["start:optional"]
 
     asyncio.run(scenario())
+
+
+def test_cancelled_start_rolls_back_started_services():
+    async def run():
+        events = []
+        entered = asyncio.Event()
+
+        class WaitingService(Service):
+            async def start(self):
+                entered.set()
+                await asyncio.Event().wait()
+
+        graph = ServiceGraph([
+            ServiceSpec(name="worker", service=Service("worker", events)),
+            ServiceSpec(name="waiting", service=WaitingService("waiting", events), depends_on=("worker",)),
+        ])
+        start = asyncio.create_task(graph.start())
+        await entered.wait()
+        start.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await start
+        assert events == ["start:worker", "stop:worker"]
+        assert not graph.running
+        assert not graph.context.snapshot()
+
+    asyncio.run(run())
+
+
+def test_start_and_rollback_errors_are_both_preserved():
+    async def run():
+        graph = ServiceGraph([
+            ServiceSpec(name="worker", service=Service("worker", [], fail_stop=True)),
+            ServiceSpec(name="remote", service=Service("remote", [], fail_start=True), depends_on=("worker",)),
+        ])
+        with pytest.raises(ExceptionGroup) as caught:
+            await graph.start()
+        assert str(caught.value.exceptions[0]) == "cannot start remote"
+        assert str(caught.value.exceptions[1].exceptions[0]) == "cannot stop worker"
+        assert not graph.running
+
+    asyncio.run(run())

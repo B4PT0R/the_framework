@@ -865,3 +865,50 @@ def test_active_tool_can_await_an_application_result_while_worker_receives():
         assert agent.result == {"echo": "hello"}
 
     asyncio.run(test())
+
+
+def test_cancelling_worker_application_call_notifies_server():
+    from the_framework.agent.runtime.protocol import ApplicationCancel, ApplicationRequest
+
+    async def run():
+        sent = asyncio.Queue()
+        worker = Worker(Agent(), asyncio.Queue().get, sent.put)
+        call = asyncio.create_task(worker.request_application(ApplicationRequest(
+            id="cancelled-call", capability="slow", method="wait",
+        )))
+        assert isinstance(await asyncio.wait_for(sent.get(), 1), ApplicationCall)
+        call.cancel()
+        try:
+            await call
+        except asyncio.CancelledError:
+            pass
+        else:
+            raise AssertionError("application call did not propagate cancellation")
+        cancellation = await asyncio.wait_for(sent.get(), 1)
+        assert isinstance(cancellation, ApplicationCancel)
+        assert cancellation.call_id == "cancelled-call"
+        assert cancellation.reason == "cancelled"
+        assert not worker.application_calls
+
+    asyncio.run(run())
+
+
+def test_expired_tool_binding_is_failed_instead_of_queued():
+    from the_framework.agent.runtime.protocol import PluginBindingRequest, CommandFailed
+
+    async def run():
+        sent = asyncio.Queue()
+        agent = Agent()
+        worker = Worker(agent, asyncio.Queue().get, sent.put)
+        await worker.handle(PluginBindingRequest(
+            id="late-binding", plugin="feature", enabled=False,
+            application_call_id="expired-call",
+        ))
+        await sent.get()
+        failure = await sent.get()
+        assert isinstance(failure, CommandFailed)
+        assert "no longer waiting" in failure.error
+        assert worker.commands.queue.empty()
+        assert agent.session.command_status("late-binding") == "failed"
+
+    asyncio.run(run())

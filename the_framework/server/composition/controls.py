@@ -3,21 +3,21 @@
 from pathlib import Path
 
 
-def bind_application_controls(runtime, app, *, ui_root=None):
+def _bind_application_controls(runtime, app, *, ui_root=None):
     """Expose generic plugin and surface hosts to the canonical agent."""
     plugin_host = app.state.application.plugin_host
     surface_service = app.state.application.surface_service
-    if ui_root is not None and surface_service.active_path("main") is None:
+    if ui_root is not None and surface_service is not None and surface_service.active_path("main") is None:
         resolved_ui_root = Path(ui_root).expanduser().resolve()
         if resolved_ui_root.is_dir():
             surface_service.bootstrap("main", resolved_ui_root)
 
-    async def handle_plugins(method, payload):
+    async def handle_plugins(method, payload, *, call):
         if method == "list":
             return {"plugins": plugin_host.status()}
         name = str(payload.get("name") or "")
         if method == "set_binding":
-            return await plugin_host.set_binding(name, bool(payload.get("enabled")))
+            return await plugin_host.set_binding(name, bool(payload.get("enabled")), call=call)
         raise ValueError(f"unknown plugin operation: {method}")
 
     async def handle_surfaces(method, payload):
@@ -35,5 +35,6 @@ def bind_application_controls(runtime, app, *, ui_root=None):
             return await surface_service.rollback(name)
         raise ValueError(f"unknown surface operation: {method}")
 
-    runtime.application.register("plugins", handle_plugins)
-    runtime.application.register("surfaces", handle_surfaces)
+    runtime.application.register("plugins", handle_plugins, contextual="call")
+    if surface_service is not None:
+        runtime.application.register("surfaces", handle_surfaces)

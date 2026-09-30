@@ -1,6 +1,7 @@
 import asyncio
 import inspect
 import logging
+from typing import Literal
 
 from starlette.websockets import WebSocketDisconnect
 
@@ -26,6 +27,7 @@ class ApplicationBridge:
         self.outgoing = asyncio.Queue(128)
         self.pending = {}
         self.local_pending = {}
+        self.calls = {}
         self.handlers = {}
         self.event_handlers = {}
         self.events = asyncio.Queue(128)
@@ -40,15 +42,26 @@ class ApplicationBridge:
             )
 
     async def stop(self):
-        task = self.event_processor_task
+        tasks = (*self.calls.values(), self.event_processor_task)
         self.event_processor_task = None
-        if task is not None:
-            task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
+        for task in tasks:
+            if task is not None:
+                task.cancel()
+        await asyncio.gather(*(task for task in tasks if task is not None), return_exceptions=True)
+        self.calls.clear()
+        self.pending.clear()
+        for future in self.local_pending.values():
+            if not future.done():
+                future.set_exception(ApplicationError("application runtime stopped"))
+        self.local_pending.clear()
+        while not self.outgoing.empty():
+            self.outgoing.get_nowait()
         while not self.events.empty():
             self.events.get_nowait()
 
-    def register(self, capability, handler, *, contextual=False):
+    def register(self, capability, handler, *, contextual: bool | Literal["call"] = False):
+        if contextual not in {False, True, "call"}:
+            raise ValueError("application context must be False, True, or call")
         if capability in self.handlers:
             raise ValueError(f"duplicate application capability: {capability}")
         self.handlers[capability] = (handler, contextual)
@@ -66,6 +79,33 @@ class ApplicationBridge:
         return self.websocket is not None
 
     async def dispatch(self, output):
+        """Accept calls without tying worker reception to their execution."""
+        if isinstance(output, ApplicationCall):
+            call_id = output.request.id
+            if call_id in self.calls:
+                raise ValueError(f"duplicate application call: {call_id}")
+            if len(self.calls) >= 128:
+                if call_id in self.local_pending:
+                    await self.reject(call_id, "application runtime bridge is saturated")
+                else:
+                    await self.fail(call_id, "application runtime bridge is saturated")
+                return
+            task = asyncio.create_task(self._dispatch(output), name=f"application-call:{call_id}")
+            self.calls[call_id] = task
+            task.add_done_callback(lambda completed: self._call_done(call_id, completed))
+            return
+        task = self.calls.get(output.call_id)
+        if task is not None:
+            task.cancel()
+        await self._dispatch(output)
+
+    def _call_done(self, call_id, task):
+        if self.calls.get(call_id) is task:
+            self.calls.pop(call_id)
+        if not task.cancelled() and task.exception() is not None:
+            logger.error("application call %s failed", call_id, exc_info=task.exception())
+
+    async def _dispatch(self, output):
         if isinstance(output, ApplicationCancel):
             self.pending.pop(output.call_id, None)
             for router in self.routers:
@@ -78,7 +118,8 @@ class ApplicationBridge:
             if registration is not None:
                 handler, contextual = registration
                 try:
-                    kwargs = {"command_id": output.command_id} if contextual else {}
+                    kwargs = ({"call": output} if contextual == "call" else
+                              {"command_id": output.command_id} if contextual else {})
                     result = handler(
                         output.request.method,
                         output.request.payload,
@@ -86,14 +127,15 @@ class ApplicationBridge:
                     )
                     if inspect.isawaitable(result):
                         result = await result
-                except Exception as error:
-                    await self.fail(output.request.id, str(error))
-                else:
-                    await self.supervisor.send(ApplicationResult(
+                    response = ApplicationResult(
                         id=output.request.id,
                         status="success",
                         result=result,
-                    ))
+                    )
+                except Exception as error:
+                    await self.fail(output.request.id, str(error))
+                else:
+                    await self.supervisor.send(response)
                 return
             local_call = output.request.id in self.local_pending
             if not local_call:
@@ -134,7 +176,8 @@ class ApplicationBridge:
         registration = self.handlers.get(capability)
         if registration is not None:
             handler, contextual = registration
-            kwargs = {"command_id": None} if contextual else {}
+            kwargs = ({"call": None} if contextual == "call" else
+                      {"command_id": None} if contextual else {})
             result = handler(method, payload or {}, **kwargs)
             return await result if inspect.isawaitable(result) else result
         request = ApplicationRequest(
@@ -146,11 +189,11 @@ class ApplicationBridge:
         )
         future = asyncio.get_running_loop().create_future()
         self.local_pending[request.id] = future
-        await self.dispatch(ApplicationCall(
-            request_id=request.id,
-            request=request,
-        ))
         try:
+            await self.dispatch(ApplicationCall(
+                request_id=request.id,
+                request=request,
+            ))
             return await asyncio.wait_for(future, timeout_ms / 1000)
         except TimeoutError as error:
             raise ApplicationError(
@@ -158,6 +201,8 @@ class ApplicationBridge:
             ) from error
         finally:
             self.local_pending.pop(request.id, None)
+            if future.cancelled() or not future.done():
+                await self.dispatch(ApplicationCancel(call_id=request.id, reason="call cancelled"))
 
     async def fail(self, call_id, error):
         await self.supervisor.send(ApplicationResult(
@@ -206,6 +251,8 @@ class ApplicationBridge:
         result = ApplicationResult(**payload)
         local = self.local_pending.get(result.id)
         if local is not None:
+            if local.done():
+                raise ValueError(f"completed application call: {result.id}")
             if result.status == "success":
                 local.set_result(result.result)
             else:

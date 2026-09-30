@@ -70,7 +70,7 @@ def test_binding_changes_do_not_stop_runtime_and_persist(tmp_path):
         events = []
         bindings = []
 
-        async def update_binding(name, enabled):
+        async def update_binding(name, enabled, *, call=None):
             bindings.append((name, enabled))
 
         context = BuildContext({
@@ -147,7 +147,7 @@ def test_concurrent_binding_changes_are_serialized_and_persisted(tmp_path):
         release_first = asyncio.Event()
         updates = []
 
-        async def update_binding(name, enabled):
+        async def update_binding(name, enabled, *, call=None):
             updates.append((name, enabled))
             if not enabled:
                 first_started.set()
@@ -439,7 +439,7 @@ def test_binding_persistence_failure_rolls_back_worker_and_memory_state(tmp_path
     async def scenario():
         bindings = []
 
-        async def update_binding(name, enabled):
+        async def update_binding(name, enabled, *, call=None):
             bindings.append((name, enabled))
 
         app = declaration(Service([])).build(BuildContext({

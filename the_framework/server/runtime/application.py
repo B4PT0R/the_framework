@@ -16,6 +16,7 @@ from ...agent.runtime.protocol import (
     CommandFailed,
     ExternalEventRequest,
     PromptRequest,
+    PluginBindingRequest,
 )
 from the_framework.utils.ids import timestamp_id
 
@@ -122,6 +123,15 @@ class ApplicationRuntime:
             item["name"]: item["activated"]
             for item in self.ready.plugins
         }
+
+    async def set_plugin_binding(self, name: str, enabled: bool, *, call: ApplicationCall | None = None) -> None:
+        """Apply a binding in the worker, including from a suspended agent tool."""
+        result = await self.command(PluginBindingRequest(
+            id=timestamp_id(), plugin=name, enabled=enabled,
+            application_call_id=call.request.id if call is not None else None,
+        ))
+        if result is None or result.type != "agent.plugin.binding.updated":
+            raise RuntimeError("worker did not confirm the plugin binding update")
 
     async def start(self):
         self.stopping = False
@@ -323,9 +333,12 @@ class ApplicationRuntime:
                     await self.recover_worker()
                 continue
             for observer in tuple(self.observers):
-                observed = observer(output)
-                if inspect.isawaitable(observed):
-                    await observed
+                try:
+                    observed = observer(output)
+                    if inspect.isawaitable(observed):
+                        await observed
+                except Exception:
+                    logger.exception("worker output observer failed: %r", observer)
             response = self.responses.pop(output.request_id, None)
             if response is not None and not response.done():
                 response.set_result(output)
@@ -336,6 +349,7 @@ class ApplicationRuntime:
             await self.publish(output)
 
     async def recover_worker(self):
+        await self.application.stop()
         delay = 0.25
         while not self.stopping and not self.resetting:
             try:
@@ -353,6 +367,7 @@ class ApplicationRuntime:
             self.activity_label = self.activity_labels["idle"]
             self.activity_started_at = None
             self.activity_updated_at = time.time()
+            await self.application.start()
             await self.broadcast_worker_directory()
             logger.info("canonical worker restarted after unexpected exit")
             return
