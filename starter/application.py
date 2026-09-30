@@ -25,7 +25,7 @@ from the_framework.plugins.scheduler.service import SchedulerService
 from the_framework.plugins.system import SystemPlugin
 from the_framework.plugins.system.service import SystemControlService
 from the_framework.plugins.web_search import WebSearchPlugin
-from the_framework.server.runtime.realtime import RealtimeController
+from the_framework.plugins.realtime.controller import RealtimeController
 
 from .voice import VoiceApi
 

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from the_framework.server.runtime.realtime import RealtimeController
+from the_framework.plugins.realtime.controller import RealtimeController
 
 
 class Sideband:

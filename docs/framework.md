@@ -563,7 +563,7 @@ applications specialize `memory.plugin.MemoryPlugin.curator_instructions`.
 `the_framework.plugins.browser` accepts an explicit runtime directory and uses
 `the_framework.server.clients.browser`/`the_framework.server.clients.browser_rpc` for the persistent Playwright process.
 `the_framework.plugins.realtime` provides canonical voice projection with application-owned
-provider selection. `the_framework.server.runtime.realtime.RealtimeController` owns transport and
+provider selection. `the_framework.plugins.realtime.controller.RealtimeController` owns transport and
 delegation; subclasses contribute context through `start_context`, `ready_context`,
 `flush_context` and `close_context`. The latter must stop and await their producers.
 Use `await controller.append_context(text)` to deliver live-only context without

@@ -6,6 +6,10 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Move the voice controller from `server.runtime.realtime` to
+  `plugins.realtime.controller`. Import it from its plugin-owned module;
+  the server and agent core remain usable without any bundled plugin.
+
 - Build declared primary and private workers from `WorkerSupervisor` application
   inputs, replacing hand-written generic-worker commands and forwarding fleet
   factories in the starter and Harness.
