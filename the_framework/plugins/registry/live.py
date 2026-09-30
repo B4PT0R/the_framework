@@ -52,7 +52,7 @@ class RegistryLiveContext:
             return False
         if any(item.get("revision") == revision for item in self.pending):
             return False
-        if self.controller._vocal_provider_context_blocked():
+        if self.controller.context_blocked:
             self.pending.append(delta)
             return True
         return await self._append(delta)
@@ -61,7 +61,7 @@ class RegistryLiveContext:
         revision = delta["revision"]
         if revision <= self.revision:
             return False
-        sent = await self.controller._send_ephemeral_context(
+        sent = await self.controller.append_context(
             self._update_text(delta),
             event_id=f"registry:update:{revision}:{timestamp_id()}",
         )
@@ -70,7 +70,7 @@ class RegistryLiveContext:
         return sent
 
     async def flush(self):
-        if self.controller._vocal_provider_context_blocked() or not self.pending:
+        if self.controller.context_blocked or not self.pending:
             return
         pending = self.pending
         self.pending = []

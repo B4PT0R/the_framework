@@ -1,7 +1,6 @@
 """Exercise declarative HTTP composition with the real generic worker."""
 
 import asyncio
-import sys
 
 from httpx import ASGITransport, AsyncClient
 
@@ -88,17 +87,8 @@ def test_generic_worker_builds_a_declared_private_agent(tmp_path):
         session = tmp_path / "private-agent.json"
         supervisor = WorkerSupervisor(
             session,
-            command=[
-                sys.executable,
-                "-m",
-                "the_framework.agent.runtime.worker_process",
-                "--session",
-                str(session),
-                "--application",
-                "starter.application:application",
-                "--agent",
-                "memory.jiminy",
-            ],
+            application_reference="starter.application:application",
+            agent_name="memory.jiminy",
         )
         ready = await supervisor.start()
         try:
@@ -107,5 +97,25 @@ def test_generic_worker_builds_a_declared_private_agent(tmp_path):
         finally:
             await supervisor.stop()
         assert supervisor.process.returncode == 0
+
+    asyncio.run(run())
+
+
+def test_default_fleet_uses_the_primary_application_declaration(tmp_path):
+    async def run():
+        runtime = ApplicationRuntime(WorkerSupervisor(
+            tmp_path / "session.json",
+            application_reference="starter.application:application",
+            plugin_state_path=tmp_path / "plugins.json",
+        ))
+        await runtime.start()
+        try:
+            assert runtime.ready.name == "assistant"
+            specialist = runtime.fleet.runners["memory.jiminy"]
+            assert await specialist.ensure_running()
+            assert specialist.ready.name == "memory.jiminy"
+            assert specialist.ready.plugins == [{"name": "memory_curator", "activated": True}]
+        finally:
+            await runtime.stop()
 
     asyncio.run(run())

@@ -1,7 +1,6 @@
 """Assemble the worker and HTTP surface without importing the product app."""
 
 import asyncio
-import sys
 from pathlib import Path
 
 from the_framework import AgentApplication, BuildContext, Extension
@@ -12,7 +11,6 @@ from the_framework.server import (
     WorkerSupervisor,
 )
 from the_framework.server.runtime.application import ApplicationRuntime
-from the_framework.server.runtime.fleet import FleetSupervisor
 
 from .application import ROOT, application
 from .security import LocalSecurity
@@ -23,14 +21,10 @@ REFERENCE = "starter.application:application"
 def create_app(data_root, *, token, origin, runtime=None, restart=None):
     root = Path(data_root).resolve()
     if runtime is None:
-        supervisor = WorkerSupervisor(root / "session.json", command=[
-            sys.executable, "-m", "the_framework.agent.runtime.worker_process",
-            "--session", str(root / "session.json"),
-            "--application", REFERENCE, "--agent", application.primary_agent.name,
-            "--plugin-state", str(root / "plugins.json"),
-        ])
-        runtime = ApplicationRuntime(supervisor, fleet_factory=lambda path, profiles: FleetSupervisor(
-            path, profiles, application_reference=REFERENCE,
+        runtime = ApplicationRuntime(WorkerSupervisor(
+            root / "session.json", application_reference=REFERENCE,
+            agent_name=application.primary_agent.name,
+            plugin_state_path=root / "plugins.json",
         ))
     security = LocalSecurity(token, origin=origin)
     sockets = CanonicalTransportSockets(runtime, event_handshake=security.handshake,

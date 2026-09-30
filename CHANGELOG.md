@@ -6,6 +6,14 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Build declared primary and private workers from `WorkerSupervisor` application
+  inputs, replacing hand-written generic-worker commands and forwarding fleet
+  factories in the starter and Harness.
+- Expose realtime `append_context`, `discard_context` and `context_blocked`.
+  Share ordered, latest-state and discard delivery policies behind voice
+  barriers; remove redundant application delivery buffers. Report saturation
+  rather than silently dropping accepted ordered context.
+
 - Execute application calls independently of worker reception, with bounded
   concurrency, cancellation and cleanup across worker recovery.
 - Keep receiving worker responses when an output observer fails, and roll back

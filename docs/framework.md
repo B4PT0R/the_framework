@@ -566,12 +566,28 @@ applications specialize `memory.plugin.MemoryPlugin.curator_instructions`.
 provider selection. `the_framework.server.runtime.realtime.RealtimeController` owns transport and
 delegation; subclasses contribute context through `start_context`, `ready_context`,
 `flush_context` and `close_context`. The latter must stop and await their producers.
+Use `await controller.append_context(text)` to deliver live-only context without
+adding it to canonical history. `delivery="ordered"` preserves accepted updates;
+`delivery="latest", key="source"` replaces queued state for that source;
+`delivery="discard"` rejects an update while delivery is busy. The controller
+waits for peer readiness, active responses and delegated speech. Its bounded
+queue returns `False` when full or when no call is active; `True` means delivered
+or queued for this call. `discard_context(key)` invalidates queued state, and
+`context_blocked` lets producers postpone expensive retrieval. Closing a call
+clears queued updates. These public operations replace private transport calls
+and application-owned delivery buffers.
 Pandora's thin plugin specializations retain her prompts and defaults; her live
 controller owns video/pleasure context. No product import is required by these
 shared mechanisms. Runtime observers use `register_observer`/`unregister_observer`.
 
 An `ApplicationRuntime(WorkerSupervisor(session_path))` can be installed as an
 `Extension` service, with `CanonicalAgentApi` endpoints in a dependent extension.
+For a declared application, pass `application_reference="my_app:application"`
+to `WorkerSupervisor`, with optional `agent_name` and `plugin_state_path`.
+The default fleet uses the same application reference to build private agents;
+no custom worker command or forwarding fleet factory is needed. A custom
+`command` remains available for other worker executables, and cannot be combined
+with these declaration inputs; custom fleet factories remain explicit overrides.
 The default generic worker persists its canonical session. Durable configuration
 and plugin-state storage are separate application choices. Declare a
 `resources(session_path) -> AgentResources` factory on `AgentSpec`, returning

@@ -79,15 +79,15 @@ class MemoryLiveContext:
     def _schedule_memory_append(self):
         if self.controller.sideband is None or self.controller.call_id is None:
             return
-        if self.controller._vocal_provider_context_blocked():
+        if self.controller.context_blocked:
             self.pending_memory_appends += 1
             return
         task = asyncio.create_task(self._append_next_memory_safely())
         self.memory_append_tasks.add(task)
         task.add_done_callback(self.memory_append_tasks.discard)
 
-    def _flush_pending_memory_appends(self):
-        if self.controller._vocal_provider_context_blocked() or not self.pending_memory_appends:
+    def flush(self):
+        if self.controller.context_blocked or not self.pending_memory_appends:
             return
         count = self.pending_memory_appends
         self.pending_memory_appends = 0
@@ -118,7 +118,7 @@ class MemoryLiveContext:
                 if candidate is None:
                     return False
                 memory_id = str(candidate["id"])
-                sent = await self.controller._send_ephemeral_context(
+                sent = await self.controller.append_context(
                     candidate["text"],
                     event_id=f"memory:append:{memory_id}:{timestamp_id()}",
                 )

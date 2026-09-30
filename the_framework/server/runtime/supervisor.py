@@ -25,10 +25,19 @@ class WorkerSupervisor:
         ready_timeout=10,
         stop_timeout=5,
         stream_limit_bytes=32 * 1024 * 1024,
+        *,
+        application_reference: str | None = None,
+        agent_name: str | None = None,
+        plugin_state_path=None,
     ):
         if stream_limit_bytes < 64 * 1024:
             raise ValueError("worker IPC stream limit must be at least 64 KiB")
+        if command is not None and any(value is not None for value in (application_reference, agent_name, plugin_state_path)):
+            raise ValueError("a custom worker command cannot also declare application inputs")
+        if application_reference is None and (agent_name is not None or plugin_state_path is not None):
+            raise ValueError("agent and plugin state require an application reference")
         self.session_path = session_path
+        self.application_reference = application_reference
         self.command = command or [
             sys.executable,
             "-m",
@@ -36,6 +45,12 @@ class WorkerSupervisor:
             "--session",
             str(session_path),
         ]
+        if application_reference is not None:
+            self.command.extend(("--application", application_reference))
+        if agent_name is not None:
+            self.command.extend(("--agent", agent_name))
+        if plugin_state_path is not None:
+            self.command.extend(("--plugin-state", str(plugin_state_path)))
         self.ready_timeout = ready_timeout
         self.stop_timeout = stop_timeout
         self.stream_limit_bytes = stream_limit_bytes

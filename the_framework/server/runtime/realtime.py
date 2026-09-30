@@ -3,6 +3,7 @@ import hashlib
 import logging
 from collections import Counter, deque
 from html import escape
+from typing import Literal
 
 from codex_backend_sdk import OpenAI
 
@@ -14,7 +15,7 @@ from ...agent.runtime.protocol import (
     PromptRequest,
 )
 from ...utils.tokens import token_count
-from ...agent.models.base import TypedBase
+from ...agent.models.base import Base, TypedBase
 from the_framework.utils.ids import timestamp_id
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,13 @@ class RealtimeDelegationUpdate(TypedBase):
     delegation_id: str
     command_id: str
     state: str
+
+
+class _ContextUpdate(Base):
+    text: str
+    event_id: str | None = None
+    key: str | None = None
+    delivery: Literal["ordered", "latest", "discard"] = "ordered"
 
 
 class RealtimeController:
@@ -55,6 +63,7 @@ class RealtimeController:
         self.delegations = {}
         self.pending_delegation_deliveries = set()
         self.pending_provider_contexts = []
+        self.context_flushing = False
         self.typed_inputs = Counter()
         self.ephemeral_context_inputs = Counter()
         self.ephemeral_context_order = deque()
@@ -643,21 +652,30 @@ class RealtimeController:
         self._forget_ephemeral_context(digest)
         return True
 
-    async def _send_ephemeral_context(self, text, *, event_id=None):
-        """Append live-only context while preventing canonical reconciliation."""
-        if not self.peer_ready or self._vocal_provider_injections_suspended():
-            # Final race guard: a provider task may have passed its semantic
-            # gate just before delegation.created was received. Preserve that
-            # update for later instead of letting it interleave with delegation
-            # sideband traffic.
-            self.pending_provider_contexts.append((text, event_id))
-            del self.pending_provider_contexts[:-32]
+    async def append_context(
+        self, text: str, *, event_id: str | None = None, key: str | None = None,
+        delivery: Literal["ordered", "latest", "discard"] = "ordered",
+    ) -> bool:
+        """Accept live-only context; True means delivered or queued for this call."""
+        update = _ContextUpdate(text=text, event_id=event_id, key=key, delivery=delivery)
+        if delivery == "latest" and not key:
+            raise ValueError("latest context delivery requires a key")
+        if self.sideband is None or self.call_id is None or not text.strip():
+            return False
+        if delivery == "latest":
+            self.discard_context(key)
+        if self.context_blocked or self.context_flushing:
+            if delivery == "discard" or len(self.pending_provider_contexts) >= 32:
+                return False
+            self.pending_provider_contexts.append(update)
             return True
-        return await self._send_context_appends(
-            text,
-            event_id=event_id,
-            ephemeral=True,
-        )
+        return await self._send_context_appends(text, event_id=event_id, ephemeral=True)
+
+    def discard_context(self, key: str) -> None:
+        """Invalidate queued context when its source is no longer current."""
+        self.pending_provider_contexts[:] = [
+            update for update in self.pending_provider_contexts if update.key != key
+        ]
 
     async def _send_context_appends(
         self,
@@ -704,7 +722,8 @@ class RealtimeController:
     def _vocal_provider_injections_suspended(self):
         return bool(self.delegations or self.pending_delegation_deliveries)
 
-    def _vocal_provider_context_blocked(self):
+    @property
+    def context_blocked(self) -> bool:
         return (
             not self.peer_ready
             or self.realtime_response_active
@@ -712,20 +731,18 @@ class RealtimeController:
         )
 
     async def _flush_pending_provider_contexts(self):
-        if (
-            self.realtime_response_active
-            or self._vocal_provider_injections_suspended()
-            or not self.pending_provider_contexts
-        ):
+        if self.context_blocked or self.context_flushing or not self.pending_provider_contexts:
             return False
-        pending = self.pending_provider_contexts
-        self.pending_provider_contexts = []
+        self.context_flushing = True
         sent = False
-        for text, event_id in pending:
-            sent = await self._send_ephemeral_context(
-                text,
-                event_id=event_id,
-            ) or sent
+        try:
+            while self.pending_provider_contexts and not self.context_blocked:
+                update = self.pending_provider_contexts.pop(0)
+                sent = await self._send_context_appends(
+                    update.text, event_id=update.event_id, ephemeral=True,
+                ) or sent
+        finally:
+            self.context_flushing = False
         return sent
 
     async def _send(self, event):

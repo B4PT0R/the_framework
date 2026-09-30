@@ -44,10 +44,6 @@ DEFAULT_ACTIVITY_LABELS = {
 }
 
 
-def default_fleet_factory(session_path, profiles):
-    return FleetSupervisor(session_path, profiles)
-
-
 class ApplicationRuntime:
     """Own worker/fleet lifecycle, IPC correlation, recovery, and event fan-out.
 
@@ -61,7 +57,7 @@ class ApplicationRuntime:
         self,
         supervisor,
         *,
-        fleet_factory=default_fleet_factory,
+        fleet_factory=None,
         application_subprotocol="agent-application",
         activity_labels=None,
         reset_transaction_factory=None,
@@ -137,9 +133,12 @@ class ApplicationRuntime:
         self.stopping = False
         self.ready = await self.supervisor.start()
         try:
-            self.fleet = self.fleet_factory(
-                self.supervisor.session_path,
-                self.ready.specialists,
+            self.fleet = (
+                self.fleet_factory(self.supervisor.session_path, self.ready.specialists)
+                if self.fleet_factory is not None else FleetSupervisor(
+                    self.supervisor.session_path, self.ready.specialists,
+                    application_reference=getattr(self.supervisor, "application_reference", None),
+                )
             )
             await self.fleet.start()
             self.register_observer(self.fleet.observe)
