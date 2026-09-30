@@ -11,7 +11,7 @@ file records the constraints to preserve when changing the framework.
   features outside `the_framework`. Dependencies point from applications to the
   framework, never the reverse. The starter must depend on `the_framework`, not
   on any particular application.
-- An `AgentApplication` has one durable primary conversation. The worker is its
+- An `ApplicationSpec` has one durable primary conversation. The worker is its
   only history writer. Plugins may declare private specialist agents, but a
   specialist must not write into primary history; results return through the
   owning plugin or an ordered primary-agent input.

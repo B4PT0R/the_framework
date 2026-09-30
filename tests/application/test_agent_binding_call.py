@@ -4,25 +4,25 @@ import asyncio
 
 import pytest
 
-from the_framework import AgentApplication, AgentSpec, BuildContext, Extension, Plugin, SessionPolicy
-from the_framework.agent.extensions.plugin import AgentPlugin
+from the_framework import ApplicationSpec, AgentSpec, BuildContext, ServerExtension, Plugin
+from the_framework.agent.extensions.extension import AgentExtension
 from the_framework.agent.models.events import Event
 from the_framework.agent.runtime.protocol import PromptRequest, ShutdownRequest
 from the_framework.agent.runtime.worker import Worker
-from the_framework.plugins.system import SystemPlugin
+from the_framework.plugins.system import SystemExtension
 from the_framework.server.runtime.application import ApplicationRuntime
 
 
 @pytest.mark.parametrize("external_first", [False, True])
 def test_agent_tool_changes_binding_without_ending_its_turn(tmp_path, external_first):
     async def run():
-        class Feature(AgentPlugin):
+        class Feature(AgentExtension):
             name = "feature"
 
-        spec = AgentApplication(
+        spec = ApplicationSpec(
             name="Binding test", version="1",
-            primary_agent=AgentSpec(name="agent", session=SessionPolicy.durable()),
-            plugins=(Plugin(name="feature", agent=Feature), Plugin(name="system", agent=SystemPlugin)),
+            primary_agent=AgentSpec(name="agent", session_mode='durable'),
+            plugins=(Plugin(name="feature", agent_extension=Feature), Plugin(name="system", agent_extension=SystemExtension)),
         )
         agent = spec.compile().primary_agent.build_agent(tmp_path / "session.json")
         agent.client = object()
@@ -44,7 +44,7 @@ def test_agent_tool_changes_binding_without_ending_its_turn(tmp_path, external_f
                 await self.worker_task
 
         runtime = ApplicationRuntime(Supervisor())
-        app = AgentApplication({**spec, "extensions": (Extension(name="runtime", service=runtime),)}).build(
+        app = ApplicationSpec({**spec, "server_extensions": (ServerExtension(name="runtime", service=runtime),)}).build(
             BuildContext({"plugin_state_path": tmp_path / "plugins.json"})
         )
         results = []
@@ -57,9 +57,9 @@ def test_agent_tool_changes_binding_without_ending_its_turn(tmp_path, external_f
                 return
             entered.set()
             await release.wait()
-            result = await agent.plugin("system").set_plugin_binding("feature", external_first)
+            result = await agent.extension("system").set_plugin_binding("feature", external_first)
             results.append(result)
-            assert agent.plugin("feature").activated is external_first
+            assert agent.extension("feature").activated is external_first
             yield Event.from_dict({"type": "unknown"})
 
         agent.astream = stream
@@ -90,6 +90,6 @@ def test_agent_tool_changes_binding_without_ending_its_turn(tmp_path, external_f
             assert runtime.active_command_id is None
             assert agent.session.plugins["feature"] is external_first
         restored = spec.compile().primary_agent.build_agent(tmp_path / "session.json")
-        assert restored.plugin("feature").activated is external_first
+        assert restored.extension("feature").activated is external_first
 
     asyncio.run(run())

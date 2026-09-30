@@ -1,6 +1,6 @@
 """Small standalone application built only from the_framework."""
 
-from the_framework import AgentApplication, AgentSpec, Extension, Plugin, SessionPolicy, endpoint
+from the_framework import ApplicationSpec, AgentSpec, ServerExtension, Plugin, endpoint
 from the_framework.server import ApplicationHealthApi
 from the_framework.server.api.endpoints import Principal
 from modict import modict
@@ -63,18 +63,18 @@ class CounterService:
 counter = CounterService()
 health_api = ApplicationHealthApi()
 
-application = AgentApplication(
+application = ApplicationSpec(
     name="Minimal Agent Application",
     version="1.0",
     primary_agent=AgentSpec(
         name="example",
         description="Minimal example agent.",
-        session=SessionPolicy.durable(),
+        session_mode="durable",
     ),
     security=BearerSecurity(),
-    plugins=(Plugin(name="counter", runtime=counter),),
-    extensions=(
-        Extension(name="health", endpoints=(health_api.health,), requires=("counter",)),
+    plugins=(Plugin(name="counter", server_extension=counter),),
+    server_extensions=(
+        ServerExtension(name="health", endpoints=(health_api.health,), requires_services=("counter",)),
     ),
 )
 

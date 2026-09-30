@@ -17,7 +17,7 @@ from the_framework.agent.extensions.endpoints import Endpoints
 from the_framework.agent.runtime.event_loop import EventLoop
 from the_framework.agent.extensions.hooks import Hooks, hook
 from the_framework.agent.extensions.instructions import Instructions
-from the_framework.agent.extensions.plugin import AgentPlugin, endpoint
+from the_framework.agent.extensions.extension import AgentExtension, endpoint
 from the_framework.agent.extensions.providers import Providers, provider
 from the_framework.agent.models.responses import CommandOutput, FunctionCall, Image, ProviderOutput, ToolOutput
 from the_framework.agent.context.session import Session
@@ -41,8 +41,8 @@ class FakeAgent:
             content="Core instructions.",
         ))
         self.session = Session()
-        self.plugins = []
-        self.required_plugins = set()
+        self.extensions = []
+        self.required_extensions = set()
 
     def add_tool(self, value):
         return self.tools.add(value)
@@ -57,14 +57,14 @@ class FakeAgent:
     def registry(self, name):
         return Agent.registry(self, name)
 
-    def load_plugin(self, plugin):
-        return Agent.load_plugin(self, plugin)
+    def load_extension(self, plugin):
+        return Agent.load_extension(self, plugin)
 
-    def add_plugin(self, plugin, *, activate=None):
-        return Agent.add_plugin(self, plugin, activate=activate)
+    def add_extension(self, plugin, *, activate=None):
+        return Agent.add_extension(self, plugin, activate=activate)
 
 
-class Lights(AgentPlugin):
+class Lights(AgentExtension):
     name = "lights"
     description = "Lighting controls."
 
@@ -79,7 +79,7 @@ class Lights(AgentPlugin):
         return intensity
 
 
-class Haptics(AgentPlugin):
+class Haptics(AgentExtension):
     name = "haptics"
 
     @tool
@@ -88,7 +88,7 @@ class Haptics(AgentPlugin):
         return "idle"
 
 
-class AsyncLights(AgentPlugin):
+class AsyncLights(AgentExtension):
     name = "async_lights"
 
     @tool
@@ -98,17 +98,17 @@ class AsyncLights(AgentPlugin):
         return intensity
 
 
-class FirstInstructions(AgentPlugin):
+class FirstInstructions(AgentExtension):
     name = "first"
     instructions = "First plugin instructions."
 
 
-class SecondInstructions(AgentPlugin):
+class SecondInstructions(AgentExtension):
     name = "second"
     instructions = "Second plugin instructions."
 
 
-class VocalInstructions(AgentPlugin):
+class VocalInstructions(AgentExtension):
     name = "vocal_plugin"
     instructions = Instruction(
         name="plugin_prompt",
@@ -117,7 +117,7 @@ class VocalInstructions(AgentPlugin):
     )
 
 
-class FileInstructions(AgentPlugin):
+class FileInstructions(AgentExtension):
     name = "file_instruction"
     instruction_scope = "general"
 
@@ -132,12 +132,12 @@ class DeviceConfig(Config):
     limits: LimitsConfig = modict.factory(LimitsConfig)
 
 
-class Configured(AgentPlugin):
+class Configured(AgentExtension):
     name = "configured"
     config = DeviceConfig
 
 
-class Complete(AgentPlugin):
+class Complete(AgentExtension):
     name = "complete"
     description = "A complete plugin."
     instructions = "Use the complete plugin carefully."
@@ -165,7 +165,7 @@ class Complete(AgentPlugin):
         return {"ok": True}
 
 
-class MemoryCurator(AgentPlugin):
+class MemoryCurator(AgentExtension):
     name = "memory"
 
     def __init__(self, agent):
@@ -188,7 +188,7 @@ class MemoryCurator(AgentPlugin):
 
 def test_plugin_tools_are_installed_as_one_namespace():
     agent = FakeAgent()
-    agent.add_plugin(Lights)
+    agent.add_extension(Lights)
 
     namespace = agent.registry("tools")["lights"]
     assert isinstance(namespace, NamespaceTool)
@@ -199,7 +199,7 @@ def test_plugin_tools_are_installed_as_one_namespace():
 
 def test_plugin_contributes_typed_agent_profiles_only_when_active():
     agent = FakeAgent()
-    plugin = agent.add_plugin(MemoryCurator, activate=False)
+    plugin = agent.add_extension(MemoryCurator, activate=False)
 
     assert agent.registry("agents").profiles() == []
 
@@ -264,7 +264,7 @@ def test_expired_instruction_is_removed_from_every_rendered_scope(monkeypatch):
 
 def test_plugin_namespace_description_has_a_compatible_default():
     agent = FakeAgent()
-    agent.add_plugin(Haptics)
+    agent.add_extension(Haptics)
 
     assert agent.registry("tools")["haptics"].description == (
         "Tools exposed by the haptics plugin."
@@ -273,17 +273,17 @@ def test_plugin_namespace_description_has_a_compatible_default():
 
 def test_unnamespaced_resolution_is_allowed_only_when_unambiguous():
     agent = FakeAgent()
-    agent.add_plugin(Lights)
+    agent.add_extension(Lights)
     assert agent.registry("tools").resolve("dim")(3) == 3
 
-    agent.add_plugin(Haptics)
+    agent.add_extension(Haptics)
     with pytest.raises(ValueError, match="ambiguous"):
         agent.registry("tools").resolve("status")
 
 
 def test_tool_search_preserves_namespace_boundaries():
     agent = FakeAgent()
-    agent.add_plugin(Lights)
+    agent.add_extension(Lights)
     agent.tools.add(ToolSearchTool())
 
     results = agent.registry("tools").search({"query": "intensity"})
@@ -299,7 +299,7 @@ def test_tool_search_preserves_namespace_boundaries():
 
 def test_agentic_loop_executes_the_namespaced_function_call():
     agent = FakeAgent()
-    agent.add_plugin(Lights)
+    agent.add_extension(Lights)
 
     output = asyncio.run(AgenticLoop(agent).tool_output(FunctionCall(
         name="dim",
@@ -328,7 +328,7 @@ def test_agentic_loop_executes_the_namespaced_function_call():
 
 def test_tool_feedback_precedes_its_referenced_context_message():
     agent = FakeAgent()
-    agent.add_plugin(Lights)
+    agent.add_extension(Lights)
     call = FunctionCall(
         name="status",
         namespace="lights",
@@ -345,7 +345,7 @@ def test_tool_feedback_precedes_its_referenced_context_message():
 
 def test_agentic_loop_awaits_async_function_tools():
     agent = FakeAgent()
-    agent.add_plugin(AsyncLights)
+    agent.add_extension(AsyncLights)
 
     output = asyncio.run(AgenticLoop(agent).tool_output(FunctionCall(
         name="dim",
@@ -649,7 +649,7 @@ def test_namespace_and_nested_tool_names_must_be_unique():
     agent = FakeAgent()
     agent.tools.add(NamespaceTool(name="lights", description="Core lights"))
     with pytest.raises(ValueError, match="duplicate tool or namespace"):
-        agent.add_plugin(Lights)
+        agent.add_extension(Lights)
 
     namespace = NamespaceTool(name="example", description="Example tools")
     namespace.add(Lights(agent).status)
@@ -659,7 +659,7 @@ def test_namespace_and_nested_tool_names_must_be_unique():
 
 def test_loaded_plugin_is_inert_until_activated_and_deactivation_is_complete():
     agent = FakeAgent()
-    plugin = agent.load_plugin(Complete)
+    plugin = agent.load_extension(Complete)
 
     assert plugin.loaded is True
     assert plugin.activated is False
@@ -712,10 +712,10 @@ def test_add_plugin_honors_the_persisted_session_preference():
     agent.configs = Configs()
     agent.states = States()
     agent.session = Session(plugins={"lights": False})
-    agent.plugins = []
-    agent.required_plugins = set()
+    agent.extensions = []
+    agent.required_extensions = set()
 
-    plugin = agent.add_plugin(Lights)
+    plugin = agent.add_extension(Lights)
 
     assert plugin.loaded is True
     assert plugin.activated is False
@@ -735,10 +735,10 @@ def test_inactive_plugin_config_remains_registered_and_live():
     agent.states = States()
     agent.persist_config = None
     agent.session = Session(plugins={"configured": False})
-    agent.plugins = []
-    agent.required_plugins = set()
+    agent.extensions = []
+    agent.required_extensions = set()
 
-    plugin = agent.add_plugin(Configured)
+    plugin = agent.add_extension(Configured)
     namespace = plugin.config
 
     assert plugin.activated is False
@@ -757,11 +757,11 @@ def test_inactive_plugin_config_remains_registered_and_live():
     assert plugin.config.limits.ramp == 18
 
 
-def test_legacy_install_registers_the_loaded_runtime():
+def test_add_extension_accepts_an_instance():
     agent = FakeAgent()
-    plugin = Lights(agent).install()
+    plugin = agent.add_extension(Lights(agent))
 
-    assert plugin in agent.plugins
+    assert plugin in agent.extensions
     assert "lights" in agent.registry("tools")
 
 
@@ -778,8 +778,8 @@ def test_instruction_registry_is_named_ordered_and_rejects_collisions():
 def test_effective_instructions_keep_core_then_plugin_load_order():
     agent = FakeAgent()
     agent.instructions.add(Instruction(name="second_core", content="Core two."))
-    first = agent.add_plugin(FirstInstructions)
-    second = agent.add_plugin(SecondInstructions)
+    first = agent.add_extension(FirstInstructions)
+    second = agent.add_extension(SecondInstructions)
 
     expected = [
         "Core instructions.",
@@ -797,7 +797,7 @@ def test_effective_instructions_keep_core_then_plugin_load_order():
 
 def test_plugin_instruction_object_preserves_its_explicit_scope():
     agent = FakeAgent()
-    agent.add_plugin(VocalInstructions)
+    agent.add_extension(VocalInstructions)
 
     installed = agent.registry("instructions")["vocal_plugin"]
     assert installed.scope == "vocal"
@@ -830,7 +830,7 @@ def test_plugin_rejects_ambiguous_inline_and_file_instructions(tmp_path):
     prompt = tmp_path / "instructions.md"
     prompt.write_text("File instructions.", encoding="utf-8")
 
-    class AmbiguousInstructions(AgentPlugin):
+    class AmbiguousInstructions(AgentExtension):
         instructions = "Inline instructions."
         instructions_file = prompt
 
@@ -864,7 +864,7 @@ def test_plugin_config_merges_defaults_with_namespaced_overrides():
         "limits": {"maximum": 60},
     }
 
-    plugin = agent.load_plugin(Configured)
+    plugin = agent.load_extension(Configured)
 
     assert Configured.config is DeviceConfig
     assert isinstance(plugin.config, DeviceConfig)
@@ -939,8 +939,8 @@ def test_global_configs_merge_root_and_live_plugin_namespace():
     agent = Agent.__new__(Agent)
     agent.configs = Configs(configured={"limits": {"maximum": 60}})
     agent.states = States()
-    agent.plugins = []
-    plugin = agent.load_plugin(Configured)
+    agent.extensions = []
+    plugin = agent.load_extension(Configured)
     namespace = plugin.config
 
     agent.configs.merge({
@@ -965,8 +965,8 @@ def test_agent_config_property_merges_without_replacing_global_registry():
     agent = Agent.__new__(Agent)
     agent.configs = Configs(configured={"limits": {"maximum": 60}})
     agent.states = States()
-    agent.plugins = []
-    plugin = agent.load_plugin(Configured)
+    agent.extensions = []
+    plugin = agent.load_extension(Configured)
     registry = agent.configs
     namespace = plugin.config
 

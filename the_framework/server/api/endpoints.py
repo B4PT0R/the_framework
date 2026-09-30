@@ -9,6 +9,7 @@ validation and public error translation at the server boundary.
 from __future__ import annotations
 
 import inspect
+from ...agent.extensions.endpoints import Endpoint
 import logging
 from typing import Any, Protocol
 from uuid import uuid4
@@ -278,10 +279,11 @@ class EndpointRegistry:
         self._entries.append(entry)
         return endpoint
 
-    def add_plugin(self, plugin):
-        for endpoint in plugin.endpoint_declarations():
-            self.add(endpoint, owner=plugin.title)
-        return plugin
+    def add_source(self, source):
+        owner = getattr(source, "name", None) or type(source).__name__
+        for declaration in endpoint_declarations(source):
+            self.add(declaration, owner=owner)
+        return source
 
     async def _authenticate(self, endpoint, request):
         if not endpoint.authenticated:
@@ -502,12 +504,27 @@ class EndpointRegistry:
         return self
 
 
-def register_plugin_endpoints(app, plugins, *, security=None):
-    """Compatibility helper for direct plugin tests and legacy composition."""
-    registry = EndpointRegistry(
-        app,
-        security=security or PermitAllSecurity(),
-    )
-    for plugin in plugins:
-        registry.add_plugin(plugin)
+def endpoint_declarations(source):
+    if isinstance(source, Endpoint):
+        return (source,)
+    if callable(source) and getattr(source, "agent_endpoint", None) is not None:
+        return (Endpoint.from_function(source),)
+    declarations = getattr(source, "endpoint_declarations", None)
+    if callable(declarations):
+        return tuple(declarations())
+    endpoints = []
+    for name, member in inspect.getmembers(type(source)):
+        if getattr(member, "agent_endpoint", None) is None:
+            continue
+        endpoints.append(Endpoint.from_function(getattr(source, name)))
+    if endpoints:
+        return tuple(endpoints)
+    raise TypeError("endpoint source must be decorated or expose endpoint declarations")
+
+
+def register_endpoints(app, sources, *, security=None):
+    """Install explicit endpoint sources on a provided FastAPI application."""
+    registry = EndpointRegistry(app, security=security or PermitAllSecurity())
+    for source in sources:
+        registry.add_source(source)
     return registry.install()

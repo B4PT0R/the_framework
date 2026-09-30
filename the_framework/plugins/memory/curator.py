@@ -4,7 +4,7 @@ from html import escape
 from typing import Literal
 
 from ...agent.models.config import Config
-from ...agent.extensions.plugin import AgentPlugin
+from ...agent.extensions.extension import AgentExtension
 from ...agent.extensions.providers import provider
 from ...utils.tokens import token_count
 from ...agent.extensions.tools import tool
@@ -26,7 +26,7 @@ class MemoryCuratorConfig(Config):
     embedding_precision: int = 5
 
 
-class MemoryCuratorPlugin(AgentPlugin):
+class MemoryCuratorExtension(AgentExtension):
     name = "memory_curator"
     description = "Tools and full-table context for autonomous memory curation."
     config = MemoryCuratorConfig

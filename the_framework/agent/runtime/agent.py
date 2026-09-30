@@ -5,7 +5,7 @@ from threading import Lock
 from codex_backend_sdk import OpenAI
 
 from .agentic_loop import AgenticLoop
-from .application import Application
+from .application import ApplicationClient
 from ..extensions.specialists import AgentTriggers
 from ..extensions.commands import Commands
 from ..context.compaction import Compaction
@@ -18,7 +18,7 @@ from ..models.events import Event
 from ..extensions.hooks import Hooks
 from ..extensions.instructions import Instruction, Instructions
 from ..models.lifecycle import AgentResponseItemAdded
-from ..extensions.plugin import AgentPlugin
+from ..extensions.extension import AgentExtension
 from .protocol import AgentConfigUpdated, AgentStateUpdated
 from ..extensions.providers import Providers
 from ..models.responses import Message, ResponseItem
@@ -41,7 +41,7 @@ class Agent:
     ):
         self._client = client
         self._client_lock = Lock()
-        self.application = Application()
+        self.application = ApplicationClient()
         self.agents = AgentTriggers(agent=self)
         self.session = Session.open(session_path) if session_path else Session()
         if not isinstance(name, str) or not name.strip():
@@ -74,8 +74,8 @@ class Agent:
         self.end_of_turn_requested = False
         self.agentic_loop = AgenticLoop(self)
         self.providers = Providers()
-        self.plugins = []
-        self.required_plugins = set()
+        self.extensions = []
+        self.required_extensions = set()
         self.tools = Tools()
         self.persist_config = None
         self.persist_state = None
@@ -142,7 +142,7 @@ class Agent:
     def state_snapshot(self):
         return {
             plugin.title: plugin.state_projection()
-            for plugin in self.plugins
+            for plugin in self.extensions
         }
 
     def config_update_requires_restart(self, updates):
@@ -152,7 +152,7 @@ class Agent:
         updated_names = set(updates)
         return any(
             plugin.title in updated_names and plugin.restart_on_config_change
-            for plugin in self.plugins
+            for plugin in self.extensions
         )
 
     def add_message(
@@ -227,35 +227,35 @@ class Agent:
             instruction = Instruction(name=name or "core", content=instruction)
         return self.instructions.add(instruction)
 
-    def load_plugin(self, plugin):
-        if isinstance(plugin, type):
-            plugin = plugin(self)
-        if not isinstance(plugin, AgentPlugin):
-            raise ValueError("Must be an AgentPlugin class or instance")
-        if any(value.title == plugin.title for value in self.plugins):
-            raise ValueError(f"duplicate plugin: {plugin.title}")
-        plugin.load()
-        self.plugins.append(plugin)
-        return plugin
+    def load_extension(self, extension):
+        if isinstance(extension, type):
+            extension = extension(self)
+        if not isinstance(extension, AgentExtension):
+            raise ValueError("Must be an AgentExtension class or instance")
+        if any(value.title == extension.title for value in self.extensions):
+            raise ValueError(f"duplicate extension: {extension.title}")
+        extension.load()
+        self.extensions.append(extension)
+        return extension
 
-    def add_plugin(self, plugin, *, activate=None, required=False):
-        plugin = self.load_plugin(plugin)
+    def add_extension(self, extension, *, activate=None, required=False):
+        extension = self.load_extension(extension)
         if required:
-            self.required_plugins.add(plugin.title)
+            self.required_extensions.add(extension.title)
         activate = (
-            True if plugin.title in self.required_plugins
+            True if extension.title in self.required_extensions
             else self.session.plugins.get(
-                plugin.title, True if activate is None else activate
+                extension.title, True if activate is None else activate
             )
         )
         if not activate:
-            return plugin
+            return extension
         try:
-            return plugin.activate()
+            return extension.activate()
         except Exception:
-            self.plugins.remove(plugin)
+            self.extensions.remove(extension)
             if required:
-                self.required_plugins.discard(plugin.title)
+                self.required_extensions.discard(extension.title)
             raise
 
     def registry(self, name):
@@ -267,33 +267,33 @@ class Agent:
         )
         for contribution in core.values():
             registry.add(contribution)
-        for plugin in self.plugins:
+        for plugin in self.extensions:
             if plugin.activated:
                 for contribution in plugin.contributions(name):
                     registry.add(contribution)
         return registry
 
-    def plugin(self, plugin):
-        if isinstance(plugin, AgentPlugin):
-            return plugin
+    def extension(self, extension):
+        if isinstance(extension, AgentExtension):
+            return extension
         return next(
-            (value for value in self.plugins if value.title == plugin),
+            (value for value in self.extensions if value.title == extension),
             None,
         )
 
-    def activate_plugin(self, plugin):
-        plugin = self.plugin(plugin)
-        if plugin is None:
-            raise ValueError("unknown plugin")
-        return plugin.activate()
+    def activate_extension(self, extension):
+        extension = self.extension(extension)
+        if extension is None:
+            raise ValueError("unknown extension")
+        return extension.activate()
 
-    def deactivate_plugin(self, plugin):
-        plugin = self.plugin(plugin)
-        if plugin is None:
-            raise ValueError("unknown plugin")
-        if plugin.title in self.required_plugins:
-            raise RuntimeError(f"plugin binding is required: {plugin.title}")
-        return plugin.deactivate()
+    def deactivate_extension(self, extension):
+        extension = self.extension(extension)
+        if extension is None:
+            raise ValueError("unknown extension")
+        if extension.title in self.required_extensions:
+            raise RuntimeError(f"extension binding is required: {extension.title}")
+        return extension.deactivate()
 
     def on(self, event_type: str, callback=None):
         if callback is None:

@@ -75,6 +75,6 @@ def test_starter_real_memory_curates_indexes_and_survives_reconstruction(tmp_pat
 
     session = tmp_path / "session.json"
     agent = application.compile().primary_agent.build_agent(session)
-    recalled = agent.plugin("memory").search("What language does Copper Finch use?")
+    recalled = agent.extension("memory").search("What language does Copper Finch use?")
     assert recalled["status"] == "found"
     assert any("rust" in entry["content"].lower() for entry in recalled["memories"])

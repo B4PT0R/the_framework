@@ -50,10 +50,10 @@ def test_application_specialist_retains_factories_and_resolved_runtime_profile(t
 
     from the_framework.agent import AgentSpec
     from the_framework.agent.runtime import worker_process
-    from the_framework.plugins.memory.curator import MemoryCuratorPlugin
+    from the_framework.plugins.memory.curator import MemoryCuratorExtension
     from the_framework.server.runtime.fleet import AgentRunner
 
-    spec = AgentSpec(name="memory.jiminy", plugins=(lambda agent: MemoryCuratorPlugin(agent),))
+    spec = AgentSpec(name="memory.jiminy", extensions=(lambda agent: MemoryCuratorExtension(agent),))
     path = tmp_path / "durable-memory.sqlite3"
     profile = AgentSpec({**spec, "instructions": "Application-specific curation role",
                          "configuration": {"memory_curator": {"store_path": str(path)}}}).fleet_profile()
@@ -72,6 +72,6 @@ def test_application_specialist_retains_factories_and_resolved_runtime_profile(t
     monkeypatch.setattr(worker_process.Worker, "run", inspect)
     asyncio.run(worker_process.run(tmp_path / "session.json", application_reference="test:application",
                                    agent_name=spec.name, profile_path=profile_path))
-    assert agents[0].plugin("memory_curator").store.path == path
+    assert agents[0].extension("memory_curator").store.path == path
     assert path.exists()
     assert "Application-specific curation role" in str(agents[0].instructions)

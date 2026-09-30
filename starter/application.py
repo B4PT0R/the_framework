@@ -3,28 +3,27 @@
 from pathlib import Path
 
 from the_framework import (
-    AgentApplication,
+    ApplicationSpec,
     AgentResources,
     AgentSpec,
     Capability,
     CapabilityRequirement,
     ClientSurface,
-    Extension,
+    ServerExtension,
     Plugin,
-    SessionPolicy,
 )
 from the_framework.agent import Worker
 from the_framework.utils.persistence import MappingStore
-from the_framework.plugins.bash import BashPlugin
-from the_framework.plugins.browser import ChromiumPlugin
-from the_framework.plugins.memory.plugin import MemoryPlugin
-from the_framework.plugins.realtime import RealtimePlugin
-from the_framework.plugins.registry import RegistryPlugin
-from the_framework.plugins.scheduler import SchedulerPlugin
+from the_framework.plugins.bash import BashExtension
+from the_framework.plugins.browser import ChromiumExtension
+from the_framework.plugins.memory.agent import MemoryExtension
+from the_framework.plugins.realtime import RealtimeExtension
+from the_framework.plugins.registry import RegistryExtension
+from the_framework.plugins.scheduler import SchedulerExtension
 from the_framework.plugins.scheduler.service import SchedulerService
-from the_framework.plugins.system import SystemPlugin
+from the_framework.plugins.system import SystemExtension
 from the_framework.plugins.system.service import SystemControlService
-from the_framework.plugins.web_search import WebSearchPlugin
+from the_framework.plugins.web_search import WebSearchExtension
 from the_framework.plugins.realtime.controller import RealtimeController
 
 from .voice import VoiceApi
@@ -32,12 +31,12 @@ from .voice import VoiceApi
 ROOT = Path(__file__).resolve().parent
 
 
-class Memory(MemoryPlugin):
+class Memory(MemoryExtension):
     curator_instructions = (ROOT / "memory.md").read_text(encoding="utf-8")
 
 
 def browser(agent):
-    return ChromiumPlugin(agent, runtime_root=Path(agent.session.path).parent)
+    return ChromiumExtension(agent, runtime_root=Path(agent.session.path).parent)
 
 
 def scheduler_runtime(context):
@@ -49,10 +48,10 @@ def scheduler_runtime(context):
         runtime.register_observer(scheduler.observe)
         return scheduler
 
-    return Extension(
+    return ServerExtension(
         name="scheduler",
         service_factory=create,
-        requires=("runtime",),
+        requires_services=("runtime",),
     )
 
 
@@ -68,18 +67,18 @@ def system_runtime(context):
         runtime.register_observer(system.observe)
         return system
 
-    return Extension(
+    return ServerExtension(
         name="system",
         service_factory=create,
-        requires=("runtime",),
+        requires_services=("runtime",),
     )
 
 
 def realtime_runtime(_context):
-    return Extension(
+    return ServerExtension(
         name="voice",
         service_factory=lambda runtime: VoiceApi(runtime, RealtimeController(runtime)),
-        requires=("runtime",),
+        requires_services=("runtime",),
         stop=lambda service, _context: service.controller.stop(),
         endpoints="service",
     )
@@ -100,30 +99,30 @@ def resources(session_path):
     )
 
 
-application = AgentApplication(
+application = ApplicationSpec(
     name="Pandora",
     version="0.1.0",
     primary_agent=AgentSpec(
         name="assistant",
         description="Pandora, a persistent local agent that can evolve her own application.",
-        session=SessionPolicy.durable(),
+        session_mode='durable',
         instructions=(ROOT / "instructions.md").read_text(encoding="utf-8"),
         resources=resources,
         projections={"display": Worker.conversation_projection},
     ),
     plugins=(
-        BashPlugin, RegistryPlugin, WebSearchPlugin, Memory,
+        BashExtension, RegistryExtension, WebSearchExtension, Memory,
         Plugin(
-            name="chat", runtime="starter.chat:chat_runtime",
-            optional_requires=(CapabilityRequirement(name="realtime.session", min_version=1),),
+            name="chat", server_extension="starter.chat:chat_runtime",
+            optional_capabilities=(CapabilityRequirement(name="realtime.session", min_version=1),),
         ),
-        Plugin(name="scheduler", agent=SchedulerPlugin, runtime=scheduler_runtime),
-        Plugin(name="system", agent=SystemPlugin, runtime=system_runtime),
+        Plugin(name="scheduler", agent_extension=SchedulerExtension, server_extension=scheduler_runtime),
+        Plugin(name="system", agent_extension=SystemExtension, server_extension=system_runtime),
         Plugin(
-            name="realtime", agent=RealtimePlugin, runtime=realtime_runtime,
-            capabilities=(Capability(name="realtime.session", version=1),),
+            name="realtime", agent_extension=RealtimeExtension, server_extension=realtime_runtime,
+            provides_capabilities=(Capability(name="realtime.session", version=1),),
         ),
-        Plugin(name="chromium", agent=browser),
+        Plugin(name="chromium", agent_extension=browser),
     ),
     surfaces=(ClientSurface(name="main", source=ROOT / "ui",
                             build=("npm", "run", "build"), artifact="dist",

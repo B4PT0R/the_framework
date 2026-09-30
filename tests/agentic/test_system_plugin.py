@@ -4,7 +4,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from the_framework.agent import Agent, AgenticLoop
-from the_framework.plugins.system import SystemPlugin
+from the_framework.plugins.system import SystemExtension
 
 
 def test_system_wait_exposes_a_general_preemptible_idle_tool():
@@ -12,7 +12,7 @@ def test_system_wait_exposes_a_general_preemptible_idle_tool():
         client=object(),
         system={"default_wait_seconds": 1, "max_wait_seconds": 3},
     )
-    plugin = agent.add_plugin(SystemPlugin)
+    plugin = agent.add_extension(SystemExtension)
     namespace = agent.registry("tools")["system"]
 
     assert namespace.find("wait") is not None
@@ -32,7 +32,7 @@ def test_system_wait_exposes_a_general_preemptible_idle_tool():
 
 def test_system_wait_reacts_to_turn_interrupt():
     agent = Agent(client=object())
-    plugin = agent.add_plugin(SystemPlugin)
+    plugin = agent.add_extension(SystemExtension)
     result = []
     waiter = threading.Thread(target=lambda: result.append(plugin.wait(3)))
     waiter.start()
@@ -55,9 +55,9 @@ def test_system_plugin_exposes_current_local_datetime_as_ephemeral_context(monke
         7,
         tzinfo=timezone(timedelta(hours=2), "CEST"),
     )
-    monkeypatch.setattr(SystemPlugin, "_now", staticmethod(lambda: instant))
+    monkeypatch.setattr(SystemExtension, "_now", staticmethod(lambda: instant))
     agent = Agent(client=object())
-    agent.add_plugin(SystemPlugin)
+    agent.add_extension(SystemExtension)
 
     outputs = agent.registry("providers")["current_datetime"].outputs()
 
@@ -103,7 +103,7 @@ def test_system_plugin_requests_reboot_then_gracefully_ends_the_turn():
             }
 
         agent.application.bind(request)
-        plugin = agent.add_plugin(SystemPlugin)
+        plugin = agent.add_extension(SystemExtension)
         result = await plugin.reboot_server("Relis les changements puis lance les tests.")
 
         assert result["status"] == "server_restart_requested"
@@ -125,7 +125,7 @@ def test_system_plugin_builds_publishes_and_rolls_back_surfaces():
             return {"release": "release-1"}
 
         agent.application.bind(request)
-        plugin = agent.add_plugin(SystemPlugin)
+        plugin = agent.add_extension(SystemExtension)
         built = await plugin.build_surface()
         published = await plugin.publish_surface(release="release-1")
         rolled_back = await plugin.rollback_surface()
@@ -149,7 +149,7 @@ def test_failed_reboot_request_does_not_end_the_turn():
             raise RuntimeError("restart unavailable")
 
         agent.application.bind(request)
-        plugin = agent.add_plugin(SystemPlugin)
+        plugin = agent.add_extension(SystemExtension)
         try:
             await plugin.reboot_server()
         except RuntimeError as error:

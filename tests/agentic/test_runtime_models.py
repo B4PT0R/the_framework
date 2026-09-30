@@ -7,13 +7,13 @@ import pytest
 from fastapi import Request
 from modict import modict
 
-from the_framework.agent import AgentSpec, SessionPolicy
+from the_framework.agent import AgentSpec
 from the_framework.agent.runtime.agentic_loop import PendingSteering
 from the_framework.server.clients.browser import BrowserSession
 from the_framework.server.clients.remote import (
     CapabilityLease, ClientApplicationConnection, PendingPairing,
 )
-from the_framework.server.composition.application import AgentApplication, Extension, Plugin
+from the_framework.server.composition.application import ApplicationSpec, ServerExtension, Plugin
 from the_framework.server.api.endpoints import EndpointContext, Principal
 from the_framework.server.composition.services import ServiceSpec
 from the_framework.server.clients.surfaces import ClientSurface
@@ -22,14 +22,14 @@ from the_framework.server.api.websockets import WebSocketEndpoint
 
 @pytest.mark.parametrize("make", [
     lambda: AgentSpec(name="main"),
-    lambda: Extension(name="runtime", service=object()),
+    lambda: ServerExtension(name="runtime", service=object()),
     lambda: Plugin(name="plugin"),
     lambda: ServiceSpec(name="service", service=object()),
     lambda: WebSocketEndpoint(path="/events", handler=lambda: None),
     lambda: EndpointContext(request=Request({"type": "http"}), principal=Principal(id="caller")),
     lambda: ClientSurface(name="ui", source=".", build=("true",), artifact="dist", routes=("/ui",)),
-    lambda: AgentApplication(name="app", version="1", primary_agent=AgentSpec(name="main", session=SessionPolicy.durable())),
-    lambda: AgentApplication(name="app", version="1", primary_agent=AgentSpec(name="main", session=SessionPolicy.durable())).compile(),
+    lambda: ApplicationSpec(name="app", version="1", primary_agent=AgentSpec(name="main", session_mode='durable')),
+    lambda: ApplicationSpec(name="app", version="1", primary_agent=AgentSpec(name="main", session_mode='durable')).compile(),
 ])
 def test_runtime_declarations_are_frozen_validated_mappings(make):
     model = make()
@@ -44,28 +44,28 @@ def test_runtime_declarations_are_frozen_validated_mappings(make):
 def test_declaration_reconstruction_preserves_live_references_and_validates_together():
     service = object()
     callback = lambda: service
-    original = Extension(name="runtime", service_factory=callback)
-    resolved = Extension({**original, "service": service, "service_factory": None})
+    original = ServerExtension(name="runtime", service_factory=callback)
+    resolved = ServerExtension({**original, "service": service, "service_factory": None})
     assert original.service is None
     assert original.service_factory is callback
     assert resolved.service is service
     assert resolved.service_factory is None
     with pytest.raises(ValueError, match="mutually exclusive"):
-        Extension({**original, "service": service})
+        ServerExtension({**original, "service": service})
 
 
 def test_agent_recipe_keeps_runtime_handles_and_snapshots_sequence_inputs():
     plugin, initializer, projection = object(), object(), object()
     plugins = [plugin]
-    spec = AgentSpec(name="main", plugins=plugins, initializers=[initializer])
+    spec = AgentSpec(name="main", extensions=plugins, initializers=[initializer])
     plugins.clear()
-    assert spec.plugins == (plugin,)
-    assert spec.plugins[0] is plugin
+    assert spec.extensions == (plugin,)
+    assert spec.extensions[0] is plugin
     assert spec.initializers[0] is initializer
-    changed = spec.with_plugins(projection)
+    changed = spec.with_extensions(projection)
     assert changed.initializers[0] is initializer
-    assert changed.plugins == (plugin, projection)
-    assert spec.plugins == (plugin,)
+    assert changed.extensions == (plugin, projection)
+    assert spec.extensions == (plugin,)
 
 
 def test_transient_records_keep_objects_and_private_authority_out_of_public_lease():

@@ -53,10 +53,10 @@ class PluginHost:
                     "remove its obsolete running field from plugin state"
                 )
             binding = bool(
-                spec.agent is not None
-                and saved.get("binding_enabled", spec.binding_enabled)
+                spec.agent_extension is not None
+                and saved.get("binding_enabled", spec.agent_binding_enabled)
             )
-            if spec.binding_required:
+            if spec.agent_binding_required:
                 binding = True
             self.states[name] = {
                 "loaded": True,
@@ -77,9 +77,9 @@ class PluginHost:
                 installed=True,
                 loaded=state["loaded"],
                 running=state["running"],
-                binding_available=spec.agent is not None,
+                binding_available=spec.agent_extension is not None,
                 binding_enabled=state["binding_enabled"],
-                binding_required=spec.binding_required,
+                binding_required=spec.agent_binding_required,
             ))
         return result[0] if name is not None else result
 
@@ -102,11 +102,11 @@ class PluginHost:
         try:
             for name, enabled in snapshot.items():
                 spec = self.plan.plugins.get(name)
-                if spec is None or spec.agent is None:
+                if spec is None or spec.agent_extension is None:
                     continue
                 if not isinstance(enabled, bool):
                     raise TypeError(f"worker plugin binding must be boolean: {name}")
-                if name in self._stored_bindings or spec.binding_required:
+                if name in self._stored_bindings or spec.agent_binding_required:
                     if enabled != self.states[name]["binding_enabled"]:
                         raise RuntimeError(
                             f"worker binding differs from persisted plugin state: {name}"
@@ -131,9 +131,9 @@ class PluginHost:
             raise ValueError(f"unknown plugin: {name}")
         state = self.states[name]
         enabled = bool(enabled)
-        if enabled and spec.agent is None:
+        if enabled and spec.agent_extension is None:
             raise RuntimeError(f"plugin has no agent binding: {name}")
-        if not enabled and spec.binding_required:
+        if not enabled and spec.agent_binding_required:
             raise RuntimeError(f"plugin binding is required: {name}")
         if state["binding_enabled"] == enabled:
             return self.status(name)

@@ -1,3 +1,3 @@
-from .plugin import SchedulerConfig, SchedulerPlugin
+from .agent import SchedulerConfig, SchedulerExtension
 
-__all__ = ["SchedulerConfig", "SchedulerPlugin"]
+__all__ = ["SchedulerConfig", "SchedulerExtension"]

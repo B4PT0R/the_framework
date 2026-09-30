@@ -1,10 +1,10 @@
 import pytest
 
 from the_framework.agent.extensions.endpoints import Endpoints
-from the_framework.agent.extensions.plugin import AgentPlugin, endpoint
+from the_framework.agent.extensions.extension import AgentExtension, endpoint
 
 
-class ApiPlugin(AgentPlugin):
+class ApiExtension(AgentExtension):
     @endpoint("get", "/status", authorization={"scope": "status"})
     def status(self):
         """
@@ -20,7 +20,7 @@ class ApiPlugin(AgentPlugin):
 
 
 def test_plugin_exposes_endpoint_declarations():
-    plugin = ApiPlugin(None)
+    plugin = ApiExtension(None)
     endpoint = plugin.endpoint_declarations()[0]
 
     assert endpoint() == {"ok": True}
@@ -51,7 +51,7 @@ def test_endpoint_declaration_rejects_an_invalid_path():
 
 
 def test_endpoint_registry_rejects_route_collisions():
-    endpoint = ApiPlugin(None).endpoint_declarations()[0]
+    endpoint = ApiExtension(None).endpoint_declarations()[0]
     endpoints = Endpoints()
     endpoints.add(endpoint)
 

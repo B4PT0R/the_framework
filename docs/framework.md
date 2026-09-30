@@ -24,15 +24,15 @@ Modules are grouped by responsibility, not by implementation size:
 - `agent.models`: payloads, configuration, events and state records;
 - `agent.context`: canonical history, context construction, projections and
   compaction;
-- `agent.extensions`: plugin contributions, tools, providers, hooks, endpoint
+- `agent.extensions`: agent contributions, tools, providers, hooks, endpoint
   declarations and specialist contracts;
 - `agent.runtime`: execution loops, worker protocol and process entrypoint;
 - `agent.spec`: the public agent construction declaration;
 - `server.composition`: application declarations, dependency validation and
   plugin/service installation;
 - `server.api`: HTTP/WebSocket exposure, authorization and endpoint adaptation;
-- `server.runtime`: application/worker supervision, bridges, discovery and live
-  voice orchestration;
+- `server.runtime`: application/worker supervision, bridges and discovery;
+- `plugins.realtime`: voice projection, transport and delegation orchestration;
 - `server.clients`: browser shells, client surfaces, remote pairing and Tailscale.
 - `utils`: small primitives shared by agents, plugins and the server.
 
@@ -58,7 +58,7 @@ or `agent_plugins` import aliases. The wheel isolation test extracts only the
 `the_framework` package, blocks product imports, and constructs the general
 plugins using their packaged Markdown resources.
 
-`AgentApplication` is the single root declaration. It owns exactly one durable
+`ApplicationSpec` is the single root declaration. It owns exactly one durable
 primary `AgentSpec`, the plugin specifications, server extensions, security and
 client surfaces. Calling `compile()` produces an immutable, process-neutral
 plan without invoking server runtime factories. This lets a worker reconstruct
@@ -77,11 +77,10 @@ lifecycle callback:
 
 ```python
 from the_framework import (
-    AgentApplication,
+    ApplicationSpec,
     AgentSpec,
-    Extension,
+    ServerExtension,
     Plugin,
-    SessionPolicy,
     endpoint,
 )
 
@@ -101,15 +100,15 @@ def greeting():
     return {"message": "hello"}
 
 
-application = AgentApplication(
+application = ApplicationSpec(
     name="Example",
     version="1.0",
     primary_agent=AgentSpec(
         name="example",
         description="Example primary agent.",
-        session=SessionPolicy.durable(),
+        session_mode='durable',
     ),
-    plugins=(Plugin(name="greeting", runtime=Extension(
+    plugins=(Plugin(name="greeting", server_extension=ServerExtension(
         name="greeting_api", endpoints=(greeting,),
     )),),
 )
@@ -127,7 +126,7 @@ named fields or a mapping; runtime declarations can contain non-JSON references
 without converting or copying those objects. Browser execution handles live in
 attributes outside its configuration mapping. For a coordinated change, rebuild
 the complete declaration, for example
-`AgentApplication({**application, "plugins": plugins, "extensions": extensions})`:
+`ApplicationSpec({**application, "plugins": plugins, "server_extensions": server_extensions})`:
 validation then sees the final state, not intermediate per-key assignments.
 
 ## Adding state and lifecycle
@@ -154,7 +153,7 @@ introduced; model metadata is adapted only at the HTTP/OpenAPI boundary.
 
 ### Primary runtime integration
 
-Installing one `ApplicationRuntime` service through an `Extension` automatically
+Installing one `ApplicationRuntime` service through a `ServerExtension` automatically
 connects the plugin host's binding updates and startup snapshot to its worker,
 and registers the agent-facing plugin and installed surface controls. Supply
 `ui_root` in `BuildContext` to bootstrap a surface's initial artifact. There is
@@ -192,7 +191,7 @@ that same worker.
 ### Service lifecycle
 
 Use constructor callbacks for permanent service relationships and the existing
-`Extension.start`/`stop` adapters for lifecycle-specific integration. A callback
+`ServerExtension.start`/`stop` adapters for lifecycle-specific integration. A callback
 such as a restart barrier is not itself a new service or manager. Keep an absent
 capability absent: wrapping a missing restart callback would falsely advertise
 restart support and fail only when invoked.
@@ -202,11 +201,11 @@ An ordinary service only needs conventional `start()` and `stop()` methods:
 ```python
 library = MediaLibrary(...)
 
-media = Extension(
+media = ServerExtension(
     name="media",
     service=library,
     endpoints=(browse_media, stream_media),
-    requires=("runtime",),
+    requires_services=("runtime",),
 )
 ```
 
@@ -224,25 +223,25 @@ or shutdown behavior.
 A service that depends on the canonical worker may also need to pause while
 that worker's persisted session is reset. Register a `suspend`/`resume` pair on
 `ApplicationRuntime.register_reset_hooks()` when constructing that service.
-Normal server startup and shutdown still belong to `Extension` lifecycle;
+Normal server startup and shutdown still belong to `ServerExtension` lifecycle;
 reset hooks run only around a session reset, suspend in reverse registration
 order, and resume after either a successful reset or restoration of the previous
 session.
 
 When construction itself depends on other declared services, use a synchronous
 factory. Its keyword arguments are the available service-bearing names listed
-in `requires` or `optional_requires`; construction still happens before startup, while the live
+in `requires_services` or `optional_services`; construction still happens before startup, while the live
 `ServiceContext` receives each instance only after its successful start:
 
 ```python
-realtime = Extension(
+realtime = ServerExtension(
     name="realtime",
     service_factory=lambda runtime: RealtimeController(runtime),
-    requires=("runtime",),
+    requires_services=("runtime",),
 )
 ```
 
-Use `Extension.optional_requires` for a service integration that should be
+Use `ServerExtension.optional_services` for a service integration that should be
 injected when its extension is installed but is not necessary otherwise. A
 present optional service starts before its consumer; an absent one is not
 passed to the factory, so declare a default for that parameter. This is a
@@ -250,7 +249,7 @@ service-name dependency, distinct from a plugin's versioned public capability
 dependency. For example, the starter chat API accepts an optional `voice`
 service while remaining usable in text-only applications.
 
-The same dependency injection applies to an `Extension` returned by a plugin's
+The same dependency injection applies to a `ServerExtension` returned by a plugin's
 server runtime factory. A plugin requiring another plugin's service must also
 declare the corresponding versioned public `CapabilityRequirement`; the
 compiler rejects undeclared cross-plugin service edges, and the capability
@@ -280,12 +279,36 @@ Domain code should not create additional untyped `app.state` attributes.
 
 ## Pairing the worker and server sides of a plugin
 
+`Plugin` owns a complete installed feature. `AgentExtension` contributes to an
+agent; `ServerExtension` declares a server component. They are parts of a plugin,
+not alternative plugin systems. An agent extension is an executable class,
+whereas a server extension is a declaration describing a service and its surface.
+
+| Composition field | Expected contribution |
+| --- | --- |
+| `Plugin.agent_extension` | Agent extension class, factory or import reference |
+| `Plugin.server_extension` | Server declaration, service, or build-context factory returning one or more components; an import reference defers server imports |
+| `Plugin.specialists` | Private `AgentSpec` declarations |
+| `Plugin.provides_capabilities` | Versioned contracts exported by this feature |
+| `Plugin.requires_capabilities` / `optional_capabilities` | Required or optional versioned contracts from other plugins |
+| `Plugin.agent_binding_enabled` / `agent_binding_required` | Initial and mandatory binding to the primary agent; server installation remains fixed |
+| `ServerExtension.requires_services` / `optional_services` | Names of local services supplied to its factory, in dependency order |
+| `ApplicationSpec.server_extensions` | Application-wide server infrastructure |
+| `AgentSpec.extensions` | Contributions installed in that agent |
+| `AgentSpec.specialist_profiles` | Compiled worker profiles; application code normally declares specialists on their owning `Plugin` |
+
+Import each plugin's agent contribution from its `agent.py` module or package
+exports. Keep server factories in `server.py`; their declarations may reference
+that module without importing it into a worker. Agent-side composition uses
+`add_extension`, `load_extension`, `extension`, `activate_extension` and
+`deactivate_extension`; there is no separate `install()` shortcut.
+
 For an agent-only plugin, pass its class directly:
 
 ```python
-application = AgentApplication(
+application = ApplicationSpec(
     name="Example", version="1", primary_agent=primary,
-    plugins=(MemoryPlugin, BashPlugin),
+    plugins=(MemoryExtension, BashExtension),
 )
 ```
 
@@ -302,29 +325,29 @@ endpoints and WebSocket declarations are discovered, and its conventional
 `start()` and `stop()` methods participate in application lifecycle:
 
 ```python
-images = Plugin(name="images", agent=ImageGenerationPlugin, runtime=image_service)
+images = Plugin(name="images", agent_extension=ImageGenerationExtension, server_extension=image_service)
 ```
 
 The service may instead be returned by a server-side factory that receives
-`BuildContext`. Use `Extension` when that service needs explicit dependencies,
+`BuildContext`. Use `ServerExtension` when that service needs explicit dependencies,
 route selection, middleware, mounts or lifecycle adapters, or when the plugin
 owns several server components:
 
 ```python
 images = Plugin(
     name="images",
-    agent=ImageGenerationPlugin,
-    runtime=Extension(
+    agent_extension=ImageGenerationExtension,
+    server_extension=ServerExtension(
         name="image_api",
         service=image_service,
         endpoints=(image_service,),
-        requires=("runtime",),
+        requires_services=("runtime",),
     ),
 )
 ```
 
 A feature can own several server components without splitting its runtime into
-unrelated application extensions. Its `runtime` may be a tuple of `Extension`
+unrelated application extensions. Its `server_extension` may be a tuple of `ServerExtension`
 objects, or a server-side factory receiving `BuildContext` and returning that
 tuple. Application and plugin services share one dependency graph: components
 are constructed and started in dependency order, then stopped in reverse order.
@@ -335,18 +358,18 @@ the worker should not even import the server module; the reference is resolved
 only by `build(context)`. For example, a media plugin can own a store, an index and
 an HTTP API, while the application supplies only process-local objects through
 `BuildContext` at server build time. Shared core services still live in
-`AgentApplication.extensions`: for example, the canonical worker supervisor
+`ApplicationSpec.server_extensions`: for example, the canonical worker supervisor
 and the application-wide transport boundary. Optional feature services belong
 to their `Plugin`.
 
-Declare a required versioned capability in `Plugin.requires`: compilation fails
-if its provider is absent or too old. Use `Plugin.optional_requires` when an
+Declare a required versioned capability in `Plugin.requires_capabilities`: compilation fails
+if its provider is absent or too old. Use `Plugin.optional_capabilities` when an
 integration should be enabled only if its provider is installed; a present
 provider is version-checked and resolved first, but its absence is valid.
 Both forms determine construction and startup order. A plugin runtime factory
 can call `context.has_capability("voice.session", min_version=1)` when its
 routes or behavior differ according to an optional integration; ordinary
-optional service injection uses `Extension.optional_requires` directly.
+optional service injection uses `ServerExtension.optional_services` directly.
 A missing provider returns `False`; a present but incompatible provider fails
 compilation before the factory runs.
 The runtime factory may also expose a prepared object to later factories with
@@ -366,7 +389,7 @@ process-local, not agent-session state or a hot runtime registry.
 
 In a larger codebase, keep the `Plugin` declaration in the feature's package
 alongside its agent class and server runtime factory. Export that object and
-list it in `AgentApplication.plugins`; the application assembly then chooses
+list it in `ApplicationSpec.plugins`; the application assembly then chooses
 features without repeating their dependencies or import paths. The starter
 keeps small declarations together in `starter/application.py` so the complete
 example remains easy to read in one place.
@@ -406,11 +429,11 @@ from the_framework.agent import AgentResources, AgentSpec
 agent_spec = AgentSpec(
     name="companion",
     description="Owner of the canonical conversation.",
-    plugins=(memory, images, tools),
+    extensions=(memory, images, tools),
     instructions=(identity_instruction,),
     projections={"mobile": mobile_projection},
     command_middleware=(measure_turns,),
-    session=SessionPolicy.durable(),
+    session_mode='durable',
 )
 
 agent = agent_spec.build_agent(
@@ -424,8 +447,8 @@ worker = agent_spec.build_worker(agent, receive, send)
 ```
 
 The same `AgentSpec` declares a private specialist. Specialists are ephemeral
-by default and can opt into `SessionPolicy.resident()` or
-`SessionPolicy.durable()`. `QueuePolicy` controls bounded FIFO/latest delivery
+by default and can opt into `session_mode="resident"` or
+`session_mode="durable"`. `QueuePolicy` controls bounded FIFO/latest delivery
 and durable task journaling. A plugin owns its specialists and calls them
 through `agents.call()`, `agents.submit()` and `agents.publish()`; another
 plugin can reach their capability only through an explicit versioned public
@@ -516,7 +539,7 @@ dependency order, while collected contributions do not rely on that order.
 Paired-client records are not rewritten by policy composition.
 
 Authenticated endpoints require an explicit application `SecurityPolicy`.
-There is no implicit allow-all policy in `AgentApplication`. The registry:
+There is no implicit allow-all policy in `ApplicationSpec`. The registry:
 
 1. authenticates the request;
 2. evaluates the endpoint's authorization requirement;
@@ -535,7 +558,7 @@ the request contains only one file, and normal JSON Schema cardinality limits
 are enforced before the handler runs.
 
 WebSocket handlers use the matching `@websocket` declaration and are composed
-through `Extension(websockets=(...))` or service discovery above. They share
+through `ServerExtension(websockets=(...))` or service discovery above. They share
 the same authentication and authorization policy, reject unauthorized upgrades
 with close code `1008`, and are collision-checked before any route is installed.
 
@@ -559,7 +582,7 @@ files ship alongside their implementations. Application-specific defaults
 (including the shell working directory) belong in application configuration.
 
 `the_framework.plugins.memory` owns storage, retrieval, curation tools and orchestration;
-applications specialize `memory.plugin.MemoryPlugin.curator_instructions`.
+applications specialize `memory.agent.MemoryExtension.curator_instructions`.
 `the_framework.plugins.browser` accepts an explicit runtime directory and uses
 `the_framework.server.clients.browser`/`the_framework.server.clients.browser_rpc` for the persistent Playwright process.
 `the_framework.plugins.realtime` provides canonical voice projection with application-owned
@@ -581,7 +604,7 @@ controller owns video/pleasure context. No product import is required by these
 shared mechanisms. Runtime observers use `register_observer`/`unregister_observer`.
 
 An `ApplicationRuntime(WorkerSupervisor(session_path))` can be installed as an
-`Extension` service, with `CanonicalAgentApi` endpoints in a dependent extension.
+`ServerExtension` service, with `CanonicalAgentApi` endpoints in a dependent extension.
 For a declared application, pass `application_reference="my_app:application"`
 to `WorkerSupervisor`, with optional `agent_name` and `plugin_state_path`.
 The default fleet uses the same application reference to build private agents;
@@ -612,7 +635,7 @@ The public `the_framework.server` package exports reusable pieces for common age
 - `ApplicationHealthApi` for aggregate and per-service lifecycle health;
 - `CanonicalTransportSockets` for ordered agent events and the application
   capability bridge;
-- `AgentApplication`, `Extension`, `Plugin`, `WebSocketEndpoint` and
+- `ApplicationSpec`, `ServerExtension`, `Plugin`, `WebSocketEndpoint` and
   `build_application` for composition.
 
 ## Versioned client surfaces
@@ -644,7 +667,7 @@ agent remains responsible for inspecting the preview before publication.
 application or plugin endpoint, such as a login/bootstrap exchange. Other
 endpoints and WebSockets under the mounted path are rejected at build time.
 
-Middleware and mounted ASGI applications belong on an `Extension`, so they are
+Middleware and mounted ASGI applications belong on a `ServerExtension`, so they are
 validated and installed with the rest of the graph, whether that extension is
 declared directly by the application or owned by a plugin. Mounted ASGI apps
 handle their own request authentication; the framework's `@endpoint` security
@@ -664,7 +687,7 @@ uvicorn examples.minimal_agent_app:app
 
 ## The Harness as a larger application example
 
-The separate The Harness application uses the same `AgentApplication` and
+The separate The Harness application uses the same `ApplicationSpec` and
 `Plugin` API as the starter. Its declaration supplies one primary agent,
 product plugins, their versioned dependencies and a multi-device client
 surface. The server entrypoint supplies process-local inputs through
@@ -684,7 +707,7 @@ application-specific policy.
 
 The framework follows progressive disclosure:
 
-- **simple:** `AgentApplication`, `Extension`, `Plugin`, conventional
+- **simple:** `ApplicationSpec`, `ServerExtension`, `Plugin`, conventional
   service lifecycle;
 - **composable:** capabilities, dependencies, decorated endpoint objects,
   middleware, mounts, named projections and plugin specifications;

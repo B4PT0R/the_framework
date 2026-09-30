@@ -2,8 +2,8 @@ import asyncio
 
 from fastapi.testclient import TestClient
 
-from the_framework.agent import AgentSpec, SessionPolicy
-from the_framework.server.composition.application import AgentApplication, Extension, build_application
+from the_framework.agent import AgentSpec
+from the_framework.server.composition.application import ApplicationSpec, ServerExtension, build_application
 from the_framework.server.api.endpoints import Principal
 from the_framework.server.api.websockets import (
     serve_event_stream_until_disconnect,
@@ -22,9 +22,9 @@ class Security:
 
 
 def application(name, **options):
-    return AgentApplication(
+    return ApplicationSpec(
         name=name, version="1", primary_agent=AgentSpec(
-            name="primary", description="Primary test agent.", session=SessionPolicy.durable()
+            name="primary", description="Primary test agent.", session_mode='durable'
         ),
         **options,
     )
@@ -41,7 +41,7 @@ def test_declarative_websocket_uses_the_application_security_policy():
     app = build_application(application(
         "Sockets",
         security=Security(),
-        extensions=(Extension(name="events", websockets=(events,)),),
+        server_extensions=(ServerExtension(name="events", websockets=(events,)),),
     ))
 
     with TestClient(app) as client:
@@ -53,7 +53,7 @@ def test_declarative_websocket_rejects_missing_security_and_collisions():
     try:
         build_application(application(
             "Unsafe",
-            extensions=(Extension(name="events", websockets=(events,)),),
+            server_extensions=(ServerExtension(name="events", websockets=(events,)),),
         ))
     except ValueError as error:
         assert "requires a security policy" in str(error)
@@ -64,9 +64,9 @@ def test_declarative_websocket_rejects_missing_security_and_collisions():
         build_application(application(
             "Duplicate",
             security=Security(),
-            extensions=(
-                Extension(name="one", websockets=(events,)),
-                Extension(name="two", websockets=(events,)),
+            server_extensions=(
+                ServerExtension(name="one", websockets=(events,)),
+                ServerExtension(name="two", websockets=(events,)),
             ),
         ))
     except ValueError as error:

@@ -1,3 +1,3 @@
-from .plugin import WebSearchConfig, WebSearchPlugin
+from .agent import WebSearchConfig, WebSearchExtension
 
-__all__ = ["WebSearchConfig", "WebSearchPlugin"]
+__all__ = ["WebSearchConfig", "WebSearchExtension"]

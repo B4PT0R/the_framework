@@ -4,13 +4,13 @@ import asyncio
 
 from httpx import ASGITransport, AsyncClient
 
-from the_framework.agent import AgentSpec, SessionPolicy
+from the_framework.agent import AgentSpec
 from the_framework.agent.models.responses import Message
 from the_framework.agent.context.session import Session
 from the_framework.server import (
-    AgentApplication,
+    ApplicationSpec,
     CanonicalAgentApi,
-    Extension,
+    ServerExtension,
     WorkerSupervisor,
     build_application,
 )
@@ -39,16 +39,16 @@ def test_independent_application_preserves_session_across_server_recreation(tmp_
         for iteration in range(2):
             runtime = ApplicationRuntime(WorkerSupervisor(path))
             api = CanonicalAgentApi(runtime)
-            app = build_application(AgentApplication(
+            app = build_application(ApplicationSpec(
                 name="Independent Test", version="1",
                 primary_agent=AgentSpec(
                     name="primary", description="Primary test agent.",
-                    session=SessionPolicy.durable(),
+                    session_mode='durable',
                 ),
-                security=Security(), extensions=(
-                    Extension(name="runtime", service=runtime),
-                    Extension(name="api", endpoints=(api.session, api.config, api.update_config),
-                              requires=("runtime",)),
+                security=Security(), server_extensions=(
+                    ServerExtension(name="runtime", service=runtime),
+                    ServerExtension(name="api", endpoints=(api.session, api.config, api.update_config),
+                              requires_services=("runtime",)),
                 ),
             ))
             async with app.router.lifespan_context(app):

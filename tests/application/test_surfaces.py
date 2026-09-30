@@ -5,13 +5,12 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from the_framework import (
-    AgentApplication,
+    ApplicationSpec,
     AgentSpec,
     BuildContext,
     ClientSurface,
-    Extension,
+    ServerExtension,
     Plugin,
-    SessionPolicy,
     endpoint,
 )
 from the_framework.server.api.endpoints import Principal
@@ -61,11 +60,11 @@ content = Path("content.txt").read_text(encoding="utf-8")
 
 
 def declaration(source, *, timeout=10, retain=3):
-    return AgentApplication(
+    return ApplicationSpec(
         name="Surface test",
         version="1",
         primary_agent=AgentSpec(
-            name="primary", description="Primary test agent.", session=SessionPolicy.durable()
+            name="primary", description="Primary test agent.", session_mode='durable'
         ),
         surfaces=(ClientSurface(
             name="main",
@@ -250,24 +249,24 @@ def test_surface_mounts_reject_nested_routes_and_shadowed_plugin_endpoints(tmp_p
         name="nested", source=source, build=("true",), artifact="build", routes=("/ui/plugin",),
     )
     with pytest.raises(ValueError, match="overlapping client surface route"):
-        AgentApplication(
+        ApplicationSpec(
             name="Nested", version="1",
             primary_agent=AgentSpec(
-                name="primary", description="Primary.", session=SessionPolicy.durable(),
+                name="primary", description="Primary.", session_mode='durable',
             ),
             surfaces=(first, nested),
             security=Security(),
         ).compile()
 
     with pytest.raises(ValueError, match="shadowed by a mount"):
-        AgentApplication(
+        ApplicationSpec(
             name="Shadowed", version="1",
             primary_agent=AgentSpec(
-                name="primary", description="Primary.", session=SessionPolicy.durable(),
+                name="primary", description="Primary.", session_mode='durable',
             ),
             plugins=(Plugin(
                 name="example",
-                runtime=Extension(
+                server_extension=ServerExtension(
                     name="example_runtime", endpoints=(shadowed_plugin_endpoint,),
                 ),
             ),),
@@ -282,11 +281,11 @@ def test_declared_plugin_bootstrap_endpoint_may_precede_its_surface_mount(tmp_pa
         return {"ready": True}
 
     source = source_tree(tmp_path)
-    specification = AgentApplication(
+    specification = ApplicationSpec(
         name="Surface bootstrap", version="1",
-        primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
+        primary_agent=AgentSpec(name="primary", session_mode='durable'),
         plugins=(Plugin(
-            name="hosted_ui", runtime=Extension(
+            name="hosted_ui", server_extension=ServerExtension(
                 name="hosted_ui_runtime", endpoints=(bootstrap,),
             ),
         ),),

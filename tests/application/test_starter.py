@@ -1,4 +1,4 @@
-from the_framework import AgentApplication, AgentResources
+from the_framework import ApplicationSpec, AgentResources
 from the_framework.agent.context.session import Session
 from the_framework.utils.persistence import MappingStore
 from starter.application import application, resources, scheduler_runtime, system_runtime
@@ -52,7 +52,7 @@ from starter import desktop
 from starter.server import create_app
 with TemporaryDirectory() as root:
     app = create_app(Path(root), token='isolated-test', origin='http://localhost')
-    assert app.state.application.extensions['runtime'].service is not None
+    assert app.state.application.server_extensions['runtime'].service is not None
 """], capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stderr
 
@@ -78,10 +78,10 @@ def test_starter_declares_general_plugins_and_memory_specialist():
         "realtime", "chromium",
     }
     assert "memory.jiminy" in plan.agents
-    assert plan.plugins["scheduler"].runtime is scheduler_runtime
-    assert plan.plugins["system"].runtime is system_runtime
-    assert plan.plugins["chat"].runtime == "starter.chat:chat_runtime"
-    assert [requirement.name for requirement in plan.plugins["chat"].optional_requires] == [
+    assert plan.plugins["scheduler"].server_extension is scheduler_runtime
+    assert plan.plugins["system"].server_extension is system_runtime
+    assert plan.plugins["chat"].server_extension == "starter.chat:chat_runtime"
+    assert [requirement.name for requirement in plan.plugins["chat"].optional_capabilities] == [
         "realtime.session",
     ]
     assert plan.capabilities["realtime.session"].version == 1
@@ -91,7 +91,7 @@ def test_starter_assembles_without_voice_plugin(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
     from starter import server
 
-    text_only = AgentApplication({
+    text_only = ApplicationSpec({
         **application,
         "plugins": tuple(
             plugin for plugin in application.plugins
@@ -103,8 +103,8 @@ def test_starter_assembles_without_voice_plugin(tmp_path, monkeypatch):
     app = server.create_app(
         tmp_path, token="test", origin="http://testserver", runtime=runtime,
     )
-    assert "voice" not in app.state.application.extensions
-    assert "chat" in app.state.application.extensions
+    assert "voice" not in app.state.application.server_extensions
+    assert "chat" in app.state.application.server_extensions
     with TestClient(app) as client:
         client.headers["authorization"] = "Bearer test"
         prompt = client.post(
@@ -125,7 +125,7 @@ def test_starter_chat_plugin_owns_client_routes(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
     from starter import server
 
-    without_chat = AgentApplication({
+    without_chat = ApplicationSpec({
         **application,
         "plugins": tuple(
             plugin for plugin in application.plugins if plugin.name != "chat"
@@ -135,7 +135,7 @@ def test_starter_chat_plugin_owns_client_routes(tmp_path, monkeypatch):
     app = server.create_app(
         tmp_path, token="test", origin="http://testserver", runtime=FakeRuntime(),
     )
-    assert "chat" not in app.state.application.extensions
+    assert "chat" not in app.state.application.server_extensions
     assert "/api/v1/session" in {route.path for route in app.routes}
     with TestClient(app) as client:
         client.headers["authorization"] = "Bearer test"
@@ -148,7 +148,7 @@ def test_starter_worker_uses_declared_primary_agent_name(tmp_path):
     from starter.server import create_app
 
     app = create_app(tmp_path, token="test", origin="http://testserver")
-    runtime = app.state.application.extensions["runtime"].service
+    runtime = app.state.application.server_extensions["runtime"].service
     assert runtime.supervisor.command[-4:] == [
         "--agent", application.primary_agent.name,
         "--plugin-state", str(tmp_path / "plugins.json"),

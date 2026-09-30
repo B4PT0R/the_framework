@@ -1,3 +1,3 @@
-from .plugin import RealtimeConfig, RealtimePlugin
+from .agent import RealtimeConfig, RealtimeExtension
 
-__all__ = ["RealtimeConfig", "RealtimePlugin"]
+__all__ = ["RealtimeConfig", "RealtimeExtension"]

@@ -36,7 +36,7 @@ def load_application(reference):
         raise ValueError("application reference must use module:attribute") from error
     application = getattr(import_module(module_name), attribute)
     if not callable(getattr(application, "compile", None)):
-        raise TypeError("application reference did not resolve to AgentApplication")
+        raise TypeError("application reference did not resolve to ApplicationSpec")
     return application
 
 
@@ -71,7 +71,7 @@ async def run(
         spec = configured if spec is None else AgentSpec({
             **spec,
             **{key: configured[key] for key in (
-                "instructions", "session", "queue", "idle_timeout_seconds",
+                "instructions", "session_mode", "queue", "idle_timeout_seconds",
                 "completion_tool", "completion_retry_limit",
             )},
             "configuration": {**spec.configuration, **configured.configuration},

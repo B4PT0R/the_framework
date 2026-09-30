@@ -3,7 +3,7 @@ import asyncio
 from types import SimpleNamespace
 
 from the_framework.agent import Agent as RuntimeAgent
-from the_framework.agent.runtime.application import Application
+from the_framework.agent.runtime.application import ApplicationClient
 from the_framework.agent.extensions.specialists import AgentTriggers, agent_trigger
 from the_framework.agent.runtime.event_loop import EventLoop
 from the_framework.agent.models.events import Event
@@ -26,7 +26,7 @@ from the_framework.agent.runtime.protocol import (
 from the_framework.agent.models.responses import FunctionCall, FunctionCallOutput, Message
 from the_framework.agent.context.session import Session
 from the_framework.agent.runtime.worker import Worker
-from the_framework.plugins.system import SystemPlugin
+from the_framework.plugins.system import SystemExtension
 
 
 class Agent:
@@ -35,7 +35,7 @@ class Agent:
         self.name = "test-agent"
         self.description = "Agent used by worker development tests."
         self.agents = AgentTriggers()
-        self.application = Application()
+        self.application = ApplicationClient()
         self.events = EventLoop(self)
         self.prompts = []
         self.prompt_options = []
@@ -205,7 +205,7 @@ def test_external_prompt_wakes_system_wait_and_resumes_the_active_turn():
             client=object(),
             system={"default_wait_seconds": 1, "max_wait_seconds": 3},
         )
-        system = agent.add_plugin(SystemPlugin)
+        system = agent.add_extension(SystemExtension)
         waiting = asyncio.Event()
         wait_results = []
         seen = []
@@ -560,7 +560,7 @@ def test_config_snapshot_describes_loaded_plugins_even_when_inactive():
 
         agent = Agent()
         agent.configs = {"model": "gpt-test", "memory": {"limit": 10}}
-        agent.plugins = [SimpleNamespace(
+        agent.extensions = [SimpleNamespace(
             title="memory",
             description="Relational memory.",
             activated=False,

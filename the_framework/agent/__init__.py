@@ -1,6 +1,6 @@
 from .runtime.agent import Agent
 from .runtime.agentic_loop import AgenticLoop
-from .runtime.application import Application, ApplicationError
+from .runtime.application import ApplicationClient, ApplicationError
 from .extensions.specialists import (
     AgentResult,
     AgentTask,
@@ -45,7 +45,7 @@ from .models.lifecycle import (
     AgentTurnStart,
     LocalEvent,
 )
-from .extensions.plugin import AgentPlugin
+from .extensions.extension import AgentExtension
 from .runtime.protocol import (
     AgentConfigUpdated,
     AgentStateUpdated,
@@ -99,7 +99,7 @@ from .models.responses import (
     ToolOutput,
 )
 from .context.session import CommandReceipt, Session, SessionWatermark
-from .spec import AgentResources, AgentSpec, QueuePolicy, SessionPolicy
+from .spec import AgentResources, AgentSpec, QueuePolicy
 from .models.state import State, States
 from ..utils.tokens import token_count, token_count_payload, tokenizer_for_model
 from .extensions.tools import (
@@ -127,14 +127,13 @@ __all__ = [
     "AgentResources",
     "Agent",
     "AgentSpec",
-    "SessionPolicy",
     "QueuePolicy",
     "AgentResult",
     "AgentTask",
     "AgentTrigger",
     "AgentTriggers",
     "agent_trigger",
-    "Application",
+    "ApplicationClient",
     "ApplicationCall",
     "ApplicationCancel",
     "ApplicationError",
@@ -207,7 +206,7 @@ __all__ = [
     "OutputText",
     "Param",
     "Parameters",
-    "AgentPlugin",
+    "AgentExtension",
     "PromptRequest",
     "PluginBindingRequest",
     "PluginBindingUpdated",

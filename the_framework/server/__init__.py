@@ -1,11 +1,11 @@
 from .api.agent import CanonicalAgentApi
 from .composition.application import (
-    AgentApplication,
+    ApplicationSpec,
     BuildContext,
     Capability,
     CapabilityRequirement,
     ClientSurface,
-    Extension,
+    ServerExtension,
     Plugin,
     build_application,
 )
@@ -20,14 +20,14 @@ from .api.websockets import WebSocketEndpoint, websocket
 
 __all__ = [
     "ApplicationHealthApi",
-    "AgentApplication",
+    "ApplicationSpec",
     "BuildContext",
     "Capability",
     "CapabilityRequirement",
     "ClientSurface",
     "CanonicalAgentApi",
     "CanonicalTransportSockets",
-    "Extension",
+    "ServerExtension",
     "WorkerExited",
     "WorkerSupervisor",
     "WorkerTransportError",

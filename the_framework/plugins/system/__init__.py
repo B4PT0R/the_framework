@@ -1,3 +1,3 @@
-from .plugin import SystemPlugin
+from .agent import SystemExtension
 
-__all__ = ["SystemPlugin"]
+__all__ = ["SystemExtension"]

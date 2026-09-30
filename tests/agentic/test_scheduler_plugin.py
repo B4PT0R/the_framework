@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from the_framework.agent import Agent
 
-from the_framework.plugins.scheduler import SchedulerPlugin
+from the_framework.plugins.scheduler import SchedulerExtension
 
 
 def iso_after(minutes):
@@ -20,7 +20,7 @@ def test_scheduler_plugin_calls_the_server_owned_application_capability():
             return {"id": payload.payload["wake_id"], "status": "created"}
 
         agent.application.bind(request)
-        plugin = agent.add_plugin(SchedulerPlugin)
+        plugin = agent.add_extension(SchedulerExtension)
         result = await plugin.create_wake(
             "Morning hello",
             "Wish Baptiste a gentle morning.",
@@ -38,7 +38,7 @@ def test_scheduler_plugin_calls_the_server_owned_application_capability():
 
 def test_scheduler_plugin_is_loaded_and_activated_with_agent_config():
     agent = Agent(client=object(), scheduler={"max_wakes": 12})
-    plugin = agent.add_plugin(SchedulerPlugin)
+    plugin = agent.add_extension(SchedulerExtension)
 
     assert plugin.activated is True
     assert plugin.config.max_wakes == 12

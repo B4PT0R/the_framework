@@ -3,7 +3,7 @@
 import asyncio
 from pathlib import Path
 
-from the_framework import Extension, endpoint
+from the_framework import ServerExtension, endpoint
 from the_framework.agent.models.responses import Image, Message
 from the_framework.agent.runtime.protocol import PromptRequest
 from the_framework.server.api.endpoints import HttpError
@@ -96,12 +96,12 @@ class ChatApi:
 def chat_runtime(context):
     root = Path(context.require("data_root"))
     text_mode_lock = context.require("text_mode_lock")
-    return Extension(
+    return ServerExtension(
         name="chat",
         service_factory=lambda runtime, voice=None: ChatApi(
             runtime, root / "files", voice, text_lock=text_mode_lock,
         ),
         endpoints="service",
-        requires=("runtime",),
-        optional_requires=("voice",),
+        requires_services=("runtime",),
+        optional_services=("voice",),
     )

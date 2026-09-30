@@ -5,11 +5,11 @@ import asyncio
 import pytest
 
 from the_framework import endpoint
-from the_framework.server.composition.application import Extension
+from the_framework.server.composition.application import ServerExtension
 from the_framework.server.composition.services import ServiceContext, ServiceSpec, invoke_lifecycle
 
 
-@pytest.mark.parametrize("declaration", [Extension, ServiceSpec])
+@pytest.mark.parametrize("declaration", [ServerExtension, ServiceSpec])
 @pytest.mark.parametrize("action", ["start", "stop", "health"])
 @pytest.mark.parametrize("adapter", [False, True])
 @pytest.mark.parametrize("asynchronous", [False, True])

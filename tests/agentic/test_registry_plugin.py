@@ -5,12 +5,12 @@ import pytest
 from the_framework.agent import Agent
 from the_framework.agent.models.responses import ProviderOutput, ToolOutput
 
-from the_framework.plugins.registry import RegistryPlugin
+from the_framework.plugins.registry import RegistryExtension
 
 
 def registry(tmp_path, **config):
     agent = Agent(client=object(), registry=config)
-    plugin = agent.add_plugin(RegistryPlugin(agent, runtime_root=tmp_path))
+    plugin = agent.add_extension(RegistryExtension(agent, runtime_root=tmp_path))
     return agent, plugin
 
 

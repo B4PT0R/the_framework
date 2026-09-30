@@ -36,10 +36,11 @@ separately when you run the starter.
 
 | Part | What it does | What your application decides |
 | --- | --- | --- |
-| `AgentApplication` | Validates and assembles one application | Name, version, plugins, server services, security and client surfaces |
+| `ApplicationSpec` | Validates and assembles one application | Name, version, plugins, server services, security and client surfaces |
 | `AgentSpec` | Describes an agent and its session policy | Instructions, model configuration, tools and resources |
+| `AgentExtension` | Contributes to one agent | Tools, instructions, providers, hooks, configuration and state |
 | `Plugin` | Owns one modular feature, including its agent binding, server runtime and dependencies | Which capabilities exist and when they are exposed |
-| `Extension` / `@endpoint` | Describes advanced server components and validated API routes inside a plugin | Service dependencies, route schemas and authorization |
+| `ServerExtension` / `@endpoint` | Describes advanced server components and validated API routes inside a plugin | Service dependencies, route schemas and authorization |
 | `ClientSurface` | Builds, previews, publishes and rolls back an editable web UI | Source, build command, routes and release policy |
 
 There is exactly **one primary, durable conversation**. Private specialist
@@ -50,8 +51,8 @@ workers own inference and their own sessions; a browser client owns its local
 interface and device/media execution. This separation lets a client reconnect
 or refresh while the main conversation remains intact.
 
-To implement agent-side tools and hooks, subclass `AgentPlugin` from
-`the_framework.agent` and pass that class as `Plugin(agent=...)`. A plugin may
+To implement agent-side tools and hooks, subclass `AgentExtension` from
+`the_framework.agent` and pass that class as `Plugin(agent_extension=...)`. A plugin may
 have agent-side behavior, server-side behavior, or both. Every plugin declared
 at startup keeps its server routes and services until shutdown. Its binding to
 the agent can change live: turning off tools does not remove routes that a
@@ -109,7 +110,7 @@ repository also includes an [expanded version](https://github.com/B4PT0R/the_fra
 with `modict` request/response models and a health endpoint.
 
 ```python
-from the_framework import AgentApplication, AgentSpec, Plugin, SessionPolicy, endpoint
+from the_framework import ApplicationSpec, AgentSpec, Plugin, endpoint
 from the_framework.server.api.endpoints import Principal
 
 
@@ -149,16 +150,16 @@ class Counter:
 
 
 counter = Counter()
-application = AgentApplication(
+application = ApplicationSpec(
     name="Counter Agent",
     version="0.1",
     primary_agent=AgentSpec(
         name="assistant",
         description="The application's primary agent",
-        session=SessionPolicy.durable(),
+        session_mode="durable",
     ),
     security=BearerSecurity(),
-    plugins=(Plugin(name="counter", runtime=counter),),
+    plugins=(Plugin(name="counter", server_extension=counter),),
 )
 app = application.build()
 ```
@@ -183,10 +184,10 @@ loopback demonstration; use a real authentication policy for an application.
 The primary agent declaration alone does not create a chat API or start
 inference: the starter shows how to add its supervised worker and client
 transport. `@endpoint` validates request and response data and contributes an
-OpenAPI schema. Passing a service directly to `Plugin.runtime` discovers its
+OpenAPI schema. Passing a service directly to `Plugin.server_extension` discovers its
 decorated routes and manages its `start()`/`stop()` lifecycle. For a feature
 with several server components or dependencies on other services, return
-`Extension` declarations instead; there, `endpoints="service"` explicitly
+`ServerExtension` declarations instead; there, `endpoints="service"` explicitly
 enables route discovery, and omitting it exposes no routes.
 During build, the combined dependency graph and routes are validated before
 services start.

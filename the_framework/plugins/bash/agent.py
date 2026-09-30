@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from uuid import uuid4
 
-from the_framework.agent import Config, AgentPlugin, hook, tool
+from the_framework.agent import Config, AgentExtension, hook, tool
 
 
 class BashConfig(Config):
@@ -23,7 +23,7 @@ class BashConfig(Config):
     max_output_chars: int = 50_000
 
 
-class BashPlugin(AgentPlugin):
+class BashExtension(AgentExtension):
     name = "bash"
     description = "Inspect, edit, and execute through the local account's shell environment."
     config = BashConfig

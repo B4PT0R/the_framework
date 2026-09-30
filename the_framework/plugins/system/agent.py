@@ -2,7 +2,7 @@ import time
 from datetime import datetime
 
 from ...agent.models.config import Config
-from ...agent.extensions.plugin import AgentPlugin
+from ...agent.extensions.extension import AgentExtension
 from ...agent.extensions.providers import provider
 from ...agent.extensions.tools import tool
 from the_framework.utils.ids import timestamp_id
@@ -13,7 +13,7 @@ class SystemConfig(Config):
     max_wait_seconds: int = 3600
 
 
-class SystemPlugin(AgentPlugin):
+class SystemExtension(AgentExtension):
     name = "system"
     description = "Graceful turn completion, controlled interface refresh, and supervised server restart."
     instruction_scope = "agentic"

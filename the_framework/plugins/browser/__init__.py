@@ -1,3 +1,3 @@
-from .plugin import BrowserConfig, ChromiumPlugin
+from .agent import BrowserConfig, ChromiumExtension
 
-__all__ = ["BrowserConfig", "ChromiumPlugin"]
+__all__ = ["BrowserConfig", "ChromiumExtension"]

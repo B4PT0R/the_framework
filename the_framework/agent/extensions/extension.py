@@ -12,7 +12,7 @@ from ..models.state import State
 from .tools import NamespaceTool
 
 
-class AgentPlugin:
+class AgentExtension:
     config = Config
     state_schema = State
     name: str | None = None
@@ -175,11 +175,6 @@ class AgentPlugin:
             for kind, contribution in self._contributions
             if kind == name
         ]
-
-    def install(self):
-        if self not in self.agent.plugins:
-            self.agent.load_plugin(self)
-        return self.activate()
 
     def methods(self):
         return [

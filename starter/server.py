@@ -3,7 +3,7 @@
 import asyncio
 from pathlib import Path
 
-from the_framework import AgentApplication, BuildContext, Extension
+from the_framework import ApplicationSpec, BuildContext, ServerExtension
 from the_framework.server import (
     ApplicationHealthApi,
     CanonicalAgentApi,
@@ -44,9 +44,9 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None):
                 await voice.controller.stop()
             await runtime.set_plugin_binding(name, enabled, call=call)
 
-    definition = AgentApplication({**application, "security": security}).with_extensions(
-        Extension(name="runtime", service=runtime),
-        Extension(name="conversation", requires=("runtime",), endpoints=(
+    definition = ApplicationSpec({**application, "security": security}).with_server_extensions(
+        ServerExtension(name="runtime", service=runtime),
+        ServerExtension(name="conversation", requires_services=("runtime",), endpoints=(
             CanonicalAgentApi(runtime, session_projection="display"),
             ApplicationHealthApi(),
         ), websockets=(sockets.events_socket, sockets.application_socket)),

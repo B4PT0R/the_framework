@@ -7,14 +7,14 @@ from pathlib import Path
 from fastapi import Request, HTTPException
 
 import starter.server
-from the_framework import AgentApplication, ClientSurface
+from the_framework import ApplicationSpec, ClientSurface
 from starter.desktop import main
 
 build = starter.server.create_app
 if source := os.environ.get("STARTER_TEST_UI"):
     declaration = starter.server.application
     surface = ClientSurface({**declaration.surfaces[0], "source": Path(source)})
-    starter.server.application = AgentApplication({**declaration, "surfaces": (surface,)})
+    starter.server.application = ApplicationSpec({**declaration, "surfaces": (surface,)})
 
 
 def create_app(*args, **kwargs):

@@ -5,7 +5,7 @@ import time
 import pytest
 
 from the_framework.agent import Agent, ShutdownRequest, Worker
-from the_framework.plugins.bash import BashPlugin
+from the_framework.plugins.bash import BashExtension
 
 
 def bash_plugin(tmp_path, **overrides):
@@ -19,7 +19,7 @@ def bash_plugin(tmp_path, **overrides):
         **overrides,
     }
     agent = Agent(client=object(), bash=config)
-    return agent, agent.add_plugin(BashPlugin)
+    return agent, agent.add_extension(BashExtension)
 
 
 def test_bash_plugin_exposes_the_complete_agentic_surface(tmp_path):

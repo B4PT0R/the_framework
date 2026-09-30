@@ -127,7 +127,7 @@ dependency and the data directory supplied by `server.py`. The worker reads the
 same declaration without constructing those server services. Keep application
 policy in its own instructions and plugins; do not
 add product imports to `the_framework`. Backend contributions use the framework's
-`Extension` and `@endpoint` primitives. The canonical worker remains the sole
+`ServerExtension` and `@endpoint` primitives. The canonical worker remains the sole
 writer of conversation history.
 
 The system/browser plugins expose managed UI build, preview, publish and rollback.

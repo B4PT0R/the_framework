@@ -6,7 +6,7 @@ class ApplicationError(RuntimeError):
     pass
 
 
-class Application:
+class ApplicationClient:
     def __init__(self):
         self.request = None
 

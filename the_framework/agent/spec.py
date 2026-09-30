@@ -25,25 +25,6 @@ def _tuple(value):
     return (value,)
 
 
-class SessionPolicy(modict):
-    """Persistence policy for one agent session."""
-
-    _config = modict.config(frozen=True, strict=True, extra="forbid", enforce_json=True)
-    mode: Literal["ephemeral", "resident", "durable"]
-
-    @classmethod
-    def ephemeral(cls):
-        return cls(mode="ephemeral")
-
-    @classmethod
-    def resident(cls):
-        return cls(mode="resident")
-
-    @classmethod
-    def durable(cls):
-        return cls(mode="durable")
-
-
 class QueuePolicy(modict):
     _config = modict.config(frozen=True, strict=True, extra="forbid", enforce_json=True)
     mode: Literal["fifo", "latest"] = "fifo"
@@ -84,19 +65,19 @@ class AgentSpec(modict):
 
     name: str
     description: str = "Agent worker."
-    plugins: tuple[object, ...] = ()
+    extensions: tuple[object, ...] = ()
     instructions: tuple[Instruction | dict, ...] = ()
     initializers: tuple[object, ...] = ()
     command_middleware: tuple[object, ...] = ()
     projections: Mapping[str, object] = modict.factory(dict)
-    session: SessionPolicy = modict.factory(SessionPolicy.ephemeral)
+    session_mode: Literal["ephemeral", "resident", "durable"] = "ephemeral"
     resources: Callable[[str | Path | None], AgentResources] | None = None
     configuration: Mapping[str, object] = modict.factory(dict)
     idle_timeout_seconds: float | int | None = None
     completion_tool: str | None = None
     completion_retry_limit: int = 0
     queue: QueuePolicy = modict.factory(QueuePolicy)
-    specialists: tuple[WorkerProfile, ...] = ()
+    specialist_profiles: tuple[WorkerProfile, ...] = ()
 
     @modict.model_validator(mode="after")
     def validate_declaration(self):
@@ -114,7 +95,7 @@ class AgentSpec(modict):
     def normalize_declaration(self, key, value):
         if key == "instructions" and isinstance(value, str):
             return (Instruction(name="role", content=value),)
-        if key in {"plugins", "instructions", "initializers", "command_middleware", "specialists"}:
+        if key in {"extensions", "instructions", "initializers", "command_middleware", "specialist_profiles"}:
             return _tuple(value)
         if key in {"projections", "configuration"}:
             return MappingProxyType(dict(value))
@@ -123,12 +104,24 @@ class AgentSpec(modict):
     @classmethod
     def from_profile(cls, profile):
         profile = WorkerProfile(**profile)
+        extensions = []
+        for reference in profile.plugins:
+            # Published pre-harmonization worker profiles stored these Python
+            # references. Migrate the saved recipe, without import aliases or
+            # changes to plugin identities in canonical session history.
+            module, separator, name = reference.partition(":")
+            if module.startswith("the_framework.plugins.") and name.endswith("Plugin"):
+                if module.endswith(".plugin"):
+                    module = module.removesuffix(".plugin") + ".agent"
+                name = name.removesuffix("Plugin") + "Extension"
+                reference = module + separator + name
+            extensions.append(reference)
         return cls(
             name=profile.name,
             description=profile.description or f"Private specialist {profile.name}.",
-            plugins=tuple(profile.plugins),
+            extensions=tuple(extensions),
             instructions=(Instruction(name="specialist_role", content=profile.instructions),),
-            session=SessionPolicy(mode=profile.session_mode),
+            session_mode=profile.session_mode,
             queue=QueuePolicy(
                 mode=profile.queue_policy,
                 limit=profile.queue_limit,
@@ -141,11 +134,11 @@ class AgentSpec(modict):
             completion_retry_limit=profile.completion_retry_limit,
         )
 
-    def with_plugins(self, *plugins):
-        return type(self)({**self, "plugins": (*self.plugins, *plugins)})
+    def with_extensions(self, *plugins):
+        return type(self)({**self, "extensions": (*self.extensions, *plugins)})
 
-    def with_specialists(self, *profiles):
-        return type(self)({**self, "specialists": tuple(profiles)})
+    def with_specialist_profiles(self, *profiles):
+        return type(self)({**self, "specialist_profiles": tuple(profiles)})
 
     def fleet_profile(self, *, identity=None, observes=("agent.task.requested",),
                       item_kinds=(), conversation_roles=(), input_item_field=None):
@@ -162,12 +155,12 @@ class AgentSpec(modict):
             instructions=instruction_text or self.description,
             queue_limit=self.queue.limit,
             queue_policy=self.queue.mode,
-            session_mode=self.session.mode,
+            session_mode=self.session_mode,
             durable_tasks=self.queue.durable,
             backlog_limit=self.queue.backlog_limit,
             model=model,
             agent_config=configuration,
-            plugins=[plugin for plugin in self.plugins if isinstance(plugin, str)],
+            plugins=[plugin for plugin in self.extensions if isinstance(plugin, str)],
             idle_timeout_seconds=self.idle_timeout_seconds,
             completion_tool=self.completion_tool,
             completion_retry_limit=self.completion_retry_limit,
@@ -178,13 +171,9 @@ class AgentSpec(modict):
         )
 
     @staticmethod
-    def _plugin(contribution, agent):
-        from .extensions.plugin import AgentPlugin
-        resolver = getattr(contribution, "agent_plugin", None)
-        if resolver is not None:
-            contribution = resolver()
-        else:
-            contribution = getattr(contribution, "agent", contribution)
+    def _resolve_extension(contribution, agent):
+        from .extensions.extension import AgentExtension
+        contribution = getattr(contribution, "agent_extension", contribution)
         if contribution is None:
             return None
         if isinstance(contribution, str):
@@ -192,17 +181,17 @@ class AgentSpec(modict):
                 module_name, attribute = contribution.split(":", 1)
             except ValueError as error:
                 raise ValueError(
-                    "agent plugin references must use module:attribute"
+                    "agent extension references must use module:attribute"
                 ) from error
             contribution = getattr(import_module(module_name), attribute)
-        if isinstance(contribution, AgentPlugin):
+        if isinstance(contribution, AgentExtension):
             return contribution
-        if isinstance(contribution, type) and issubclass(contribution, AgentPlugin):
+        if isinstance(contribution, type) and issubclass(contribution, AgentExtension):
             return contribution
         if callable(contribution):
             plugin = contribution(agent)
-            if not isinstance(plugin, AgentPlugin):
-                raise TypeError("agent plugin factory must return an AgentPlugin instance")
+            if not isinstance(plugin, AgentExtension):
+                raise TypeError("agent extension factory must return an AgentExtension instance")
             return plugin
         return contribution
 
@@ -225,10 +214,10 @@ class AgentSpec(modict):
         if resources.client is not None:
             options["client"] = resources.client
         agent = Agent(
-            session_path=session_path if self.session.mode == "durable" else None,
+            session_path=session_path if self.session_mode == "durable" else None,
             name=self.name,
             description=self.description,
-            retain_history=self.session.mode != "ephemeral",
+            retain_history=self.session_mode != "ephemeral",
             state=resources.state,
             **options,
         )
@@ -239,7 +228,7 @@ class AgentSpec(modict):
                 raise TypeError("binding overrides must be a mapping")
             declared = {
                 getattr(contribution, "name", None)
-                for contribution in self.plugins
+                for contribution in self.extensions
             }
             for name, enabled in binding_overrides.items():
                 if not isinstance(name, str) or not isinstance(enabled, bool):
@@ -252,13 +241,13 @@ class AgentSpec(modict):
                 if isinstance(instruction, Instruction)
                 else Instruction(**instruction)
             )
-        for contribution in self.plugins:
-            plugin = self._plugin(contribution, agent)
+        for contribution in self.extensions:
+            plugin = self._resolve_extension(contribution, agent)
             if plugin is not None:
-                agent.add_plugin(
+                agent.add_extension(
                     plugin,
-                    activate=getattr(contribution, "binding_enabled", None),
-                    required=getattr(contribution, "binding_required", False),
+                    activate=getattr(contribution, "agent_binding_enabled", None),
+                    required=getattr(contribution, "agent_binding_required", False),
                 )
         for initialize in self.initializers:
             result = initialize(agent)
@@ -274,8 +263,8 @@ class AgentSpec(modict):
             send,
             command_middleware=self.command_middleware,
             projections=SessionProjections(self.projections),
-            specialists=self.specialists,
+            specialists=self.specialist_profiles,
         )
 
 
-__all__ = ["AgentResources", "AgentSpec", "QueuePolicy", "SessionPolicy"]
+__all__ = ["AgentResources", "AgentSpec", "QueuePolicy"]

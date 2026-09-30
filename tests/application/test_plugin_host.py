@@ -6,14 +6,13 @@ from httpx import ASGITransport, AsyncClient
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from the_framework import (
-    AgentApplication,
+    ApplicationSpec,
     AgentSpec,
     BuildContext,
     Capability,
     CapabilityRequirement,
-    Extension,
+    ServerExtension,
     Plugin,
-    SessionPolicy,
     endpoint,
 )
 from the_framework.server.api.endpoints import Principal
@@ -50,16 +49,16 @@ class Security:
 
 
 def declaration(service, **plugin_options):
-    return AgentApplication(
+    return ApplicationSpec(
         name="Plugin host",
         version="1",
         primary_agent=AgentSpec(
-            name="primary", description="Primary test agent.", session=SessionPolicy.durable()
+            name="primary", description="Primary test agent.", session_mode='durable'
         ),
         plugins=(Plugin(
             name="example",
-            agent=object,
-            runtime=Extension(name="example_runtime", service=service, endpoints=(Api(),)),
+            agent_extension=object,
+            server_extension=ServerExtension(name="example_runtime", service=service, endpoints=(Api(),)),
             **plugin_options,
         ),),
     )
@@ -191,27 +190,27 @@ def test_plugin_owns_multiple_ordered_server_components_and_static_routes():
 
         def runtime(_context):
             return (
-                Extension(
+                ServerExtension(
                     name="feature_api",
                     service_factory=lambda feature_store: NamedService("api"),
-                    requires=("feature_store",),
+                    requires_services=("feature_store",),
                     endpoints=(Api(),),
                 ),
-                Extension(name="feature_store", service=NamedService("store")),
+                ServerExtension(name="feature_store", service=NamedService("store")),
             )
 
-        spec = AgentApplication(
+        spec = ApplicationSpec(
             name="Vertical feature",
             version="1",
             primary_agent=AgentSpec(
-                name="primary", session=SessionPolicy.durable()
+                name="primary", session_mode='durable'
             ),
-            plugins=(Plugin(name="feature", runtime=runtime),),
+            plugins=(Plugin(name="feature", server_extension=runtime),),
         )
-        assert spec.compile().plugin_extensions == {}
+        assert spec.compile().plugin_server_extensions == {}
         app = spec.build()
         assert tuple(
-            item.name for item in app.state.application.plan.plugin_extensions["feature"]
+            item.name for item in app.state.application.plan.plugin_server_extensions["feature"]
         ) == ("feature_store", "feature_api")
         assert app.state.application.plugin_host.status("feature").binding_enabled is False
         assert app.state.application.plugin_host.status("feature").binding_available is False
@@ -247,18 +246,18 @@ def test_plugin_runtime_installs_mount_middleware_and_openapi_on_main_app():
     def core_value():
         return {"core": True}
 
-    app = AgentApplication(
+    app = ApplicationSpec(
         name="Vertical surface", version="1",
-        primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
+        primary_agent=AgentSpec(name="primary", session_mode='durable'),
         plugins=(Plugin(
             name="feature",
-            runtime=Extension(
+            server_extension=ServerExtension(
                 name="feature_runtime", endpoints=(Api(),),
                 middleware=((TraceMiddleware, {}),),
                 mounts=(("/plugin/assets", assets, "feature-assets"),),
             ),
         ),),
-        extensions=(Extension(name="core_api", endpoints=(core_value,)),),
+        server_extensions=(ServerExtension(name="core_api", endpoints=(core_value,)),),
     ).build()
 
     async def scenario():
@@ -282,22 +281,22 @@ def test_plugin_runtime_installs_mount_middleware_and_openapi_on_main_app():
 
 def test_plugin_mount_collision_is_rejected_before_start():
     app = FastAPI()
-    declaration = AgentApplication(
+    declaration = ApplicationSpec(
         name="Mount collision", version="1",
-        primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
+        primary_agent=AgentSpec(name="primary", session_mode='durable'),
         plugins=(Plugin(
             name="feature",
-            runtime=Extension(
+            server_extension=ServerExtension(
                 name="feature_runtime", mounts=(("/plugin", app, None),),
             ),
         ),),
-        extensions=(Extension(name="api", endpoints=(Api(),)),),
+        server_extensions=(ServerExtension(name="api", endpoints=(Api(),)),),
     )
     with pytest.raises(ValueError, match="shadowed by a mount"):
         declaration.build()
 
-    nested = AgentApplication({**declaration,
-        "extensions": (Extension(
+    nested = ApplicationSpec({**declaration,
+        "server_extensions": (ServerExtension(
             name="assets", mounts=(("/plugin/assets", app, None),),
         ),),
     })
@@ -309,20 +308,20 @@ def test_application_service_can_depend_on_plugin_owned_service():
     events = []
     provider = Service(events)
     dependent = Service(events)
-    app = AgentApplication(
+    app = ApplicationSpec(
         name="Cross-boundary lifecycle",
         version="1",
-        primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
+        primary_agent=AgentSpec(name="primary", session_mode='durable'),
         plugins=(Plugin(
             name="provider",
-            runtime=Extension(name="provider_service", service=provider),
+            server_extension=ServerExtension(name="provider_service", service=provider),
         ),),
-        extensions=(Extension(
+        server_extensions=(ServerExtension(
             name="dependent_service",
             service_factory=lambda provider_service: (
                 dependent if provider_service is provider else None
             ),
-            requires=("provider_service",),
+            requires_services=("provider_service",),
         ),),
     ).build()
 
@@ -350,20 +349,20 @@ def test_capability_dependency_orders_plugin_services_without_extension_edge():
         def stop(self):
             events.append(f"stop:{self.name}")
 
-    app = AgentApplication(
+    app = ApplicationSpec(
         name="Capability startup order",
         version="1",
-        primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
+        primary_agent=AgentSpec(name="primary", session_mode='durable'),
         plugins=(
             Plugin(
                 name="consumer",
-                requires=(CapabilityRequirement(name="provider.api"),),
-                runtime=Extension(name="consumer_service", service=NamedService("consumer")),
+                requires_capabilities=(CapabilityRequirement(name="provider.api"),),
+                server_extension=ServerExtension(name="consumer_service", service=NamedService("consumer")),
             ),
             Plugin(
                 name="provider",
-                capabilities=(Capability(name="provider.api"),),
-                runtime=Extension(name="provider_service", service=NamedService("provider")),
+                provides_capabilities=(Capability(name="provider.api"),),
+                server_extension=ServerExtension(name="provider_service", service=NamedService("provider")),
             ),
         ),
     ).build()
@@ -385,16 +384,16 @@ def test_grouped_plugin_start_failure_rolls_back_earlier_services():
         base = declaration(Service(events))
         plugin = Plugin(
             name="example",
-            runtime=(
-                Extension(name="first", service=Service(events)),
-                Extension(
+            server_extension=(
+                ServerExtension(name="first", service=Service(events)),
+                ServerExtension(
                     name="second",
                     service=Service(events, fail=True),
-                    requires=("first",),
+                    requires_services=("first",),
                 ),
             ),
         )
-        spec = AgentApplication({**base, "plugins": (plugin,)})
+        spec = ApplicationSpec({**base, "plugins": (plugin,)})
         failing = spec.build()
         with pytest.raises(RuntimeError, match="failed"):
             async with failing.router.lifespan_context(failing):
@@ -425,7 +424,7 @@ def test_binding_disable_does_not_reenable_after_restart(tmp_path):
 def test_required_binding_is_protected():
     async def scenario():
         app = declaration(
-            Service([]), binding_required=True
+            Service([]), agent_binding_required=True
         ).build()
         async with app.router.lifespan_context(app):
             host = app.state.application.plugin_host
@@ -463,17 +462,17 @@ def test_binding_persistence_failure_rolls_back_worker_and_memory_state(tmp_path
 
 def test_plugin_route_collision_fails_before_start():
     with pytest.raises(ValueError, match="duplicate application endpoint"):
-        AgentApplication(
+        ApplicationSpec(
             name="Collision",
             version="1",
             primary_agent=AgentSpec(
-                name="primary", description="Primary test agent.", session=SessionPolicy.durable()
+                name="primary", description="Primary test agent.", session_mode='durable'
             ),
             plugins=(Plugin(
                 name="example",
-                runtime=Extension(name="plugin_api", endpoints=(Api(),)),
+                server_extension=ServerExtension(name="plugin_api", endpoints=(Api(),)),
             ),),
-            extensions=(Extension(name="core_api", endpoints=(Api(),)),),
+            server_extensions=(ServerExtension(name="core_api", endpoints=(Api(),)),),
         ).build()
 
 
@@ -481,20 +480,20 @@ def test_failed_plugin_start_rolls_back_started_runtimes():
     async def scenario():
         first = []
         second = []
-        app = AgentApplication(
+        app = ApplicationSpec(
             name="Rollback",
             version="1",
             primary_agent=AgentSpec(
-                name="primary", description="Primary test agent.", session=SessionPolicy.durable()
+                name="primary", description="Primary test agent.", session_mode='durable'
             ),
             plugins=(
                 Plugin(
                     name="first",
-                    runtime=Extension(name="first_runtime", service=Service(first)),
+                    server_extension=ServerExtension(name="first_runtime", service=Service(first)),
                 ),
                 Plugin(
                     name="second",
-                    runtime=Extension(
+                    server_extension=ServerExtension(
                         name="second_runtime", service=Service(second, fail=True)
                     ),
                 ),
@@ -518,17 +517,17 @@ def test_plugin_service_factory_receives_application_dependency_and_starts():
         received.append(dependency)
         return Service(events)
 
-    app = AgentApplication(
+    app = ApplicationSpec(
         name="Factory",
         version="1",
-        primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
-        extensions=(Extension(name="dependency", service=dependency),),
+        primary_agent=AgentSpec(name="primary", session_mode='durable'),
+        server_extensions=(ServerExtension(name="dependency", service=dependency),),
         plugins=(Plugin(
             name="feature",
-            runtime=Extension(
+            server_extension=ServerExtension(
                 name="feature_runtime",
                 service_factory=create,
-                requires=("dependency",),
+                requires_services=("dependency",),
             ),
         ),),
     ).build()
@@ -550,21 +549,21 @@ def test_plugin_service_factory_can_depend_on_another_plugin_capability():
         received.append(provider_runtime)
         return Service(events)
 
-    app = AgentApplication(
+    app = ApplicationSpec(
         name="Chained factories", version="1",
-        primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
+        primary_agent=AgentSpec(name="primary", session_mode='durable'),
         plugins=(
             Plugin(
                 name="consumer",
-                requires=(CapabilityRequirement(name="provider.api"),),
-                runtime=Extension(
+                requires_capabilities=(CapabilityRequirement(name="provider.api"),),
+                server_extension=ServerExtension(
                     name="consumer_runtime", service_factory=create,
-                    requires=("provider_runtime",),
+                    requires_services=("provider_runtime",),
                 ),
             ),
             Plugin(
-                name="provider", capabilities=(Capability(name="provider.api"),),
-                runtime=Extension(name="provider_runtime", service=provider),
+                name="provider", provides_capabilities=(Capability(name="provider.api"),),
+                server_extension=ServerExtension(name="provider_runtime", service=provider),
             ),
         ),
     ).build()
@@ -579,16 +578,16 @@ def test_plugin_service_factory_can_depend_on_another_plugin_capability():
 def test_cross_plugin_service_edge_requires_a_public_capability():
     consumer = Plugin(
         name="consumer",
-        runtime=Extension(name="consumer_runtime", requires=("provider_runtime",)),
+        server_extension=ServerExtension(name="consumer_runtime", requires_services=("provider_runtime",)),
     )
     provider = Plugin(
         name="provider",
-        capabilities=(Capability(name="provider.api"),),
-        runtime=Extension(name="provider_runtime", service=object()),
+        provides_capabilities=(Capability(name="provider.api"),),
+        server_extension=ServerExtension(name="provider_runtime", service=object()),
     )
-    spec = AgentApplication(
+    spec = ApplicationSpec(
         name="Undeclared dependency", version="1",
-        primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
+        primary_agent=AgentSpec(name="primary", session_mode='durable'),
         plugins=(consumer, provider),
     )
     with pytest.raises(ValueError, match="without a versioned capability requirement"):
@@ -596,26 +595,26 @@ def test_cross_plugin_service_edge_requires_a_public_capability():
 
     optional = Plugin({
         **consumer,
-        "optional_requires": (CapabilityRequirement(name="provider.api"),),
+        "optional_capabilities": (CapabilityRequirement(name="provider.api"),),
     })
-    spec = AgentApplication({**spec, "plugins": (optional, provider)})
-    assert spec.build().state.application.plan.extension_order == (
+    spec = ApplicationSpec({**spec, "plugins": (optional, provider)})
+    assert spec.build().state.application.plan.server_extension_order == (
         "provider_runtime", "consumer_runtime",
     )
 
 
 def test_declared_plugin_requires_declared_capability_provider():
-    declaration = AgentApplication(
+    declaration = ApplicationSpec(
         name="Dependencies",
         version="1",
-        primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
+        primary_agent=AgentSpec(name="primary", session_mode='durable'),
         plugins=(
             Plugin(
-                name="base", binding_enabled=False,
+                name="base", agent_binding_enabled=False,
             ),
             Plugin(
                 name="dependent",
-                requires=(CapabilityRequirement(name="base.api"),),
+                requires_capabilities=(CapabilityRequirement(name="base.api"),),
             ),
         ),
     )
@@ -631,14 +630,14 @@ def test_legacy_stopped_runtime_requires_explicit_startup_migration(tmp_path):
         "base": {"running": False, "binding_enabled": False},
         "dependent": {"running": True, "binding_enabled": False},
     })
-    declaration = AgentApplication(
+    declaration = ApplicationSpec(
         name="Restored dependencies", version="1",
-        primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
+        primary_agent=AgentSpec(name="primary", session_mode='durable'),
         plugins=(
-            Plugin(name="base", capabilities=(Capability(name="base.api"),)),
+            Plugin(name="base", provides_capabilities=(Capability(name="base.api"),)),
             Plugin(
                 name="dependent",
-                requires=(CapabilityRequirement(name="base.api"),),
+                requires_capabilities=(CapabilityRequirement(name="base.api"),),
             ),
             Plugin(name="independent"),
         ),
@@ -650,7 +649,7 @@ def test_legacy_stopped_runtime_requires_explicit_startup_migration(tmp_path):
 def test_authenticated_plugin_api_controls_only_binding():
     async def scenario():
         application = declaration(Service([]))
-        application = AgentApplication(
+        application = ApplicationSpec(
             name=application.name,
             version=application.version,
             primary_agent=application.primary_agent,
@@ -692,24 +691,24 @@ def test_factory_service_exposes_its_decorated_routes_without_endpoint_copy():
             """Return the service dependency through its own HTTP route."""
             return {"value": self.dependency}
 
-    definition = AgentApplication(
+    definition = ApplicationSpec(
         name="Factory routes", version="1",
-        primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
-        extensions=(Extension(name="dependency", service="ready"),),
+        primary_agent=AgentSpec(name="primary", session_mode='durable'),
+        server_extensions=(ServerExtension(name="dependency", service="ready"),),
         plugins=(Plugin(
             name="feature",
-            runtime=Extension(
+            server_extension=ServerExtension(
                 name="feature_runtime",
                 service_factory=lambda dependency: FeatureService(dependency),
                 endpoints="service",
-                requires=("dependency",),
+                requires_services=("dependency",),
             ),
         ),),
     )
     app = definition.build()
-    service = app.state.application.plan.plugin_extensions["feature"][0].service
+    service = app.state.application.plan.plugin_server_extensions["feature"][0].service
     assert isinstance(service, FeatureService)
-    assert app.state.application.plan.plugin_extensions["feature"][0].endpoints == (service,)
+    assert app.state.application.plan.plugin_server_extensions["feature"][0].endpoints == (service,)
 
     async def scenario():
         async with app.router.lifespan_context(app):
@@ -726,12 +725,12 @@ def test_factory_service_exposes_its_decorated_routes_without_endpoint_copy():
 
 
 def test_prebuilt_plugin_service_exposes_decorated_routes_without_endpoint_copy():
-    app = AgentApplication(
+    app = ApplicationSpec(
         name="Prebuilt routes", version="1",
-        primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
+        primary_agent=AgentSpec(name="primary", session_mode='durable'),
         plugins=(Plugin(
             name="feature",
-            runtime=Extension(name="feature_runtime", service=Api(), endpoints="service"),
+            server_extension=ServerExtension(name="feature_runtime", service=Api(), endpoints="service"),
         ),),
     ).build()
 
@@ -747,12 +746,12 @@ def test_prebuilt_plugin_service_exposes_decorated_routes_without_endpoint_copy(
 
 
 def test_service_routes_require_explicit_opt_in():
-    app = AgentApplication(
+    app = ApplicationSpec(
         name="Private service", version="1",
-        primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
+        primary_agent=AgentSpec(name="primary", session_mode='durable'),
         plugins=(Plugin(
             name="feature",
-            runtime=Extension(name="feature_runtime", service=Api()),
+            server_extension=ServerExtension(name="feature_runtime", service=Api()),
         ),),
     ).build()
 
@@ -764,12 +763,12 @@ def test_service_routes_require_explicit_opt_in():
 
     asyncio.run(scenario())
     with pytest.raises(ValueError, match="without a decorated service"):
-        AgentApplication(
+        ApplicationSpec(
             name="Invalid service", version="1",
-            primary_agent=AgentSpec(name="primary", session=SessionPolicy.durable()),
+            primary_agent=AgentSpec(name="primary", session_mode='durable'),
             plugins=(Plugin(
                 name="feature",
-                runtime=Extension(
+                server_extension=ServerExtension(
                     name="feature_runtime", service=object(), endpoints="service",
                 ),
             ),),

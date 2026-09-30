@@ -213,9 +213,9 @@ class Worker:
             return
         if isinstance(command, PluginBindingRequest):
             operation = (
-                self.agent.activate_plugin
+                self.agent.activate_extension
                 if command.enabled
-                else self.agent.deactivate_plugin
+                else self.agent.deactivate_extension
             )
             await asyncio.to_thread(operation, command.plugin)
             yield PluginBindingUpdated(
@@ -497,7 +497,7 @@ class Worker:
                         "description": plugin.description,
                         "activated": plugin.activated,
                     }
-                    for plugin in self.agent.plugins
+                    for plugin in self.agent.extensions
                 ],
             ))
             return True
@@ -521,7 +521,7 @@ class Worker:
                     "on_shutdown",
                     {"reason": "worker_shutdown"},
                 )
-            for plugin in reversed(getattr(self.agent, "plugins", [])):
+            for plugin in reversed(getattr(self.agent, "extensions", [])):
                 shutdown = getattr(plugin, "shutdown", None)
                 if shutdown is None:
                     continue
@@ -554,7 +554,7 @@ class Worker:
             specialists=list(specialists.values()),
             plugins=[
                 {"name": plugin.title, "activated": plugin.activated}
-                for plugin in getattr(self.agent, "plugins", [])
+                for plugin in getattr(self.agent, "extensions", [])
             ],
         ))
         self.schedule_quota_refresh()

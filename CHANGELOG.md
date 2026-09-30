@@ -6,6 +6,19 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Harmonize composition around `ApplicationSpec`, `Plugin`, `AgentExtension`
+  and `ServerExtension`. Plugin contributions use `agent_extension`,
+  `server_extension` and `specialists`; dependency fields distinguish public
+  capabilities from local server services, and binding flags name the agent.
+- Replace `SessionPolicy` with validated `AgentSpec.session_mode`, and rename
+  agent-local plugin collections and methods to extensions. Remove the redundant
+  extension `install()` shortcut. Name the worker's RPC proxy `ApplicationClient`.
+- Keep agent and server implementations in plugin-owned `agent.py` / `server.py`
+  modules. Migrate saved references to bundled agent extensions when reading
+  specialist profiles, preserving persisted plugin identities and wire fields.
+- Generalize endpoint source discovery and `register_endpoints` to ordinary
+  services; agent extensions are no longer required for server API registration.
+
 - Move the voice controller from `server.runtime.realtime` to
   `plugins.realtime.controller`. Import it from its plugin-owned module;
   the server and agent core remain usable without any bundled plugin.
@@ -30,6 +43,23 @@ Until a stable release, minor versions may revise the public composition API.
   post-build step; pass an initial surface artifact as `BuildContext.ui_root`.
   Binding callback overrides accept `call=None` and forward it to
   `ApplicationRuntime.set_plugin_binding`.
+
+For the next release, migrate `AgentApplication` to `ApplicationSpec`,
+`AgentPlugin` and concrete `*Plugin` agent classes to `AgentExtension` and
+`*Extension`, and `Extension` to `ServerExtension`. Replace `Plugin(agent=...,
+runtime=..., agents=...)` with `Plugin(agent_extension=..., server_extension=...,
+specialists=...)`. Plugin contract fields are `provides_capabilities`,
+`requires_capabilities` and `optional_capabilities`; binding flags are
+`agent_binding_enabled` and `agent_binding_required`. Server dependencies use
+`requires_services` and `optional_services`. Application declarations use
+`server_extensions` / `with_server_extensions`, while agent declarations and
+instances use `extensions` / `add_extension`. Use `session_mode="durable"` rather
+than `session=SessionPolicy.durable()`. Runtime import references move from
+`plugins.<feature>.runtime:build_runtime` to
+`plugins.<feature>.server:build_server_extensions`; agent implementations move
+from `plugins.<feature>.plugin` to `plugins.<feature>.agent`. These are source API
+changes without obsolete import aliases. Session documents, task envelopes,
+HTTP/WebSocket payloads and their plugin identifiers retain their existing form.
 
 ## 0.2.1 - 2026-09-24
 

@@ -1,6 +1,6 @@
 import pytest
 
-from the_framework.plugins.web_search import WebSearchPlugin
+from the_framework.plugins.web_search import WebSearchExtension
 from the_framework.agent import Agent
 
 
@@ -13,7 +13,7 @@ def test_web_search_plugin_exposes_configured_hosted_tool():
         }
     )
 
-    plugin = agent.add_plugin(WebSearchPlugin)
+    plugin = agent.add_extension(WebSearchExtension)
     tool = agent.registry("tools")["web_search"]
 
     assert plugin.activated is True
@@ -32,13 +32,13 @@ def test_web_search_plugin_rejects_invalid_context_size():
     )
 
     with pytest.raises(ValueError, match="must be low, medium, or high"):
-        agent.add_plugin(WebSearchPlugin)
+        agent.add_extension(WebSearchExtension)
 
 
 def test_web_search_plugin_is_inert_when_not_activated():
     agent = Agent(client=object())
 
-    plugin = agent.add_plugin(WebSearchPlugin, activate=False)
+    plugin = agent.add_extension(WebSearchExtension, activate=False)
 
     assert plugin.activated is False
     assert "web_search" not in agent.registry("tools")

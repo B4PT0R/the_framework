@@ -1,3 +1,3 @@
-from .plugin import RegistryConfig, RegistryPlugin, RegistryStore
+from .agent import RegistryConfig, RegistryExtension, RegistryStore
 
-__all__ = ["RegistryConfig", "RegistryPlugin", "RegistryStore"]
+__all__ = ["RegistryConfig", "RegistryExtension", "RegistryStore"]

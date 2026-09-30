@@ -52,39 +52,39 @@ import the_framework.server as server
 from the_framework.server.clients.browser import BrowserService
 from the_framework.server.clients.browser_rpc import BrowserRPCClient
 from the_framework.plugins.realtime.controller import RealtimeController
-from the_framework.plugins.browser import ChromiumPlugin
-from the_framework.plugins.bash import BashPlugin
-from the_framework.plugins.registry import RegistryPlugin
-from the_framework.plugins.scheduler import SchedulerPlugin
-from the_framework.plugins.system import SystemPlugin
-from the_framework.plugins.web_search import WebSearchPlugin
+from the_framework.plugins.browser import ChromiumExtension
+from the_framework.plugins.bash import BashExtension
+from the_framework.plugins.registry import RegistryExtension
+from the_framework.plugins.scheduler import SchedulerExtension
+from the_framework.plugins.system import SystemExtension
+from the_framework.plugins.web_search import WebSearchExtension
 from the_framework.plugins.memory.store import MemoryStore
-from the_framework.plugins.memory.curator import MemoryCuratorPlugin
-from the_framework.plugins.memory.plugin import MemoryPlugin
-from the_framework.plugins.realtime import RealtimePlugin, RealtimeConfig
+from the_framework.plugins.memory.curator import MemoryCuratorExtension
+from the_framework.plugins.memory.agent import MemoryExtension
+from the_framework.plugins.realtime import RealtimeExtension, RealtimeConfig
 from the_framework.plugins.embeddings import normalize_embedding
 
 store = MemoryStore(':memory:')
 assert MappingStore('/tmp/unused-framework-settings', field='settings').field == 'settings'
 assert normalize_embedding([3, 4], dimensions=2) == [0.6, 0.8]
 
-for plugin_class in (BashPlugin, RegistryPlugin, SchedulerPlugin,
-                     SystemPlugin, WebSearchPlugin):
+for plugin_class in (BashExtension, RegistryExtension, SchedulerExtension,
+                     SystemExtension, WebSearchExtension):
     plugin = plugin_class(Agent(client=object()))
     assert plugin.instructions_section() is not None
-curator = Agent(client=object()).add_plugin(MemoryCuratorPlugin)
+curator = Agent(client=object()).add_extension(MemoryCuratorExtension)
 assert curator.name == 'memory_curator'
-class ApplicationMemory(MemoryPlugin):
+class ApplicationMemory(MemoryExtension):
     curator_instructions = 'Preserve supported facts for this application.'
-memory = Agent(client=object()).add_plugin(ApplicationMemory)
+memory = Agent(client=object()).add_extension(ApplicationMemory)
 assert memory.instructions_section() is not None
 profile = next(value for kind, value in memory._contributions if kind == 'agents')
 assert profile.profile().instructions == ApplicationMemory.curator_instructions
-browser = ChromiumPlugin(Agent(client=object()), runtime_root='/tmp/framework-browser-test')
+browser = ChromiumExtension(Agent(client=object()), runtime_root='/tmp/framework-browser-test')
 assert browser.instructions_section() is not None
 assert RealtimeConfig().provider_whitelist == []
 assert RealtimeConfig(provider_whitelist=['application_state']).provider_whitelist == ['application_state']
-voice = Agent(client=object()).add_plugin(RealtimePlugin)
+voice = Agent(client=object()).add_extension(RealtimeExtension)
 assert voice.name == 'realtime'
 package_root = os.environ.get('FRAMEWORK_PACKAGE_ROOT')
 if package_root:

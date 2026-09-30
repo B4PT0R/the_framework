@@ -1,14 +1,14 @@
-from the_framework.agent.spec import AgentSpec, SessionPolicy
+from the_framework.agent.spec import AgentSpec
 import pytest
 from fastapi.testclient import TestClient
 
-from the_framework.agent.extensions.plugin import endpoint
+from the_framework.agent.extensions.extension import endpoint
 from the_framework.server.composition.application import (
-    AgentApplication,
+    ApplicationSpec,
     BuildContext,
     Capability,
     CapabilityRequirement,
-    Extension,
+    ServerExtension,
     Plugin,
     build_application,
 )
@@ -39,11 +39,11 @@ class Service:
 
 
 def application(name, version="1", **options):
-    return AgentApplication(
+    return ApplicationSpec(
         name=name,
         version=version,
         primary_agent=AgentSpec(
-            name="primary", description="Primary test agent.", session=SessionPolicy.durable()
+            name="primary", description="Primary test agent.", session_mode='durable'
         ),
         **options,
     )
@@ -52,13 +52,13 @@ def application(name, version="1", **options):
 @pytest.mark.parametrize("application_owned", [False, True])
 def test_compile_rejects_shared_service_names_before_construction(application_owned):
     constructed = []
-    extension = Extension(name="shared", service_factory=lambda: constructed.append(True))
+    extension = ServerExtension(name="shared", service_factory=lambda: constructed.append(True))
     spec = application(
         "collision",
-        extensions=(extension,) if application_owned else (),
+        server_extensions=(extension,) if application_owned else (),
         plugins=(
-            *((Plugin(name="first", runtime=extension),) if not application_owned else ()),
-            Plugin(name="second", runtime=extension),
+            *((Plugin(name="first", server_extension=extension),) if not application_owned else ()),
+            Plugin(name="second", server_extension=extension),
         ),
     )
     with pytest.raises(ValueError, match="duplicate plugin runtime extension: shared"):
@@ -68,11 +68,11 @@ def test_compile_rejects_shared_service_names_before_construction(application_ow
 
 def test_compile_allows_runtime_name_equal_to_another_plugin_identity():
     plan = application("distinct", plugins=(
-        Plugin(name="first", runtime=Extension(name="second")),
-        Plugin(name="second", runtime=Extension(name="third")),
+        Plugin(name="first", server_extension=ServerExtension(name="second")),
+        Plugin(name="second", server_extension=ServerExtension(name="third")),
     )).compile()
-    assert plan.plugin_extensions["first"][0].name == "second"
-    assert plan.plugin_extensions["second"][0].name == "third"
+    assert plan.plugin_server_extensions["first"][0].name == "second"
+    assert plan.plugin_server_extensions["second"][0].name == "third"
 
 
 def test_plugin_runtime_factories_follow_capability_dependencies():
@@ -80,21 +80,21 @@ def test_plugin_runtime_factories_follow_capability_dependencies():
 
     def provider(_context):
         built.append("provider")
-        return Extension(name="provider_service")
+        return ServerExtension(name="provider_service")
 
     def consumer(_context):
         assert built == ["provider"]
         built.append("consumer")
-        return Extension(name="consumer_service")
+        return ServerExtension(name="consumer_service")
 
     spec = application("ordered runtimes", plugins=(
         Plugin(
-            name="consumer", runtime=consumer,
-            requires=(CapabilityRequirement(name="feature.provider"),),
+            name="consumer", server_extension=consumer,
+            requires_capabilities=(CapabilityRequirement(name="feature.provider"),),
         ),
         Plugin(
-            name="provider", runtime=provider,
-            capabilities=(Capability(name="feature.provider"),),
+            name="provider", server_extension=provider,
+            provides_capabilities=(Capability(name="feature.provider"),),
         ),
     ))
 
@@ -121,8 +121,8 @@ def test_single_service_plugin_needs_no_extension_boilerplate(factory):
 
     counter = Counter()
     runtime = (lambda _context: counter) if factory else counter
-    app = application("Counter", plugins=(Plugin(name="counter", runtime=runtime),)).build()
-    extension = app.state.application.plan.plugin_extensions["counter"][0]
+    app = application("Counter", plugins=(Plugin(name="counter", server_extension=runtime),)).build()
+    extension = app.state.application.plan.plugin_server_extensions["counter"][0]
     assert extension.name == "counter"
     assert extension.service is counter
     with TestClient(app) as client:
@@ -131,14 +131,14 @@ def test_single_service_plugin_needs_no_extension_boilerplate(factory):
     assert events == ["start", "stop"]
 
     with pytest.raises(TypeError, match="must be a server service"):
-        application("Invalid", plugins=(Plugin(name="invalid", runtime=object()),)).build()
+        application("Invalid", plugins=(Plugin(name="invalid", server_extension=object()),)).build()
 
 
 def test_compile_rejects_private_agent_shadowing_primary():
-    spec = AgentApplication(
+    spec = ApplicationSpec(
         name="collision", version="1",
-        primary_agent=AgentSpec(name="plugin.agent", session=SessionPolicy.durable()),
-        plugins=(Plugin(name="plugin", agents=(AgentSpec(name="agent"),)),),
+        primary_agent=AgentSpec(name="plugin.agent", session_mode='durable'),
+        plugins=(Plugin(name="plugin", specialists=(AgentSpec(name="agent"),)),),
     )
     with pytest.raises(ValueError, match="duplicate private agent identity"):
         spec.compile()
@@ -182,18 +182,18 @@ def test_application_spec_builds_a_small_complete_server():
         plugins=(
             Plugin(
                 name="echo",
-                agent=object,
-                runtime=Extension(
+                agent_extension=object,
+                server_extension=ServerExtension(
                     name="echo_api",
                     endpoints=(echo,),
-                    requires=("runtime",),
+                    requires_services=("runtime",),
                 ),
             ),
         ),
-        extensions=(
-            Extension(name="runtime", service=Service(events)),
-            Extension(
-                name="health", endpoints=(health.health,), requires=("runtime",),
+        server_extensions=(
+            ServerExtension(name="runtime", service=Service(events)),
+            ServerExtension(
+                name="health", endpoints=(health.health,), requires_services=("runtime",),
             ),
         ),
     )
@@ -235,12 +235,12 @@ def test_application_spec_builds_a_small_complete_server():
 def test_composition_errors_are_reported_before_the_server_starts():
     with pytest.raises(ValueError, match="unknown.*missing"):
         build_application(application(
-            "Broken", "1", extensions=(Extension(name="api", requires=("missing",)),)
+            "Broken", "1", server_extensions=(ServerExtension(name="api", requires_services=("missing",)),)
         ))
 
     with pytest.raises(ValueError, match="security policy"):
         build_application(application(
-            "Unsafe", "1", extensions=(Extension(name="api", endpoints=(echo,)),)
+            "Unsafe", "1", server_extensions=(ServerExtension(name="api", endpoints=(echo,)),)
         ))
 
     with pytest.raises(ValueError, match="duplicate application endpoint"):
@@ -248,9 +248,9 @@ def test_composition_errors_are_reported_before_the_server_starts():
             "Duplicate",
             "1",
             security=Security(),
-            extensions=(
-                Extension(name="one", endpoints=(echo,)),
-                Extension(name="two", endpoints=(echo,)),
+            server_extensions=(
+                ServerExtension(name="one", endpoints=(echo,)),
+                ServerExtension(name="two", endpoints=(echo,)),
             ),
         ))
 
@@ -258,19 +258,19 @@ def test_composition_errors_are_reported_before_the_server_starts():
         build_application(application(
             "Cyclic",
             "1",
-            extensions=(
-                Extension(name="one", requires=("two",)),
-                Extension(name="two", requires=("one",)),
+            server_extensions=(
+                ServerExtension(name="one", requires_services=("two",)),
+                ServerExtension(name="two", requires_services=("one",)),
             ),
         ))
 
 
 def test_specs_are_immutable_and_extend_without_side_effects():
     base = application("Base")
-    extended = base.with_extensions(Extension(name="runtime", service=object()))
+    extended = base.with_server_extensions(ServerExtension(name="runtime", service=object()))
 
-    assert base.extensions == ()
-    assert [extension.name for extension in extended.extensions] == ["runtime"]
+    assert base.server_extensions == ()
+    assert [extension.name for extension in extended.server_extensions] == ["runtime"]
 
 
 def test_extension_factory_receives_declared_service_dependencies():
@@ -278,12 +278,12 @@ def test_extension_factory_receives_declared_service_dependencies():
     dependency = Service(events)
     app = build_application(application(
         "Factories",
-        extensions=(
-            Extension(name="dependency", service=dependency),
-            Extension(
+        server_extensions=(
+            ServerExtension(name="dependency", service=dependency),
+            ServerExtension(
                 name="dependent",
                 service_factory=lambda dependency: {"dependency": dependency},
-                requires=("dependency",),
+                requires_services=("dependency",),
             ),
         ),
     ))
@@ -294,7 +294,7 @@ def test_extension_factory_receives_declared_service_dependencies():
         }
 
     with pytest.raises(ValueError, match="mutually exclusive"):
-        Extension(name="invalid", service=object(), service_factory=lambda: object())
+        ServerExtension(name="invalid", service=object(), service_factory=lambda: object())
 
 
 def test_extension_factory_discovers_its_services_websockets():
@@ -311,7 +311,7 @@ def test_extension_factory_discovers_its_services_websockets():
 
     app = build_application(application(
         "Service sockets",
-        extensions=(Extension(
+        server_extensions=(ServerExtension(
             name="feature", service_factory=SocketService,
             websockets="service",
         ),),
@@ -324,7 +324,7 @@ def test_extension_factory_discovers_its_services_websockets():
     with pytest.raises(ValueError, match="without websocket_declarations"):
         build_application(application(
             "Missing sockets",
-            extensions=(Extension(
+            server_extensions=(ServerExtension(
                 name="feature", service=object(), websockets="service",
             ),),
         ))
@@ -336,14 +336,14 @@ def test_plugin_agent_binding_can_be_disabled_while_runtime_is_installed():
         "1",
         plugins=(Plugin(
             name="echo",
-            agent=object,
-            runtime=Extension(name="echo_api", endpoints=(echo,)),
-            binding_enabled=False,
+            agent_extension=object,
+            server_extension=ServerExtension(name="echo_api", endpoints=(echo,)),
+            agent_binding_enabled=False,
         ),),
         security=Security(),
     ))
 
-    assert app.state.application.plugins["echo"].binding_enabled is False
+    assert app.state.application.plugins["echo"].agent_binding_enabled is False
     assert app.state.application.plugin_host.status("echo").running is True
 
 
@@ -352,20 +352,20 @@ def test_compiler_keeps_server_factories_out_of_worker_projection():
 
     def runtime(context):
         observed.append(context.require("marker"))
-        return Extension(name="memory_runtime")
+        return ServerExtension(name="memory_runtime")
 
     spec = application(
         "Compiled",
         plugins=(
             Plugin(
                 name="memory",
-                runtime=runtime,
-                agents=(AgentSpec(name="curator", description="Private memory curator."),),
-                capabilities=(Capability(name="memory.curate", version=2),),
+                server_extension=runtime,
+                specialists=(AgentSpec(name="curator", description="Private memory curator."),),
+                provides_capabilities=(Capability(name="memory.curate", version=2),),
             ),
             Plugin(
                 name="consumer",
-                requires=(CapabilityRequirement(name="memory.curate", min_version=2),),
+                requires_capabilities=(CapabilityRequirement(name="memory.curate", min_version=2),),
             ),
         ),
     )
@@ -377,7 +377,7 @@ def test_compiler_keeps_server_factories_out_of_worker_projection():
     assert plan.capabilities["memory.curate"].version == 2
     app = spec.build(BuildContext({"marker": "resolved"}))
     assert observed == ["resolved"]
-    assert app.state.application.plan.plugin_extensions["memory"][0].name == "memory_runtime"
+    assert app.state.application.plan.plugin_server_extensions["memory"][0].name == "memory_runtime"
 
 
 def test_importable_runtime_factory_is_resolved_only_for_server_build(monkeypatch):
@@ -388,22 +388,22 @@ def test_importable_runtime_factory_is_resolved_only_for_server_build(monkeypatc
 
     def load(name):
         imported.append(name)
-        return SimpleNamespace(factory=lambda context: Extension(
+        return SimpleNamespace(factory=lambda context: ServerExtension(
             name=context.require("name")
         ))
 
     monkeypatch.setattr(composition, "import_module", load)
     spec = application("Lazy runtime", plugins=(Plugin(
-        name="feature", runtime="feature.server:factory",
+        name="feature", server_extension="feature.server:factory",
     ),))
-    assert spec.compile().plugin_extensions == {}
+    assert spec.compile().plugin_server_extensions == {}
     assert imported == []
     app = spec.build(BuildContext({"name": "feature_runtime"}))
     assert imported == ["feature.server"]
-    assert app.state.application.plan.plugin_extensions["feature"][0].name == "feature_runtime"
+    assert app.state.application.plan.plugin_server_extensions["feature"][0].name == "feature_runtime"
 
     with pytest.raises(ValueError, match="module:factory"):
-        Plugin(name="invalid", runtime="feature.server.factory")
+        Plugin(name="invalid", server_extension="feature.server.factory")
 
 
 def test_optional_capability_orders_present_provider_without_requiring_installation():
@@ -412,7 +412,7 @@ def test_optional_capability_orders_present_provider_without_requiring_installat
 
     def provider(context):
         context.provide("prepared", prepared)
-        return Extension(name="provider_runtime", service=prepared)
+        return ServerExtension(name="provider_runtime", service=prepared)
 
     def consumer(context):
         observed.append((
@@ -420,23 +420,23 @@ def test_optional_capability_orders_present_provider_without_requiring_installat
             context.has_capability("example.provider", min_version=2),
             context.get("prepared"),
         ))
-        return Extension(name="consumer_runtime", service=object())
+        return ServerExtension(name="consumer_runtime", service=object())
 
     consumer_plugin = Plugin(
         name="consumer",
-        runtime=consumer,
-        optional_requires=(CapabilityRequirement(name="example.provider"),),
+        server_extension=consumer,
+        optional_capabilities=(CapabilityRequirement(name="example.provider"),),
     )
     provider_plugin = Plugin(
         name="provider",
-        runtime=provider,
-        capabilities=(Capability(name="example.provider"),),
+        server_extension=provider,
+        provides_capabilities=(Capability(name="example.provider"),),
     )
     with_provider = application(
         "With optional provider", plugins=(consumer_plugin, provider_plugin),
     ).build(BuildContext())
     assert observed == [(True, False, prepared)]
-    assert with_provider.state.application.plan.extension_order == (
+    assert with_provider.state.application.plan.server_extension_order == (
         "provider_runtime", "consumer_runtime",
     )
 
@@ -444,18 +444,18 @@ def test_optional_capability_orders_present_provider_without_requiring_installat
         "Without optional provider", plugins=(consumer_plugin,),
     ).build(BuildContext())
     assert observed == [(True, False, prepared), (False, False, None)]
-    assert "provider_runtime" not in without_provider.state.application.extensions
+    assert "provider_runtime" not in without_provider.state.application.server_extensions
 
     with pytest.raises(ValueError, match="cannot integrate capability example.provider>=2"):
         application("Incompatible optional provider", plugins=(
-            Plugin(name="consumer", optional_requires=(
+            Plugin(name="consumer", optional_capabilities=(
                 CapabilityRequirement(name="example.provider", min_version=2),
             )),
             provider_plugin,
         )).compile()
     with pytest.raises(ValueError, match="duplicate plugin capability requirement"):
-        Plugin(name="duplicate", requires=(CapabilityRequirement(name="example.provider"),),
-               optional_requires=(CapabilityRequirement(name="example.provider"),))
+        Plugin(name="duplicate", requires_capabilities=(CapabilityRequirement(name="example.provider"),),
+               optional_capabilities=(CapabilityRequirement(name="example.provider"),))
 
 
 def test_optional_extension_service_is_ordered_and_injected_only_if_installed():
@@ -466,30 +466,30 @@ def test_optional_extension_service_is_ordered_and_injected_only_if_installed():
         observed.append(provider_service)
         return object()
 
-    consumer = Extension(
+    consumer = ServerExtension(
         name="consumer", service_factory=build_consumer,
-        optional_requires=("provider_service",),
+        optional_services=("provider_service",),
     )
-    installed = application("With service", extensions=(
-        consumer, Extension(name="provider_service", service=provider),
+    installed = application("With service", server_extensions=(
+        consumer, ServerExtension(name="provider_service", service=provider),
     )).build()
-    assert installed.state.application.plan.extension_order == (
+    assert installed.state.application.plan.server_extension_order == (
         "provider_service", "consumer",
     )
     assert observed == [provider]
 
-    absent = application("Without service", extensions=(consumer,)).build()
-    assert absent.state.application.plan.extension_order == ("consumer",)
+    absent = application("Without service", server_extensions=(consumer,)).build()
+    assert absent.state.application.plan.server_extension_order == ("consumer",)
     assert observed == [provider, None]
 
     with pytest.raises(ValueError, match="cyclic application extension"):
-        application("Optional cycle", extensions=(
+        application("Optional cycle", server_extensions=(
             consumer,
-            Extension(name="provider_service", requires=("consumer",)),
+            ServerExtension(name="provider_service", requires_services=("consumer",)),
         )).build()
     with pytest.raises(ValueError, match="duplicate extension dependency"):
-        Extension(name="duplicate", requires=("provider_service",),
-                  optional_requires=("provider_service",))
+        ServerExtension(name="duplicate", requires_services=("provider_service",),
+                  optional_services=("provider_service",))
 
 
 def test_extension_discovers_decorated_methods_from_an_object():
@@ -501,7 +501,7 @@ def test_extension_discovers_decorated_methods_from_an_object():
 
     app = build_application(application(
         "Object endpoints",
-        extensions=(Extension(name="api", endpoints=(Api(),)),),
+        server_extensions=(ServerExtension(name="api", endpoints=(Api(),)),),
     ))
 
     with TestClient(app) as client:
@@ -509,25 +509,24 @@ def test_extension_discovers_decorated_methods_from_an_object():
 
 
 def test_primary_agent_must_be_durable():
-    from the_framework.agent import SessionPolicy
 
     with pytest.raises(ValueError, match="primary agent session must be durable"):
-        AgentApplication(
+        ApplicationSpec(
             name="Invalid",
             version="1",
             primary_agent=AgentSpec(
                 name="primary",
                 description="Primary test agent.",
-                session=SessionPolicy.ephemeral(),
+                session_mode='ephemeral',
             ),
         )
 
 
 @pytest.mark.parametrize("short_form", [False, True])
 def test_plugin_private_agent_identities_are_namespaced_and_ephemeral_by_default(short_form):
-    from the_framework.agent import AgentPlugin, agent_trigger
+    from the_framework.agent import AgentExtension, agent_trigger
 
-    class Owner(AgentPlugin):
+    class Owner(AgentExtension):
         name = "owner"
 
         @agent_trigger(
@@ -541,37 +540,37 @@ def test_plugin_private_agent_identities_are_namespaced_and_ephemeral_by_default
             return result
 
     plan = application(
-        "Private agents", plugins=(Owner if short_form else Plugin(name="owner", agent=Owner),)
+        "Private agents", plugins=(Owner if short_form else Plugin(name="owner", agent_extension=Owner),)
     ).compile()
 
     assert "owner.observer" in plan.agents
-    assert plan.agents["owner.observer"].session.mode == "ephemeral"
+    assert plan.agents["owner.observer"].session_mode == "ephemeral"
     assert plan.agents["owner.observer"].queue.mode == "fifo"
-    assert [profile.name for profile in plan.primary_agent.specialists] == [
+    assert [profile.name for profile in plan.primary_agent.specialist_profiles] == [
         "owner.observer",
     ]
 
 
 def test_plugin_shorthand_normalizes_without_instantiating_the_plugin():
-    from the_framework.agent import AgentPlugin
+    from the_framework.agent import AgentExtension
 
-    class Example(AgentPlugin):
+    class Example(AgentExtension):
         name = "example"
 
         def __init__(self, _agent):
             raise AssertionError("compilation must not construct plugins")
 
     app = application("short", plugins=Example)
-    assert app.plugins == (Plugin(name="example", agent=Example),)
-    assert app.compile().plugins["example"].agent is Example
+    assert app.plugins == (Plugin(name="example", agent_extension=Example),)
+    assert app.compile().plugins["example"].agent_extension is Example
     with pytest.raises(ValueError, match="duplicate plugin"):
         application("duplicate", plugins=(Example, Plugin(name="example"))).compile()
 
 
 def test_plugin_shorthand_requires_a_declared_identity():
-    from the_framework.agent import AgentPlugin
+    from the_framework.agent import AgentExtension
 
-    class Anonymous(AgentPlugin):
+    class Anonymous(AgentExtension):
         pass
 
     with pytest.raises(ValueError, match="explicit name"):
@@ -593,8 +592,8 @@ def test_custom_websocket_handshake_injects_protocol_context():
     app = build_application(application(
         "Socket App",
         "1",
-        extensions=(
-            Extension(
+        server_extensions=(
+            ServerExtension(
                 name="socket",
                 websockets=(WebSocketEndpoint(
                     path="/socket", handler=serve, handshake=handshake,

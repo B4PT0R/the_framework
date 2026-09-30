@@ -1,3 +1,3 @@
-from .plugin import BashConfig, BashPlugin
+from .agent import BashConfig, BashExtension
 
-__all__ = ["BashConfig", "BashPlugin"]
+__all__ = ["BashConfig", "BashExtension"]

@@ -4,7 +4,7 @@ import json
 import math
 from pathlib import Path
 
-from the_framework.agent import AgentResult, Message, AgentPlugin, agent_trigger
+from the_framework.agent import AgentResult, Message, AgentExtension, agent_trigger
 from ...agent.models.config import Config
 from ...agent.models.lifecycle import AgentTaskRequested
 from ...agent.extensions.providers import provider
@@ -59,7 +59,7 @@ def message_text(message):
     ).strip()
 
 
-class MemoryPlugin(AgentPlugin):
+class MemoryExtension(AgentExtension):
     curator_instructions: str | None = None
     name = "memory"
     description = "Relational memory retrieval, deliberate recall, and autonomous curation."
@@ -177,7 +177,7 @@ class MemoryPlugin(AgentPlugin):
                 "compaction": {"context_token_limit": 280000, "trigger_ratio": 0.95},
                 "model": "gpt-5.6-terra",
             },
-            plugins=["the_framework.plugins.memory.curator:MemoryCuratorPlugin"],
+            extensions=["the_framework.plugins.memory.curator:MemoryCuratorExtension"],
             idle_timeout_seconds=60,
             completion_tool="complete_curation",
             completion_retry_limit=4,

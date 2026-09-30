@@ -13,11 +13,11 @@ from fastapi import FastAPI
 from modict import modict
 
 from ...agent.extensions.endpoints import Endpoint
-from ...agent.extensions.plugin import AgentPlugin
+from ...agent.extensions.extension import AgentExtension
 from ...agent.spec import AgentSpec
 from ...agent.extensions.specialists import AgentTrigger
 
-from ..api.endpoints import EndpointRegistry, SecurityPolicy
+from ..api.endpoints import EndpointRegistry, SecurityPolicy, endpoint_declarations
 from ..api.plugins import PluginHostApi
 from .plugins import PluginHost
 from .controls import _bind_application_controls
@@ -135,7 +135,7 @@ class CapabilityRequirement(modict):
             raise ValueError("minimum capability version must be positive")
 
 
-class Extension(modict):
+class ServerExtension(modict):
     """One coherent server capability and its declarative surface."""
 
     _config = modict.config(frozen=True, strict=True, extra="forbid", auto_convert=False)
@@ -145,8 +145,8 @@ class Extension(modict):
     service_factory: Callable[..., object] | None = None
     endpoints: tuple[object, ...] | Literal["service"] = ()
     websockets: tuple[object, ...] | Literal["service"] = ()
-    requires: tuple[str, ...] = ()
-    optional_requires: tuple[str, ...] = ()
+    requires_services: tuple[str, ...] = ()
+    optional_services: tuple[str, ...] = ()
     critical: bool = True
     start: Callable | None = None
     stop: Callable | None = None
@@ -157,7 +157,7 @@ class Extension(modict):
     @modict.model_validator(mode="after")
     def validate_declaration(self):
         _identifier(self.name, "extension name")
-        dependencies = (*self.requires, *self.optional_requires)
+        dependencies = (*self.requires_services, *self.optional_services)
         if self.name in dependencies:
             raise ValueError(f"extension cannot depend on itself: {self.name}")
         if len(dependencies) != len(set(dependencies)):
@@ -178,7 +178,7 @@ class Extension(modict):
     def normalize_sequences(self, key, value):
         if key in {"endpoints", "websockets"} and value == "service":
             return value
-        return _tuple(value) if key in {"endpoints", "websockets", "requires", "optional_requires", "middleware", "mounts"} else value
+        return _tuple(value) if key in {"endpoints", "websockets", "requires_services", "optional_services", "middleware", "mounts"} else value
 
 
 class Plugin(modict):
@@ -187,59 +187,59 @@ class Plugin(modict):
     _config = modict.config(frozen=True, strict=True, extra="forbid", auto_convert=False)
 
     name: str
-    agent: Callable | type | object | None = None
-    runtime: object | None = None
-    agents: tuple[AgentSpec, ...] = ()
-    capabilities: tuple[Capability, ...] = ()
-    requires: tuple[CapabilityRequirement, ...] = ()
-    optional_requires: tuple[CapabilityRequirement, ...] = ()
-    binding_enabled: bool = True
-    binding_required: bool = False
+    agent_extension: Callable | type | object | None = None
+    server_extension: object | None = None
+    specialists: tuple[AgentSpec, ...] = ()
+    provides_capabilities: tuple[Capability, ...] = ()
+    requires_capabilities: tuple[CapabilityRequirement, ...] = ()
+    optional_capabilities: tuple[CapabilityRequirement, ...] = ()
+    agent_binding_enabled: bool = True
+    agent_binding_required: bool = False
 
     @modict.model_validator(mode="after")
     def validate_declaration(self):
         _identifier(self.name, "plugin name")
-        if self.binding_required and not self.binding_enabled:
+        if self.agent_binding_required and not self.agent_binding_enabled:
             raise ValueError("a required plugin binding cannot start disabled")
-        if self.binding_required and self.agent is None:
+        if self.agent_binding_required and self.agent_extension is None:
             raise ValueError("a server-only plugin cannot require an agent binding")
-        if isinstance(self.runtime, str):
-            module, separator, attribute = self.runtime.partition(":")
+        if isinstance(self.server_extension, str):
+            module, separator, attribute = self.server_extension.partition(":")
             if (
                 not separator
                 or not all(part.isidentifier() for part in module.split("."))
                 or not attribute.isidentifier()
             ):
                 raise ValueError(
-                    f"plugin {self.name} runtime reference must use module:factory"
+                    f"plugin {self.name} server extension reference must use module:factory"
                 )
-        names = [agent.name for agent in self.agents]
+        names = [agent.name for agent in self.specialists]
         if len(names) != len(set(names)):
             raise ValueError(f"duplicate private agent in plugin {self.name}")
-        requirements = [item.name for item in (*self.requires, *self.optional_requires)]
+        requirements = [item.name for item in (*self.requires_capabilities, *self.optional_capabilities)]
         if len(requirements) != len(set(requirements)):
             raise ValueError(f"duplicate plugin capability requirement: {self.name}")
 
     @modict.any_validator(mode="before")
     def normalize_sequences(self, key, value):
-        if key == "agents" and not value and isinstance(self.get("agent"), type):
+        if key == "specialists" and not value and isinstance(self.get("agent_extension"), type):
             return tuple(
                 AgentTrigger.from_function(member).spec
-                for _, member in inspect.getmembers(self.agent)
+                for _, member in inspect.getmembers(self.agent_extension)
                 if getattr(member, "agent_trigger", None) is not None
             )
-        return _tuple(value) if key in {"agents", "capabilities", "requires", "optional_requires"} else value
+        return _tuple(value) if key in {"specialists", "provides_capabilities", "requires_capabilities", "optional_capabilities"} else value
 
-    def runtime_extension(self, context: BuildContext):
-        if self.runtime is None:
+    def build_server_extensions(self, context: BuildContext):
+        if self.server_extension is None:
             return None
-        runtime = self.runtime
+        runtime = self.server_extension
         if isinstance(runtime, str):
             module, attribute = runtime.split(":", 1)
             runtime = getattr(import_module(module), attribute)
-        if not isinstance(runtime, (Extension, tuple)) and callable(runtime):
+        if not isinstance(runtime, (ServerExtension, tuple)) and callable(runtime):
             runtime = runtime(context)
-        if not isinstance(runtime, (Extension, tuple)):
+        if not isinstance(runtime, (ServerExtension, tuple)):
             has_endpoints = _service_declares_endpoints(runtime)
             if not (
                 has_endpoints
@@ -250,9 +250,9 @@ class Plugin(modict):
             ):
                 raise TypeError(
                     f"plugin {self.name} runtime must be a server service "
-                    "or Extension declaration"
+                    "or ServerExtension declaration"
                 )
-            runtime = Extension(
+            runtime = ServerExtension(
                 name=self.name,
                 service=runtime,
                 endpoints="service" if has_endpoints else (),
@@ -262,30 +262,26 @@ class Plugin(modict):
                 ),
             )
         extensions = _tuple(runtime)
-        if not all(isinstance(item, Extension) for item in extensions):
-            raise TypeError(f"plugin {self.name} did not produce Extensions")
+        if not all(isinstance(item, ServerExtension) for item in extensions):
+            raise TypeError(f"plugin {self.name} did not produce ServerExtension declarations")
         return extensions
-
-    def agent_plugin(self):
-        return self.agent
-
 
 class ApplicationPlan(modict):
     """Validated immutable output of application compilation."""
 
     _config = modict.config(frozen=True, strict=True, extra="forbid", auto_convert=False)
 
-    application: AgentApplication
+    application: ApplicationSpec
     primary_agent: AgentSpec
     agents: Mapping[str, AgentSpec]
     plugins: Mapping[str, Plugin]
-    plugin_extensions: Mapping[str, tuple[Extension, ...]]
-    extensions: tuple[Extension, ...]
+    plugin_server_extensions: Mapping[str, tuple[ServerExtension, ...]]
+    server_extensions: tuple[ServerExtension, ...]
     capabilities: Mapping[str, Capability]
-    extension_order: tuple[str, ...]
+    server_extension_order: tuple[str, ...]
 
 
-class AgentApplication(modict):
+class ApplicationSpec(modict):
     """Complete declaration of an agent, its runtime and client surfaces."""
 
     _config = modict.config(frozen=True, strict=True, extra="forbid", auto_convert=False)
@@ -294,7 +290,7 @@ class AgentApplication(modict):
     version: str
     primary_agent: AgentSpec
     plugins: tuple[Plugin, ...] = ()
-    extensions: tuple[Extension, ...] = ()
+    server_extensions: tuple[ServerExtension, ...] = ()
     surfaces: tuple[ClientSurface, ...] = ()
     security: SecurityPolicy | None = None
     title: str | None = None
@@ -308,24 +304,24 @@ class AgentApplication(modict):
             raise ValueError("application name is required")
         if not self.version.strip():
             raise ValueError("application version is required")
-        if self.primary_agent.session.mode != "durable":
+        if self.primary_agent.session_mode != "durable":
             raise ValueError("the primary agent session must be durable")
 
-    def with_extensions(self, *extensions):
-        return type(self)({**self, "extensions": (*self.extensions, *extensions)})
+    def with_server_extensions(self, *extensions):
+        return type(self)({**self, "server_extensions": (*self.server_extensions, *extensions)})
 
     @modict.any_validator(mode="before")
     def normalize_sequences(self, key, value):
         if key == "plugins":
             plugins = []
             for declaration in _tuple(value):
-                if isinstance(declaration, type) and issubclass(declaration, AgentPlugin):
+                if isinstance(declaration, type) and issubclass(declaration, AgentExtension):
                     if not declaration.name:
                         raise ValueError("a plugin class declaration requires an explicit name")
-                    declaration = Plugin(name=declaration.name, agent=declaration)
+                    declaration = Plugin(name=declaration.name, agent_extension=declaration)
                 plugins.append(declaration)
             return tuple(plugins)
-        return _tuple(value) if key in {"plugins", "extensions", "surfaces"} else value
+        return _tuple(value) if key in {"plugins", "server_extensions", "surfaces"} else value
 
     def compile(self):
         return _compile_application(self)
@@ -341,11 +337,11 @@ class ApplicationContext:
         self.spec = plan.application
         self.plan = plan
         self.services = ServiceContext()
-        self.extensions = {
+        self.server_extensions = {
             item.name: item
             for item in (
-                *plan.extensions,
-                *(extension for group in plan.plugin_extensions.values() for extension in group),
+                *plan.server_extensions,
+                *(extension for group in plan.plugin_server_extensions.values() for extension in group),
             )
         }
         self.plugins = dict(plan.plugins)
@@ -360,16 +356,16 @@ class ApplicationContext:
 def _compile_application(application):
     plugins = {}
     capabilities = {}
-    extensions = list(application.extensions)
+    extensions = list(application.server_extensions)
     extension_map = {}
     for extension in extensions:
-        if not isinstance(extension, Extension):
-            raise TypeError("application extensions must be Extension instances")
+        if not isinstance(extension, ServerExtension):
+            raise TypeError("application extensions must be ServerExtension instances")
         if extension.name in extension_map:
             raise ValueError(f"duplicate application extension: {extension.name}")
         extension_map[extension.name] = extension
     runtime_names = set(extension_map)
-    plugin_extensions = {}
+    plugin_server_extensions = {}
     agent_contributions = []
     private_identities = set()
     agents = {}
@@ -382,11 +378,11 @@ def _compile_application(application):
         plugins[plugin.name] = plugin
         triggers = {
             trigger.spec.name: trigger
-            for _, member in inspect.getmembers(plugin.agent)
+            for _, member in inspect.getmembers(plugin.agent_extension)
             if getattr(member, "agent_trigger", None) is not None
             for trigger in (AgentTrigger.from_function(member),)
         }
-        for private_agent in plugin.agents:
+        for private_agent in plugin.specialists:
             if not isinstance(private_agent, AgentSpec):
                 raise TypeError(
                     f"private agents for plugin {plugin.name} must be AgentSpec instances"
@@ -406,16 +402,16 @@ def _compile_application(application):
                     )} if trigger is not None else {}),
                 )
             )
-        for capability in plugin.capabilities:
+        for capability in plugin.provides_capabilities:
             if capability.name in capabilities:
                 raise ValueError(f"duplicate plugin capability: {capability.name}")
             capabilities[capability.name] = capability
         # A worker must be able to compile the agent projection without
         # constructing server-only resources or needing server credentials.
-        static_runtime = plugin.runtime if isinstance(plugin.runtime, (Extension, tuple)) else ()
+        static_runtime = plugin.server_extension if isinstance(plugin.server_extension, (ServerExtension, tuple)) else ()
         static_extensions = _tuple(static_runtime)
-        if not all(isinstance(item, Extension) for item in static_extensions):
-            raise TypeError(f"plugin {plugin.name} runtime must contain Extensions")
+        if not all(isinstance(item, ServerExtension) for item in static_extensions):
+            raise TypeError(f"plugin {plugin.name} server contribution must contain ServerExtension declarations")
         for extension in static_extensions:
             if extension.name in runtime_names:
                 raise ValueError(
@@ -423,18 +419,18 @@ def _compile_application(application):
                 )
             runtime_names.add(extension.name)
         if static_extensions:
-            plugin_extensions[plugin.name] = static_extensions
-        if plugin.agent_plugin() is not None:
+            plugin_server_extensions[plugin.name] = static_extensions
+        if plugin.agent_extension is not None:
             agent_contributions.append(plugin)
     for plugin in plugins.values():
-        for requirement in plugin.requires:
+        for requirement in plugin.requires_capabilities:
             capability = capabilities.get(requirement.name)
             if capability is None or capability.version < requirement.min_version:
                 raise ValueError(
                     f"plugin {plugin.name} requires unavailable capability "
                     f"{requirement.name}>={requirement.min_version}"
                 )
-        for requirement in plugin.optional_requires:
+        for requirement in plugin.optional_capabilities:
             capability = capabilities.get(requirement.name)
             if capability is not None and capability.version < requirement.min_version:
                 raise ValueError(
@@ -443,12 +439,12 @@ def _compile_application(application):
                 )
     _plugin_dependency_order(plugins)
 
-    extension_order = dependency_order(
+    server_extension_order = dependency_order(
         {
             name: (
-                *(dependency for dependency in extension.requires
+                *(dependency for dependency in extension.requires_services
                   if dependency in extension_map),
-                *(dependency for dependency in extension.optional_requires
+                *(dependency for dependency in extension.optional_services
                   if dependency in extension_map),
             )
             for name, extension in extension_map.items()
@@ -479,38 +475,20 @@ def _compile_application(application):
             "client surface route collides with application mount: "
             + ", ".join(sorted(collisions))
         )
-    primary_agent = application.primary_agent.with_plugins(
+    primary_agent = application.primary_agent.with_extensions(
         *agent_contributions
-    ).with_specialists(*specialist_profiles)
+    ).with_specialist_profiles(*specialist_profiles)
     agents[primary_agent.name] = primary_agent
     return ApplicationPlan(
         application=application,
         primary_agent=primary_agent,
         agents=MappingProxyType(agents),
         plugins=MappingProxyType(plugins),
-        plugin_extensions=MappingProxyType(plugin_extensions),
-        extensions=tuple(extensions),
+        plugin_server_extensions=MappingProxyType(plugin_server_extensions),
+        server_extensions=tuple(extensions),
         capabilities=MappingProxyType(capabilities),
-        extension_order=tuple(extension_order),
+        server_extension_order=tuple(server_extension_order),
     )
-
-
-def _declared_endpoints(source):
-    if isinstance(source, Endpoint):
-        return (source,)
-    if callable(source) and getattr(source, "agent_endpoint", None) is not None:
-        return (Endpoint.from_function(source),)
-    declarations = getattr(source, "endpoint_declarations", None)
-    if callable(declarations):
-        return tuple(declarations())
-    endpoints = []
-    for name, member in inspect.getmembers(type(source)):
-        if getattr(member, "agent_endpoint", None) is None:
-            continue
-        endpoints.append(Endpoint.from_function(getattr(source, name)))
-    if endpoints:
-        return tuple(endpoints)
-    raise TypeError("extension endpoint must be decorated or expose endpoint declarations")
 
 
 def _service_declares_endpoints(service):
@@ -527,12 +505,12 @@ def _service_declares_endpoints(service):
     )
 
 
-def _resolve_plugin_extensions(plan, context):
-    names = {extension.name for extension in plan.extensions}
+def _resolve_plugin_server_extensions(plan, context):
+    names = {extension.name for extension in plan.server_extensions}
     extensions = {}
     for plugin_name in _plugin_dependency_order(plan.plugins):
         plugin = plan.plugins[plugin_name]
-        plugin_runtime = plugin.runtime_extension(context)
+        plugin_runtime = plugin.build_server_extensions(context)
         if plugin_runtime is None:
             continue
         for extension in plugin_runtime:
@@ -546,47 +524,47 @@ def _resolve_plugin_extensions(plan, context):
     return extensions
 
 
-def _extension_dependencies(plan, plugin_extensions):
+def _extension_dependencies(plan, plugin_server_extensions):
     """One startup DAG for application and plugin-owned server components."""
     all_extensions = (
-        *plan.extensions,
-        *(extension for group in plugin_extensions.values() for extension in group),
+        *plan.server_extensions,
+        *(extension for group in plugin_server_extensions.values() for extension in group),
     )
     names = {extension.name for extension in all_extensions}
     extension_owners = {
         extension.name: plugin_name
-        for plugin_name, group in plugin_extensions.items()
+        for plugin_name, group in plugin_server_extensions.items()
         for extension in group
     }
 
     def direct_dependencies(extension):
         return (
-            *extension.requires,
-            *(name for name in extension.optional_requires if name in names),
+            *extension.requires_services,
+            *(name for name in extension.optional_services if name in names),
         )
 
     exports = {
         capability.name: name
         for name, plugin in plan.plugins.items()
-        for capability in plugin.capabilities
+        for capability in plugin.provides_capabilities
     }
     dependencies = {
         extension.name: direct_dependencies(extension)
-        for extension in plan.extensions
+        for extension in plan.server_extensions
     }
-    for name, group in plugin_extensions.items():
+    for name, group in plugin_server_extensions.items():
         providers = tuple(dict.fromkeys(
             exports[requirement.name]
             for requirement in (
-                *plan.plugins[name].requires,
-                *plan.plugins[name].optional_requires,
+                *plan.plugins[name].requires_capabilities,
+                *plan.plugins[name].optional_capabilities,
             )
             if requirement.name in exports
         ))
         provider_extensions = tuple(
             extension.name
             for provider in providers
-            for extension in plugin_extensions.get(provider, ())
+            for extension in plugin_server_extensions.get(provider, ())
         )
         for extension in group:
             for dependency in direct_dependencies(extension):
@@ -606,12 +584,12 @@ def _plugin_dependency_order(plugins):
     exports = {
         capability.name: name
         for name, plugin in plugins.items()
-        for capability in plugin.capabilities
+        for capability in plugin.provides_capabilities
     }
     return dependency_order({
         name: tuple(
             exports[requirement.name]
-            for requirement in (*plugin.requires, *plugin.optional_requires)
+            for requirement in (*plugin.requires_capabilities, *plugin.optional_capabilities)
             if requirement.name in exports
         )
         for name, plugin in plugins.items()
@@ -623,7 +601,7 @@ def _construct_extension_service(extension, services):
     if extension.service_factory is not None:
         dependencies = {
             dependency: services[dependency]
-            for dependency in (*extension.requires, *extension.optional_requires)
+            for dependency in (*extension.requires_services, *extension.optional_services)
             if dependency in services
         }
         service = extension.service_factory(**dependencies)
@@ -654,7 +632,7 @@ def _construct_extension_service(extension, services):
         and websockets is extension.websockets
     ):
         return extension
-    return Extension({
+    return ServerExtension({
         **extension,
         "service": service,
         "service_factory": None,
@@ -664,25 +642,25 @@ def _construct_extension_service(extension, services):
 
 
 def build_application(
-    application: AgentApplication,
+    application: ApplicationSpec,
     *,
     context: BuildContext | None = None,
 ) -> FastAPI:
     """Compile the complete declaration, then build its FastAPI runtime."""
-    if not isinstance(application, AgentApplication):
-        raise TypeError("build_application expects an AgentApplication")
+    if not isinstance(application, ApplicationSpec):
+        raise TypeError("build_application expects an ApplicationSpec")
     plan = application.compile()
     build_context = context if context is not None else BuildContext()
     object.__setattr__(build_context, "_capabilities", plan.capabilities)
-    plugin_extensions = _resolve_plugin_extensions(plan, build_context)
+    plugin_server_extensions = _resolve_plugin_server_extensions(plan, build_context)
     declarations = {
         extension.name: extension
         for extension in (
-            *plan.extensions,
-            *(item for group in plugin_extensions.values() for item in group),
+            *plan.server_extensions,
+            *(item for group in plugin_server_extensions.values() for item in group),
         )
     }
-    extension_dependencies = _extension_dependencies(plan, plugin_extensions)
+    extension_dependencies = _extension_dependencies(plan, plugin_server_extensions)
     startup_order = dependency_order(extension_dependencies, kind="application extension")
     resolved_services = {}
     resolved_extensions = {}
@@ -691,21 +669,21 @@ def build_application(
         resolved_extensions[name] = extension
         if extension.service is not None:
             resolved_services[name] = extension.service
-    resolved_plugin_extensions = {
+    resolved_plugin_server_extensions = {
         plugin_name: tuple(
             resolved_extensions[name]
             for name in startup_order
             if name in {extension.name for extension in group}
         )
-        for plugin_name, group in plugin_extensions.items()
+        for plugin_name, group in plugin_server_extensions.items()
     }
     plan = ApplicationPlan({**plan,
-        "extensions": tuple(
+        "server_extensions": tuple(
             resolved_extensions[extension.name]
-            for extension in plan.extensions
+            for extension in plan.server_extensions
         ),
-        "plugin_extensions": MappingProxyType(resolved_plugin_extensions),
-        "extension_order": tuple(startup_order),
+        "plugin_server_extensions": MappingProxyType(resolved_plugin_server_extensions),
+        "server_extension_order": tuple(startup_order),
     })
     runtime = ApplicationContext(plan)
 
@@ -720,7 +698,7 @@ def build_application(
             continue
         dependencies = tuple(
             dependency for dependency in extension_dependencies[name]
-            if runtime.extensions[dependency].service is not None
+            if runtime.server_extensions[dependency].service is not None
         )
         services.append(ServiceSpec(
             name=extension.name,
@@ -744,11 +722,11 @@ def build_application(
     app.state.application = runtime
     plugin_owners = {
         extension.name: plugin_name
-        for plugin_name, group in plan.plugin_extensions.items()
+        for plugin_name, group in plan.plugin_server_extensions.items()
         for extension in group
     }
     all_extensions = tuple(
-        (runtime.extensions[name], plugin_owners.get(name, name))
+        (runtime.server_extensions[name], plugin_owners.get(name, name))
         for name in startup_order
     )
     mounts = []
@@ -795,7 +773,7 @@ def build_application(
     socket_registry = WebSocketRegistry(app, security=application.security)
     for extension, owner in all_extensions:
         for source in extension.endpoints:
-            for declaration in _declared_endpoints(source):
+            for declaration in endpoint_declarations(source):
                 if declaration.path not in allowed_surface_routes and any(
                     _path_within_mount(declaration.path, prefix)
                     for prefix in surface_prefixes
@@ -818,12 +796,12 @@ def build_application(
                 )
             socket_registry.add(endpoint, owner=owner)
     if plan.plugins and application.security is not None:
-        for endpoint in _declared_endpoints(PluginHostApi(runtime)):
+        for endpoint in endpoint_declarations(PluginHostApi(runtime)):
             registry.add(endpoint, owner="plugin_host")
     if application.surfaces:
         if application.security is None:
             raise ValueError("client surfaces require a security policy")
-        for endpoint in _declared_endpoints(SurfaceApi(runtime)):
+        for endpoint in endpoint_declarations(SurfaceApi(runtime)):
             registry.add(endpoint, owner="surface_service")
     registry.install()
     socket_registry.install()
@@ -887,13 +865,13 @@ def build_application(
 
 
 __all__ = [
-    "AgentApplication",
+    "ApplicationSpec",
     "ApplicationPlan",
     "BuildContext",
     "Capability",
     "CapabilityRequirement",
     "ClientSurface",
-    "Extension",
+    "ServerExtension",
     "Plugin",
     "build_application",
 ]

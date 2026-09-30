@@ -2,11 +2,11 @@ from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 from fastapi.testclient import TestClient
 
-from the_framework.agent.extensions.plugin import AgentPlugin, endpoint
-from the_framework.server.api.endpoints import PermitAllSecurity, register_plugin_endpoints
+from the_framework.agent.extensions.extension import AgentExtension, endpoint
+from the_framework.server.api.endpoints import PermitAllSecurity, register_endpoints
 
 
-class EndpointPlugin(AgentPlugin):
+class EndpointExtension(AgentExtension):
     @endpoint(
         "post",
         "/upload",
@@ -121,8 +121,8 @@ class EndpointPlugin(AgentPlugin):
 
 def test_endpoint_registry_coerces_queries_and_preserves_responses():
     app = FastAPI()
-    register_plugin_endpoints(
-        app, [EndpointPlugin(None)], security=PermitAllSecurity()
+    register_endpoints(
+        app, [EndpointExtension(None)], security=PermitAllSecurity()
     )
 
     with TestClient(app) as client:
@@ -136,7 +136,7 @@ def test_endpoint_registry_coerces_queries_and_preserves_responses():
 
 def test_endpoint_registry_returns_stable_validation_errors():
     app = FastAPI()
-    register_plugin_endpoints(app, [EndpointPlugin(None)])
+    register_endpoints(app, [EndpointExtension(None)])
 
     with TestClient(app) as client:
         missing = client.get("/query?count=3")
@@ -150,7 +150,7 @@ def test_endpoint_registry_returns_stable_validation_errors():
 
 def test_endpoint_registry_accepts_inferred_modict_schemas():
     app = FastAPI()
-    register_plugin_endpoints(app, [EndpointPlugin(None)])
+    register_endpoints(app, [EndpointExtension(None)])
 
     with TestClient(app) as client:
         response = client.post("/inferred", json={"label": "ready"})
@@ -160,8 +160,8 @@ def test_endpoint_registry_accepts_inferred_modict_schemas():
 
 def test_endpoint_context_is_injected_without_entering_the_request_schema():
     app = FastAPI()
-    plugin = EndpointPlugin(None)
-    register_plugin_endpoints(app, [plugin])
+    plugin = EndpointExtension(None)
+    register_endpoints(app, [plugin])
     declaration = next(
         value for value in plugin.endpoint_declarations()
         if value.path == "/context"
@@ -176,7 +176,7 @@ def test_endpoint_context_is_injected_without_entering_the_request_schema():
 
 def test_endpoint_status_code_is_declarative():
     app = FastAPI()
-    register_plugin_endpoints(app, [EndpointPlugin(None)])
+    register_endpoints(app, [EndpointExtension(None)])
 
     with TestClient(app) as client:
         response = client.post("/accepted")
@@ -191,7 +191,7 @@ def test_endpoint_status_code_is_declarative():
 
 def test_endpoint_registry_groups_repeated_multipart_files():
     app = FastAPI()
-    register_plugin_endpoints(app, [EndpointPlugin(None)])
+    register_endpoints(app, [EndpointExtension(None)])
 
     with TestClient(app) as client:
         response = client.post("/upload", files=[
@@ -204,7 +204,7 @@ def test_endpoint_registry_groups_repeated_multipart_files():
 
 def test_endpoint_registry_keeps_single_multipart_array_as_a_list():
     app = FastAPI()
-    register_plugin_endpoints(app, [EndpointPlugin(None)])
+    register_endpoints(app, [EndpointExtension(None)])
 
     with TestClient(app) as client:
         response = client.post(
@@ -216,7 +216,7 @@ def test_endpoint_registry_keeps_single_multipart_array_as_a_list():
 
 def test_endpoint_registry_coerces_path_and_array_items_recursively():
     app = FastAPI()
-    register_plugin_endpoints(app, [EndpointPlugin(None)])
+    register_endpoints(app, [EndpointExtension(None)])
 
     with TestClient(app) as client:
         response = client.get("/items/7?tags=2&tags=3")
@@ -226,7 +226,7 @@ def test_endpoint_registry_coerces_path_and_array_items_recursively():
 
 def test_endpoint_schemas_are_exposed_in_openapi():
     app = FastAPI()
-    register_plugin_endpoints(app, [EndpointPlugin(None)])
+    register_endpoints(app, [EndpointExtension(None)])
 
     operation = app.openapi()["paths"]["/items/{item_id}"]["get"]
     assert operation["parameters"] == [
@@ -250,7 +250,7 @@ def test_endpoint_schemas_are_exposed_in_openapi():
 
 def test_uncontrolled_handler_errors_are_opaque():
     app = FastAPI()
-    register_plugin_endpoints(app, [EndpointPlugin(None)])
+    register_endpoints(app, [EndpointExtension(None)])
 
     with TestClient(app) as client:
         response = client.get("/bug")

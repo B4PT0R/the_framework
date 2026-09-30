@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from the_framework.agent import Config, Image, AgentPlugin, hook, provider, tool
+from the_framework.agent import Config, Image, AgentExtension, hook, provider, tool
 
 from ...server.clients.browser import BrowserController, BrowserService, validate_target
 from ...server.clients.browser_rpc import BrowserRPCClient, browser_socket_path
@@ -16,7 +16,7 @@ class BrowserConfig(Config):
     max_snapshot_elements: int = 120
 
 
-class ChromiumPlugin(AgentPlugin):
+class ChromiumExtension(AgentExtension):
     name = "chromium"
     description = "Inspect and interact with isolated Playwright Chromium targets."
     config = BrowserConfig
