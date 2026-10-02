@@ -294,10 +294,7 @@ class ApplicationPlan(modict):
     primary_agent: AgentSpec
     agents: Mapping[str, AgentSpec]
     plugins: Mapping[str, Plugin]
-    plugin_server_extensions: Mapping[str, tuple[ServerExtension, ...]]
-    server_extensions: tuple[ServerExtension, ...]
     capabilities: Mapping[str, Capability]
-    server_extension_order: tuple[str, ...]
 
 
 class ApplicationSpec(modict):
@@ -352,18 +349,12 @@ class ApplicationSpec(modict):
 class ApplicationContext:
     """Single process-local access point for a compiled application."""
 
-    def __init__(self, plan):
+    def __init__(self, plan, server_extensions):
         self.spec = plan.application
         self.plan = plan
         self.services = ServiceContext()
-        self.server_extensions = {
-            item.name: item
-            for item in (
-                *plan.server_extensions,
-                *(extension for group in plan.plugin_server_extensions.values() for extension in group),
-            )
-        }
-        self.plugins = dict(plan.plugins)
+        self.server_extensions = MappingProxyType(server_extensions)
+        self.plugins = plan.plugins
         self.service_graph = None
         self.plugin_host = None
         self.surface_service = None
@@ -384,7 +375,6 @@ def _compile_application(application):
             raise ValueError(f"duplicate application extension: {extension.name}")
         extension_map[extension.name] = extension
     runtime_names = set(extension_map)
-    plugin_server_extensions = {}
     agent_contributions = []
     private_identities = set()
     agents = {}
@@ -437,8 +427,6 @@ def _compile_application(application):
                     f"duplicate plugin runtime extension: {extension.name}"
                 )
             runtime_names.add(extension.name)
-        if static_extensions:
-            plugin_server_extensions[plugin.name] = static_extensions
         if plugin.agent_extension is not None:
             agent_contributions.append(plugin)
     for plugin in plugins.values():
@@ -458,7 +446,7 @@ def _compile_application(application):
                 )
     _plugin_dependency_order(plugins)
 
-    server_extension_order = dependency_order(
+    dependency_order(
         {
             name: (
                 *(dependency for dependency in extension.requires_services
@@ -503,10 +491,7 @@ def _compile_application(application):
         primary_agent=primary_agent,
         agents=MappingProxyType(agents),
         plugins=MappingProxyType(plugins),
-        plugin_server_extensions=MappingProxyType(plugin_server_extensions),
-        server_extensions=tuple(extensions),
         capabilities=MappingProxyType(capabilities),
-        server_extension_order=tuple(server_extension_order),
     )
 
 
@@ -525,7 +510,7 @@ def _service_declares_endpoints(service):
 
 
 def _resolve_plugin_server_extensions(plan, context):
-    names = {extension.name for extension in plan.server_extensions}
+    names = {extension.name for extension in plan.application.server_extensions}
     extensions = {}
     for plugin_name in _plugin_dependency_order(plan.plugins):
         plugin = plan.plugins[plugin_name]
@@ -543,7 +528,7 @@ def _resolve_plugin_server_extensions(plan, context):
 def _extension_dependencies(plan, plugin_server_extensions):
     """One startup DAG for application and plugin-owned server components."""
     all_extensions = (
-        *plan.server_extensions,
+        *plan.application.server_extensions,
         *(extension for group in plugin_server_extensions.values() for extension in group),
     )
     names = {extension.name for extension in all_extensions}
@@ -566,7 +551,7 @@ def _extension_dependencies(plan, plugin_server_extensions):
     }
     dependencies = {
         extension.name: direct_dependencies(extension)
-        for extension in plan.server_extensions
+        for extension in plan.application.server_extensions
     }
     for name, group in plugin_server_extensions.items():
         providers = tuple(dict.fromkeys(
@@ -675,7 +660,7 @@ def build_application(
     declarations = {
         extension.name: extension
         for extension in (
-            *plan.server_extensions,
+            *plan.application.server_extensions,
             *(item for group in plugin_server_extensions.values() for item in group),
         )
     }
@@ -688,23 +673,7 @@ def build_application(
         resolved_extensions[name] = extension
         if extension.service is not None:
             resolved_services[name] = extension.service
-    resolved_plugin_server_extensions = {
-        plugin_name: tuple(
-            resolved_extensions[name]
-            for name in startup_order
-            if name in {extension.name for extension in group}
-        )
-        for plugin_name, group in plugin_server_extensions.items()
-    }
-    plan = ApplicationPlan({**plan,
-        "server_extensions": tuple(
-            resolved_extensions[extension.name]
-            for extension in plan.server_extensions
-        ),
-        "plugin_server_extensions": MappingProxyType(resolved_plugin_server_extensions),
-        "server_extension_order": tuple(startup_order),
-    })
-    runtime = ApplicationContext(plan)
+    runtime = ApplicationContext(plan, resolved_extensions)
 
     services = []
     for name in startup_order:
@@ -739,7 +708,7 @@ def build_application(
     app.state.application = runtime
     plugin_owners = {
         extension.name: plugin_name
-        for plugin_name, group in plan.plugin_server_extensions.items()
+        for plugin_name, group in plugin_server_extensions.items()
         for extension in group
     }
     all_extensions = tuple(

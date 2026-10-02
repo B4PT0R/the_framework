@@ -71,8 +71,8 @@ def test_compile_allows_runtime_name_equal_to_another_plugin_identity():
         Plugin(name="first", server_extension=ServerExtension(name="second")),
         Plugin(name="second", server_extension=ServerExtension(name="third")),
     )).compile()
-    assert plan.plugin_server_extensions["first"][0].name == "second"
-    assert plan.plugin_server_extensions["second"][0].name == "third"
+    assert plan.plugins["first"].server_extension.name == "second"
+    assert plan.plugins["second"].server_extension.name == "third"
 
 
 def test_plugin_runtime_factories_follow_capability_dependencies():
@@ -158,7 +158,7 @@ def test_single_service_plugin_needs_no_extension_boilerplate(factory):
     counter = Counter()
     runtime = (lambda _context: counter) if factory else counter
     app = application("Counter", plugins=(Plugin(name="counter", server_extension=runtime),)).build()
-    extension = app.state.application.plan.plugin_server_extensions["counter"][0]
+    extension = app.state.application.server_extensions["counter"]
     assert extension.name == "counter"
     assert extension.service is counter
     with TestClient(app) as client:
@@ -309,6 +309,23 @@ def test_specs_are_immutable_and_extend_without_side_effects():
     assert [extension.name for extension in extended.server_extensions] == ["runtime"]
 
 
+def test_server_build_keeps_the_compiled_recipe_and_resolves_independent_instances():
+    declaration = ServerExtension(name="service", service_factory=lambda: object())
+    spec = application("Independent builds", server_extensions=(declaration,))
+    plan = spec.compile()
+    first = spec.build().state.application
+    second = spec.build().state.application
+
+    assert first.plan == second.plan == plan
+    assert first.plan.application is spec
+    assert spec.server_extensions[0] is declaration
+    assert declaration.service is None
+    assert first.server_extensions["service"].service is not second.server_extensions["service"].service
+    assert first.plugins is first.plan.plugins
+    with pytest.raises(TypeError):
+        first.server_extensions["extra"] = ServerExtension(name="extra")
+
+
 def test_extension_factory_receives_its_named_service_dependencies():
     events = []
     dependency = Service(events)
@@ -347,7 +364,7 @@ def test_factory_injection_separates_inputs_from_additional_ordering_constraints
     ))
     app = spec.build()
     assert constructed == ["barrier", (dependency, "fallback")]
-    assert app.state.application.plan.server_extension_order == ("barrier", "dependency", "consumer")
+    assert tuple(app.state.application.server_extensions) == ("barrier", "dependency", "consumer")
 
     constructed.clear()
     with pytest.raises(ValueError, match="unknown.*dependency"):
@@ -461,7 +478,7 @@ def test_compiler_keeps_server_factories_out_of_worker_projection():
     assert plan.capabilities["memory.curate"].version == 2
     app = spec.build(BuildContext({"marker": "resolved"}))
     assert observed == ["resolved"]
-    assert app.state.application.plan.plugin_server_extensions["memory"][0].name == "memory_runtime"
+    assert "memory_runtime" in app.state.application.server_extensions
 
 
 def test_importable_runtime_factory_is_resolved_only_for_server_build(monkeypatch):
@@ -480,11 +497,11 @@ def test_importable_runtime_factory_is_resolved_only_for_server_build(monkeypatc
     spec = application("Lazy runtime", plugins=(Plugin(
         name="feature", server_extension="feature.server:factory",
     ),))
-    assert spec.compile().plugin_server_extensions == {}
+    spec.compile()
     assert imported == []
     app = spec.build(BuildContext({"name": "feature_runtime"}))
     assert imported == ["feature.server"]
-    assert app.state.application.plan.plugin_server_extensions["feature"][0].name == "feature_runtime"
+    assert "feature_runtime" in app.state.application.server_extensions
 
     with pytest.raises(ValueError, match="module:factory"):
         Plugin(name="invalid", server_extension="feature.server.factory")
@@ -520,7 +537,7 @@ def test_optional_capability_orders_present_provider_without_requiring_installat
         "With optional provider", plugins=(consumer_plugin, provider_plugin),
     ).build(BuildContext())
     assert observed == [(True, False, prepared)]
-    assert with_provider.state.application.plan.server_extension_order == (
+    assert tuple(with_provider.state.application.server_extensions) == (
         "provider_runtime", "consumer_runtime",
     )
 
@@ -556,13 +573,13 @@ def test_optional_extension_service_is_ordered_and_injected_only_if_installed():
     installed = application("With service", server_extensions=(
         consumer, ServerExtension(name="provider_service", service=provider),
     )).build()
-    assert installed.state.application.plan.server_extension_order == (
+    assert tuple(installed.state.application.server_extensions) == (
         "provider_service", "consumer",
     )
     assert observed == [provider]
 
     absent = application("Without service", server_extensions=(consumer,)).build()
-    assert absent.state.application.plan.server_extension_order == ("consumer",)
+    assert tuple(absent.state.application.server_extensions) == ("consumer",)
     assert observed == [provider, None]
 
     with pytest.raises(ValueError, match="cyclic application extension"):

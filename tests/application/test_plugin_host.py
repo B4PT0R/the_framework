@@ -207,11 +207,9 @@ def test_plugin_owns_multiple_ordered_server_components_and_static_routes():
             ),
             plugins=(Plugin(name="feature", server_extension=runtime),),
         )
-        assert spec.compile().plugin_server_extensions == {}
+        spec.compile()
         app = spec.build()
-        assert tuple(
-            item.name for item in app.state.application.plan.plugin_server_extensions["feature"]
-        ) == ("feature_store", "feature_api")
+        assert tuple(app.state.application.server_extensions) == ("feature_store", "feature_api")
         assert app.state.application.plugin_host.status("feature").binding_enabled is False
         assert app.state.application.plugin_host.status("feature").binding_available is False
         async with app.router.lifespan_context(app):
@@ -596,7 +594,7 @@ def test_cross_plugin_service_edge_requires_a_public_capability():
         "optional_capabilities": (CapabilityRequirement(name="provider.api"),),
     })
     spec = ApplicationSpec({**spec, "plugins": (optional, provider)})
-    assert spec.build().state.application.plan.server_extension_order == (
+    assert tuple(spec.build().state.application.server_extensions) == (
         "provider_runtime", "consumer_runtime",
     )
 
@@ -703,9 +701,10 @@ def test_factory_service_exposes_its_decorated_routes_without_endpoint_copy():
         ),),
     )
     app = definition.build()
-    service = app.state.application.plan.plugin_server_extensions["feature"][0].service
+    extension = app.state.application.server_extensions["feature_runtime"]
+    service = extension.service
     assert isinstance(service, FeatureService)
-    assert app.state.application.plan.plugin_server_extensions["feature"][0].endpoints == (service,)
+    assert extension.endpoints == (service,)
 
     async def scenario():
         async with app.router.lifespan_context(app):

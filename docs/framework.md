@@ -66,6 +66,12 @@ its agent from the same declaration without server-only inputs. `build(context)`
 resolves those factories and validates the complete server graph before any
 service, route or mount is started.
 
+`app.state.application.plan` keeps that compiled recipe. The resolved server
+declarations live in `app.state.application.server_extensions`, an immutable
+mapping in construction order. Use `app.state.application.service(name)` for a
+successfully started service. Building the same declaration again creates a
+separate runtime without rewriting the recipe.
+
 Application code supplies identity, plugins, domain services, policies and UI
 surfaces. The core owns process supervision, ordered commands, lifecycle,
 validation, error translation and transport plumbing.

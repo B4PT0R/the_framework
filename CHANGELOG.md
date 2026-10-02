@@ -6,6 +6,9 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Keep the compiled application plan independent of server resolution. Reuse
+  the ordered server registry directly instead of rebuilding the plan and its
+  duplicate server indexes; installed registries are immutable.
 - Derive service injection dependencies from factory or constructor parameters:
   required parameters require services, defaults make integrations optional.
   Keep explicit dependencies for extra ordering constraints and keyword adapters.
