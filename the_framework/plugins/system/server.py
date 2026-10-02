@@ -16,7 +16,7 @@ def build_server_extensions(context):
         system = SystemControlService(path, runtime.supervisor.send, restart=restart)
         runtime.application.register("system", system.handle, contextual=True)
         runtime.register_observer(system.observe)
-        runtime.register_reset_hooks(suspend=lambda: None, resume=system.start)
+        runtime.register_reset_hooks(resume=system.start)
         return system
 
     return ServerExtension(

@@ -57,3 +57,53 @@ def test_complete_stateful_plugins_install_handlers_and_reset_hooks(tmp_path):
     assert hooks[0] == {"suspend": scheduler.stop, "resume": scheduler.start}
     assert hooks[1]["resume"] == system.start
     assert scheduler.health()["wakes"] == 0
+
+
+def test_realtime_reset_waits_for_worker_barrier_and_clears_call_identity(tmp_path):
+    import asyncio
+    from the_framework.agent.runtime.protocol import CommandCompleted
+    from the_framework.plugins.realtime import REALTIME
+    from the_framework.server import ApplicationRuntime
+
+    async def run():
+        events = []
+        barrier_sent = asyncio.Event()
+        acknowledge = asyncio.Event()
+        supervisor = SimpleNamespace(outputs=asyncio.Queue())
+
+        async def send(command):
+            events.append("voice barrier")
+            barrier_sent.set()
+            await acknowledge.wait()
+            await supervisor.outputs.put(CommandCompleted(request_id=command.id, command=command))
+
+        supervisor.send = send
+        runtime = ApplicationRuntime(supervisor, reset_transaction_factory=lambda path: None)
+        extension = REALTIME.build_server_extensions(BuildContext())[0]
+        api = extension.service_factory(runtime)
+        api.call_id = "client-call"
+        api.controller.call_id = "voice-call"
+
+        async def reset():
+            assert api.call_id is None
+            assert not api.controller.active
+            events.append("worker reset")
+            return "ready"
+
+        runtime._reset_canonical_runtime = reset
+        relay = asyncio.create_task(runtime.relay())
+        resetting = asyncio.create_task(runtime.reset_runtime_state())
+        try:
+            await asyncio.wait_for(barrier_sent.wait(), 1)
+            assert events == ["voice barrier"]
+            assert not resetting.done()
+            acknowledge.set()
+            assert await asyncio.wait_for(resetting, 1) == "ready"
+            assert events == ["voice barrier", "worker reset"]
+            assert not api.controller.barriers
+        finally:
+            resetting.cancel()
+            relay.cancel()
+            await asyncio.gather(resetting, relay, return_exceptions=True)
+
+    asyncio.run(run())

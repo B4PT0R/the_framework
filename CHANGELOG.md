@@ -6,6 +6,11 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Allow reset participants to supply only suspension or only resumption, retaining
+  ordered recovery. Let the complete Realtime plugin close and reconcile its call
+  before a session reset; clear API call identity on shutdown. Remove the system
+  plugin's placeholder suspension callback.
+
 - Move HTTP declarations to `server.api.declarations`; expose `Endpoint` and
   `endpoint` through `the_framework.server` and keep the root `endpoint` import.
   Remove the worker's unused endpoint registry and agent-extension HTTP collection.

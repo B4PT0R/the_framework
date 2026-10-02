@@ -149,3 +149,40 @@ def test_resume_failure_is_reported_after_committed_reset(tmp_path):
         assert not runtime.resetting
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("fail_stage", [False, True])
+def test_reset_accepts_close_only_and_refresh_only_hooks(tmp_path, fail_stage):
+    async def run():
+        events = []
+        runtime = ResetRuntime(tmp_path / "session.json", events)
+        runtime.fail_stage = fail_stage
+
+        async def close():
+            await asyncio.sleep(0)
+            events.append("close")
+
+        runtime.register_reset_hooks(resume=lambda: events.append("refresh"))
+        runtime.register_reset_hooks(suspend=close)
+        if fail_stage:
+            with pytest.raises(RuntimeError, match="staging failed"):
+                await runtime.reset_runtime_state()
+        else:
+            await runtime.reset_runtime_state()
+        assert events == [
+            "close", "runtime.stop", "stage", "runtime.start",
+            *([] if fail_stage else ["commit"]), "refresh",
+        ]
+        assert not runtime.resetting
+
+    asyncio.run(run())
+
+
+def test_reset_rejects_empty_and_non_callable_hooks(tmp_path):
+    runtime = ResetRuntime(tmp_path / "session.json", [])
+    with pytest.raises(ValueError, match="at least one"):
+        runtime.register_reset_hooks()
+    for hooks in ({"suspend": False}, {"resume": 1}, {"suspend": lambda: None, "resume": "resume"}):
+        with pytest.raises(TypeError, match="callable"):
+            runtime.register_reset_hooks(**hooks)
+    assert runtime.reset_hooks == []

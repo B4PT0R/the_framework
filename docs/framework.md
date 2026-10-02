@@ -237,6 +237,16 @@ restart, including removing newly created selected paths. Paths cannot overlap
 or escape the root, and directory symlinks cannot be traversed. This is an
 in-process rollback mechanism, not a recovery journal for host/process crashes.
 
+Plugins register their own reset participation with
+`runtime.register_reset_hooks(suspend=..., resume=...)`. Either callback may be
+omitted: a live connection may only close, while a durable service may only reload.
+At least one callback is required; both may be synchronous or asynchronous.
+Suspensions run in reverse registration order before worker shutdown; resumptions
+run in registration order after commit or recovery of the previous runtime.
+A failed suspension aborts reset and recovers previously suspended participants.
+Realtime owns voice reconciliation and call cleanup through these hooks, so the
+application's reset handler need not know whether voice is installed.
+
 Remote services support ordered `add_application_event_listener` /
 `remove_application_event_listener` and `add_capabilities_changed_listener` /
 `remove_capabilities_changed_listener` subscriptions. Event callbacks run

@@ -6,6 +6,7 @@ import asyncio
 import inspect
 import logging
 import time
+from collections.abc import Callable
 
 from ...agent.models.events import Event
 from ...agent.runtime.protocol import (
@@ -112,9 +113,14 @@ class ApplicationRuntime:
         self.fleet_result_handlers.add(handler)
         return handler
 
-    def register_reset_hooks(self, *, suspend, resume):
-        """Pause a runtime-dependent service across a canonical session reset."""
-        if not callable(suspend) or not callable(resume):
+    def register_reset_hooks(
+        self, *, suspend: Callable[[], object] | None = None,
+        resume: Callable[[], object] | None = None,
+    ):
+        """Close, pause or refresh plugin resources around a session reset."""
+        if suspend is None and resume is None:
+            raise ValueError("at least one reset hook is required")
+        if any(hook is not None and not callable(hook) for hook in (suspend, resume)):
             raise TypeError("reset hooks must be callable")
         self.reset_hooks.append((suspend, resume))
 
@@ -206,10 +212,12 @@ class ApplicationRuntime:
             failure = None
             try:
                 for suspend, resume in reversed(tuple(self.reset_hooks)):
-                    value = suspend()
-                    if inspect.isawaitable(value):
-                        await value
-                    resumes.append(resume)
+                    if suspend is not None:
+                        value = suspend()
+                        if inspect.isawaitable(value):
+                            await value
+                    if resume is not None:
+                        resumes.append(resume)
                 result = await self._reset_canonical_runtime()
             except BaseException as error:
                 failure = error
