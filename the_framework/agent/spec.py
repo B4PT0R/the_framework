@@ -173,6 +173,7 @@ class AgentSpec(modict):
     @staticmethod
     def _resolve_extension(contribution, agent):
         from .extensions.extension import AgentExtension
+        binding_name = contribution.name if hasattr(contribution, "agent_extension") else None
         contribution = getattr(contribution, "agent_extension", contribution)
         if contribution is None:
             return None
@@ -184,15 +185,16 @@ class AgentSpec(modict):
                     "agent extension references must use module:attribute"
                 ) from error
             contribution = getattr(import_module(module_name), attribute)
-        if isinstance(contribution, AgentExtension):
-            return contribution
         if isinstance(contribution, type) and issubclass(contribution, AgentExtension):
-            return contribution
-        if callable(contribution):
-            plugin = contribution(agent)
-            if not isinstance(plugin, AgentExtension):
+            contribution = contribution(agent)
+        elif not isinstance(contribution, AgentExtension) and callable(contribution):
+            contribution = contribution(agent)
+            if not isinstance(contribution, AgentExtension):
                 raise TypeError("agent extension factory must return an AgentExtension instance")
-            return plugin
+        if binding_name is not None:
+            if contribution.loaded and contribution.title != binding_name:
+                raise ValueError("cannot rename an already loaded agent extension")
+            contribution.name = binding_name
         return contribution
 
     def build_agent(

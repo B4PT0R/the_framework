@@ -627,7 +627,7 @@ def test_plugin_private_agent_identities_are_namespaced_and_ephemeral_by_default
     from the_framework.agent import AgentExtension, agent_trigger
 
     class Owner(AgentExtension):
-        name = "owner"
+        name = "owner" if short_form else "reusable_owner"
 
         @agent_trigger(
             AgentSpec(
@@ -649,6 +649,8 @@ def test_plugin_private_agent_identities_are_namespaced_and_ephemeral_by_default
     assert [profile.name for profile in plan.primary_agent.specialist_profiles] == [
         "owner.observer",
     ]
+    agent = plan.primary_agent.build_agent()
+    assert "owner.observer" in agent.registry("agents")
 
 
 def test_plugin_shorthand_normalizes_without_instantiating_the_plugin():

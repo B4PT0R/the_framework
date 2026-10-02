@@ -17,7 +17,7 @@ from the_framework.server.runtime.application import ApplicationRuntime
 def test_agent_tool_changes_binding_without_ending_its_turn(tmp_path, external_first):
     async def run():
         class Feature(AgentExtension):
-            name = "feature"
+            name = "reusable_feature"
 
         spec = ApplicationSpec(
             name="Binding test", version="1",

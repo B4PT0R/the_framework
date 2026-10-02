@@ -2,7 +2,7 @@ import asyncio
 import pytest
 import json
 
-from the_framework.agent import AgentResources, AgentSpec, Instruction, AgentExtension, QueuePolicy
+from the_framework.agent import AgentResources, AgentSpec, Instruction, AgentExtension, QueuePolicy, tool
 from the_framework.agent.runtime.protocol import PluginBindingRequest, PromptRequest
 from the_framework.agent.context.session import Session
 from the_framework.server.composition.application import Plugin
@@ -361,6 +361,44 @@ def test_server_binding_overrides_stale_worker_session(tmp_path):
 
     assert not agent.extension("example").activated
     assert Session.open(path).plugins["example"] is False
+
+
+@pytest.mark.parametrize("intrinsic_name", [None, "example"])
+@pytest.mark.parametrize("factory", [False, True])
+def test_complete_plugin_name_owns_agent_binding_and_resources(tmp_path, intrinsic_name, factory):
+    class Feature(AgentExtension):
+        name = intrinsic_name
+
+        @tool
+        def read(self):
+            """description: Read this feature's state."""
+            return dict(self.plugin_state)
+
+    path = tmp_path / "session.json"
+    Session.open(path).set_plugin("feature", True)
+    spec = AgentSpec(name="agent", session_mode="durable", extensions=(Plugin(
+        name="feature", agent_extension=(lambda agent: Feature(agent)) if factory else Feature,
+    ),))
+    resources = AgentResources(client=object(), configuration={"feature": {"enabled": True}},
+                               state={"feature": {"counter": 2}})
+    agent = spec.build_agent(path, resources=resources, binding_overrides={"feature": False})
+    extension = agent.extension("feature")
+    assert Feature.name == intrinsic_name
+    assert extension.config.enabled is True
+    assert extension.plugin_state.counter == 2
+    assert not extension.activated
+    assert Session.open(path).plugins["feature"] is False
+    agent.activate_extension("feature")
+    assert "feature" in agent.registry("tools")
+    assert agent.states.snapshot() == {"feature": {"counter": 2}}
+
+
+def test_complete_plugin_cannot_rename_an_already_loaded_extension():
+    extension = ExampleExtension(None).load()
+    spec = AgentSpec(name="agent", extensions=(Plugin(name="feature", agent_extension=extension),))
+    with pytest.raises(ValueError, match="already loaded"):
+        spec.build_agent(resources=AgentResources(client=object()))
+    assert extension.title == "example"
 
 
 def test_agent_spec_accepts_a_plugin_factory():

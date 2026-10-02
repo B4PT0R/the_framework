@@ -417,6 +417,13 @@ endpoints and WebSocket declarations are discovered, and its conventional
 images = Plugin(name="images", agent_extension=ImageGenerationExtension, server_extension=image_service)
 ```
 
+`Plugin.name` is the shared feature identity. Its agent extension is bound under
+that name for configuration, state, tool namespaces, specialists and live
+binding controls, without changing the extension class. An `AgentExtension`
+used directly by `AgentSpec.extensions` keeps its own name (or class name).
+This lets a complete plugin supply the identity while its implementation stays
+reusable. An already loaded extension cannot be renamed.
+
 The service may instead be returned by a server-side factory that receives
 `BuildContext`. Use `ServerExtension` when that service needs explicit dependencies,
 route selection, middleware, mounts or lifecycle adapters, or when the plugin

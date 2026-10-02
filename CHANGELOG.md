@@ -6,6 +6,10 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Use `Plugin.name` consistently for its agent binding, configuration, state,
+  tool namespace and private specialists. Previously a differently named
+  extension could bypass the server's binding override. Keep standalone agent
+  extension identities and existing matching plugin/session names unchanged.
 - Keep the compiled application plan independent of server resolution. Reuse
   the ordered server registry directly instead of rebuilding the plan and its
   duplicate server indexes; installed registries are immutable.
