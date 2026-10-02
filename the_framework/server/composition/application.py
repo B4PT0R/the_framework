@@ -12,7 +12,7 @@ from typing import Any, Literal
 from fastapi import FastAPI
 from modict import modict
 
-from ...agent.extensions.endpoints import Endpoint
+from ..api.declarations import Endpoint
 from ...agent.extensions.extension import AgentExtension
 from ...agent.spec import AgentSpec
 from ...agent.extensions.specialists import AgentTrigger
@@ -499,12 +499,12 @@ def _service_declares_endpoints(service):
     """Recognize endpoint-bearing services without invoking their handlers."""
     if isinstance(service, Endpoint):
         return True
-    if callable(service) and getattr(service, "agent_endpoint", None) is not None:
+    if callable(service) and getattr(service, "http_endpoint", None) is not None:
         return True
     if callable(getattr(service, "endpoint_declarations", None)):
         return True
     return any(
-        getattr(member, "agent_endpoint", None) is not None
+        getattr(member, "http_endpoint", None) is not None
         for _, member in inspect.getmembers(type(service))
     )
 

@@ -22,7 +22,6 @@ from .models.config import (
 )
 from .models.content import ContentItem, InputImage, InputText, OutputText, Refusal
 from .context.builder import Context
-from .extensions.endpoints import Endpoint, Endpoints, endpoint
 from .runtime.event_loop import EventLoop
 from .models.events import Event
 from .extensions.schema import Param, Parameters, Properties
@@ -182,9 +181,6 @@ __all__ = [
     "Event",
     "EventLoop",
     "ExternalEventRequest",
-    "Endpoint",
-    "Endpoints",
-    "endpoint",
     "FileSearchTool",
     "FunctionCall",
     "FunctionCallOutput",

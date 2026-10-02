@@ -1,6 +1,6 @@
 """Authenticated control surface for installed plugins and agent bindings."""
 
-from ...agent import endpoint
+from .declarations import endpoint
 
 from .endpoints import HttpError
 

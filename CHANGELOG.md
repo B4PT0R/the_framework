@@ -6,6 +6,14 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Move HTTP declarations to `server.api.declarations`; expose `Endpoint` and
+  `endpoint` through `the_framework.server` and keep the root `endpoint` import.
+  Remove the worker's unused endpoint registry and agent-extension HTTP collection.
+  Discover decorated services directly, independently of agent activation.
+  Migrate imports from `the_framework.agent` and remove `Endpoints`,
+  `AgentExtension.endpoints()` and `endpoint_declarations()`; use server discovery
+  for explicit endpoint sources. HTTP payloads, routes and security are unchanged.
+
 - Honor `@provider(channels=...)` on direct registration as well as extension
   composition. Preserve explicit empty channels and registration overrides,
   preventing unintended context delivery to default text or realtime projections.

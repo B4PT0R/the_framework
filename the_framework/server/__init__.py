@@ -1,3 +1,4 @@
+from .api.declarations import Endpoint, endpoint
 from .composition.runtime import application_server_extensions
 from .runtime.reset import FileResetTransaction
 from .runtime.application import ApplicationRuntime, InvalidWorkerResult
@@ -22,6 +23,8 @@ from .api.transport import CanonicalTransportSockets
 from .api.websockets import WebSocketEndpoint, websocket
 
 __all__ = [
+    "Endpoint",
+    "endpoint",
     "ApplicationHealthApi",
     "ApplicationRuntime",
     "InvalidWorkerResult",

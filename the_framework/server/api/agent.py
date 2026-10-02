@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 
 from ..runtime.application import InvalidWorkerResult
 
-from ...agent import endpoint
+from .declarations import endpoint
 from ...agent.runtime.protocol import (
     CompactRequest,
     ConfigSnapshotRequest,

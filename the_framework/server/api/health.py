@@ -2,7 +2,7 @@
 
 import inspect
 
-from ...agent import endpoint
+from .declarations import endpoint
 
 
 class ApplicationHealthApi:

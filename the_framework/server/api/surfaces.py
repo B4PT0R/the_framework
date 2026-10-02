@@ -1,6 +1,6 @@
 """Authenticated build and release controls for client surfaces."""
 
-from ...agent import endpoint
+from .declarations import endpoint
 
 from .endpoints import HttpError
 

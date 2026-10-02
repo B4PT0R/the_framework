@@ -3,7 +3,7 @@ from typing import Literal
 
 from jsonschema import Draft202012Validator
 
-from the_framework.agent.extensions.endpoints import Endpoint, endpoint
+from the_framework.server.api.declarations import Endpoint, endpoint
 from the_framework.agent.extensions.schema import parse_function_specs
 from the_framework.agent.extensions.schema import annotation_schema
 from the_framework.agent.extensions.tools import FunctionTool

@@ -2,7 +2,7 @@ from the_framework.agent.spec import AgentSpec
 import pytest
 from fastapi.testclient import TestClient
 
-from the_framework.agent.extensions.extension import endpoint
+from the_framework.server import endpoint
 from the_framework.server.composition.application import (
     ApplicationSpec,
     BuildContext,

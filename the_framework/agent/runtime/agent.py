@@ -12,7 +12,6 @@ from ..context.compaction import Compaction
 from ..models.config import Configs
 from ..models.content import ContentItem, InputText, OutputText
 from ..context.builder import Context
-from ..extensions.endpoints import Endpoints
 from .event_loop import EventLoop
 from ..models.events import Event
 from ..extensions.hooks import Hooks
@@ -59,7 +58,6 @@ class Agent:
         self.compaction = Compaction(self)
         self.context = Context(self)
         self.events = EventLoop(self)
-        self.endpoints = Endpoints()
         self.hooks = Hooks()
         self.instructions = Instructions()
         if self.configs.instructions:

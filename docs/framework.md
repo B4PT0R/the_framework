@@ -24,13 +24,13 @@ Modules are grouped by responsibility, not by implementation size:
 - `agent.models`: payloads, configuration, events and state records;
 - `agent.context`: canonical history, context construction, projections and
   compaction;
-- `agent.extensions`: agent contributions, tools, providers, hooks, endpoint
-  declarations and specialist contracts;
+- `agent.extensions`: agent contributions, tools, providers, hooks and
+  specialist contracts;
 - `agent.runtime`: execution loops, worker protocol and process entrypoint;
 - `agent.spec`: the public agent construction declaration;
 - `server.composition`: application declarations, dependency validation and
   plugin/service installation;
-- `server.api`: HTTP/WebSocket exposure, authorization and endpoint adaptation;
+- `server.api`: HTTP/WebSocket declarations, discovery, authorization and adaptation;
 - `server.runtime`: application/worker supervision, bridges and discovery;
 - `plugins.realtime`: voice projection, transport and delegation orchestration;
 - `server.clients`: browser shells, client surfaces, remote pairing and Tailscale.
@@ -126,6 +126,13 @@ the complete declaration, for example
 validation then sees the final state, not intermediate per-key assignments.
 
 ## Adding state and lifecycle
+
+HTTP declarations belong to the server: import `endpoint` and `Endpoint` from
+`the_framework.server`, or `endpoint` from `the_framework`. Decorated functions
+and service methods are discovered directly by `ServerExtension`; no agent
+registry or extension activation is required. `AgentExtension` contributes only
+to the worker. Existing services that share an implementation with an agent
+extension can still be explicit endpoint sources, without loading that extension.
 
 ### Model-based endpoint contracts
 

@@ -1,7 +1,7 @@
 """Declarative HTTP endpoint registration for server extensions.
 
 The registry is deliberately independent from any concrete application.  It
-turns the serializable :class:`agent.endpoints.Endpoint` declarations into a
+turns the serializable :class:`Endpoint` declarations into a
 small, uniform FastAPI surface while keeping authentication, authorization,
 validation and public error translation at the server boundary.
 """
@@ -9,7 +9,7 @@ validation and public error translation at the server boundary.
 from __future__ import annotations
 
 import inspect
-from ...agent.extensions.endpoints import Endpoint
+from .declarations import Endpoint
 import logging
 from typing import Any, Protocol
 from uuid import uuid4
@@ -503,14 +503,14 @@ class EndpointRegistry:
 def endpoint_declarations(source):
     if isinstance(source, Endpoint):
         return (source,)
-    if callable(source) and getattr(source, "agent_endpoint", None) is not None:
+    if callable(source) and getattr(source, "http_endpoint", None) is not None:
         return (Endpoint.from_function(source),)
     declarations = getattr(source, "endpoint_declarations", None)
     if callable(declarations):
         return tuple(declarations())
     endpoints = []
     for name, member in inspect.getmembers(type(source)):
-        if getattr(member, "agent_endpoint", None) is None:
+        if getattr(member, "http_endpoint", None) is None:
             continue
         endpoints.append(Endpoint.from_function(getattr(source, name)))
     if endpoints:

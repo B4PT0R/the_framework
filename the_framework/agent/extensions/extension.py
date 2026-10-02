@@ -4,7 +4,6 @@ from pathlib import Path
 from .specialists import AgentTrigger
 from .commands import Command
 from ..models.config import Config
-from .endpoints import Endpoint, endpoint  # noqa: F401 - public re-export
 from .hooks import Hook
 from .instructions import Instruction
 from .providers import Provider
@@ -117,11 +116,6 @@ class AgentExtension:
                     "agents",
                     trigger,
                 ))
-            if getattr(method, "agent_endpoint", None) is not None:
-                self._contributions.append((
-                    "endpoints",
-                    Endpoint.from_function(method),
-                ))
             if getattr(method, "agent_command", False):
                 command = Command.from_function(method)
                 self._contributions.append(("commands", command))
@@ -180,10 +174,3 @@ class AgentExtension:
             for name in dir(type(self))
             if inspect.isfunction(getattr(type(self), name, None))
         ]
-
-    def endpoint_declarations(self):
-        self.load()
-        return self.contributions("endpoints")
-
-    def endpoints(self):
-        return self.endpoint_declarations() if self.activated else []

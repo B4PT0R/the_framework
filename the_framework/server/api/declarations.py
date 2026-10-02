@@ -1,8 +1,10 @@
+"""HTTP contracts and decorators for server-owned endpoint sources."""
+
 from modict import modict
 
-from .schema import Parameters
-from ..models.base import Base
-from .schema import parse_function_specs
+from ...agent.extensions.schema import Parameters
+from ...agent.models.base import Base
+from ...agent.extensions.schema import parse_function_specs
 
 
 class Endpoint(Base):
@@ -38,7 +40,7 @@ class Endpoint(Base):
 
     @classmethod
     def from_function(cls, func):
-        declaration = getattr(func, "agent_endpoint", None)
+        declaration = getattr(func, "http_endpoint", None)
         if declaration is None:
             raise ValueError("function has no endpoint declaration")
         specs = parse_function_specs(func)
@@ -77,22 +79,6 @@ class Endpoint(Base):
         return endpoint
 
 
-class Endpoints(Base[str, Endpoint]):
-    def add(self, endpoint_or_func):
-        endpoint = (
-            endpoint_or_func
-            if isinstance(endpoint_or_func, Endpoint)
-            else Endpoint.from_function(endpoint_or_func)
-        )
-        if endpoint.name in self:
-            raise ValueError(f"duplicate endpoint: {endpoint.name}")
-        self[endpoint.name] = endpoint
-        return endpoint
-
-    def list(self):
-        return list(self.values())
-
-
 def endpoint(
     method,
     path,
@@ -127,6 +113,6 @@ def endpoint(
     declaration.set_attr("request_encoding", request_encoding)
 
     def decorator(func):
-        func.agent_endpoint = declaration
+        func.http_endpoint = declaration
         return func
     return decorator

@@ -5,8 +5,8 @@ from modict import modict
 from typing import Literal
 import pytest
 
-from the_framework.agent import endpoint
-from the_framework.agent.extensions.endpoints import Endpoint
+from the_framework.server import endpoint
+from the_framework.server.api.declarations import Endpoint
 from the_framework.server.api.endpoints import EndpointRegistry
 from the_framework.server.api.model_schema import model_schema
 

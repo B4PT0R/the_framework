@@ -13,11 +13,11 @@ from the_framework.agent.runtime.agentic_loop import AgenticLoop
 from the_framework.agent.extensions.commands import Commands, command
 from the_framework.agent.models.config import Config, Configs
 from the_framework.agent.context.builder import Context
-from the_framework.agent.extensions.endpoints import Endpoints
 from the_framework.agent.runtime.event_loop import EventLoop
 from the_framework.agent.extensions.hooks import Hooks, hook
 from the_framework.agent.extensions.instructions import Instructions
-from the_framework.agent.extensions.extension import AgentExtension, endpoint
+from the_framework.agent.extensions.extension import AgentExtension
+from the_framework.server import endpoint
 from the_framework.agent.extensions.providers import Providers, provider
 from the_framework.agent.models.responses import CommandOutput, FunctionCall, Image, ProviderOutput, ToolOutput
 from the_framework.agent.context.session import Session
@@ -34,7 +34,6 @@ class FakeAgent:
         self.commands = Commands()
         self.providers = Providers()
         self.hooks = Hooks()
-        self.endpoints = Endpoints()
         self.instructions = Instructions()
         self.instructions.add(Instruction(
             name="core",
@@ -724,10 +723,7 @@ def test_loaded_plugin_is_inert_until_activated_and_deactivation_is_complete():
     assert not agent.commands
     assert not agent.providers
     assert not agent.hooks
-    assert not agent.endpoints
     assert list(agent.registry("instructions")) == ["core"]
-    assert plugin.endpoints() == []
-    assert len(plugin.endpoint_declarations()) == 1
     assert Context(agent).instructions() == "Core instructions."
 
     plugin.activate()
@@ -737,9 +733,7 @@ def test_loaded_plugin_is_inert_until_activated_and_deactivation_is_complete():
     assert "reset_complete" in agent.registry("commands")
     assert "complete_context" in agent.registry("providers")
     assert "before_complete" in agent.registry("hooks")
-    assert "GET /complete" in agent.registry("endpoints")
     assert list(agent.registry("instructions")) == ["core", "complete"]
-    assert len(plugin.endpoints()) == 1
     assert "Use the complete plugin carefully." in Context(agent).instructions()
     assert agent.session.plugins == {"complete": True}
 
@@ -751,9 +745,7 @@ def test_loaded_plugin_is_inert_until_activated_and_deactivation_is_complete():
     assert not agent.registry("commands")
     assert not agent.registry("providers")
     assert not agent.registry("hooks")
-    assert not agent.registry("endpoints")
     assert list(agent.registry("instructions")) == ["core"]
-    assert plugin.endpoints() == []
     assert Context(agent).instructions() == "Core instructions."
     assert agent.session.plugins == {"complete": False}
 
@@ -764,7 +756,6 @@ def test_add_plugin_honors_the_persisted_session_preference():
     agent.commands = Commands()
     agent.providers = Providers()
     agent.hooks = Hooks()
-    agent.endpoints = Endpoints()
     agent.instructions = Instructions()
     agent.configs = Configs()
     agent.states = States()
@@ -786,7 +777,6 @@ def test_inactive_plugin_config_remains_registered_and_live():
     agent.commands = Commands()
     agent.providers = Providers()
     agent.hooks = Hooks()
-    agent.endpoints = Endpoints()
     agent.instructions = Instructions()
     agent.configs = Configs(configured={"limits": {"maximum": 60}})
     agent.states = States()
