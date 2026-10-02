@@ -309,7 +309,7 @@ def test_specs_are_immutable_and_extend_without_side_effects():
     assert [extension.name for extension in extended.server_extensions] == ["runtime"]
 
 
-def test_extension_factory_receives_declared_service_dependencies():
+def test_extension_factory_receives_its_named_service_dependencies():
     events = []
     dependency = Service(events)
     app = build_application(application(
@@ -319,7 +319,6 @@ def test_extension_factory_receives_declared_service_dependencies():
             ServerExtension(
                 name="dependent",
                 service_factory=lambda dependency: {"dependency": dependency},
-                requires_services=("dependency",),
             ),
         ),
     ))
@@ -331,6 +330,55 @@ def test_extension_factory_receives_declared_service_dependencies():
 
     with pytest.raises(ValueError, match="mutually exclusive"):
         ServerExtension(name="invalid", service=object(), service_factory=lambda: object())
+
+
+def test_factory_injection_separates_inputs_from_additional_ordering_constraints():
+    constructed = []
+    dependency = object()
+
+    def build(*, dependency, absent="fallback"):
+        constructed.append((dependency, absent))
+        return object()
+
+    spec = application("Factory ordering", server_extensions=(
+        ServerExtension(name="consumer", service_factory=build, requires_services=("barrier",)),
+        ServerExtension(name="barrier", service_factory=lambda: constructed.append("barrier") or object()),
+        ServerExtension(name="dependency", service=dependency),
+    ))
+    app = spec.build()
+    assert constructed == ["barrier", (dependency, "fallback")]
+    assert app.state.application.plan.server_extension_order == ("barrier", "dependency", "consumer")
+
+    constructed.clear()
+    with pytest.raises(ValueError, match="unknown.*dependency"):
+        application("Missing factory input", server_extensions=(
+            ServerExtension(name="consumer", service_factory=build),
+        )).build()
+    assert constructed == []
+
+
+def test_factory_injection_keeps_explicit_keyword_dependency_adapter():
+    dependency = object()
+    app = application("Keyword factory", server_extensions=(
+        ServerExtension(name="consumer", service_factory=lambda **services: services,
+                        requires_services=("dependency",)),
+        ServerExtension(name="dependency", service=dependency),
+    )).build()
+    assert app.state.application.server_extensions["consumer"].service == {"dependency": dependency}
+
+
+@pytest.mark.parametrize("factory", [lambda dependency, /: object(), lambda *dependencies: object()])
+def test_factory_injection_rejects_positional_only_inputs(factory):
+    with pytest.raises(ValueError, match="requires keyword parameters"):
+        ServerExtension(name="consumer", service_factory=factory)
+
+
+def test_factory_injection_checks_optional_defaults_and_self_dependencies():
+    with pytest.raises(ValueError, match="optional service parameter requires a default"):
+        ServerExtension(name="consumer", service_factory=lambda dependency: object(),
+                        optional_services=("dependency",))
+    with pytest.raises(ValueError, match="cannot depend on itself"):
+        ServerExtension(name="consumer", service_factory=lambda consumer: object())
 
 
 def test_extension_factory_discovers_its_services_websockets():
@@ -504,7 +552,6 @@ def test_optional_extension_service_is_ordered_and_injected_only_if_installed():
 
     consumer = ServerExtension(
         name="consumer", service_factory=build_consumer,
-        optional_services=("provider_service",),
     )
     installed = application("With service", server_extensions=(
         consumer, ServerExtension(name="provider_service", service=provider),

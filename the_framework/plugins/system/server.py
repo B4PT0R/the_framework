@@ -20,5 +20,5 @@ def build_server_extensions(context):
         return system
 
     return ServerExtension(
-        name="system", service_factory=build, requires_services=("runtime",),
+        name="system", service_factory=build,
     )

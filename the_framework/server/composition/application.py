@@ -154,6 +154,25 @@ class ServerExtension(modict):
     middleware: tuple[tuple[type, dict[str, Any]], ...] = ()
     mounts: tuple[tuple[str, object, str | None], ...] = ()
 
+    def __init__(self, *args, **kwargs):
+        declaration = dict(*args, **kwargs)
+        factory = declaration.get("service_factory")
+        if factory is not None:
+            required = list(_tuple(declaration.get("requires_services")))
+            optional = list(_tuple(declaration.get("optional_services")))
+            for parameter in inspect.signature(factory).parameters.values():
+                if parameter.kind in {parameter.POSITIONAL_ONLY, parameter.VAR_POSITIONAL}:
+                    raise ValueError("extension factory requires keyword parameters")
+                if parameter.kind == parameter.VAR_KEYWORD:
+                    continue
+                if parameter.name in optional and parameter.default is parameter.empty:
+                    raise ValueError(f"optional service parameter requires a default: {parameter.name}")
+                if parameter.name not in (*required, *optional):
+                    target = required if parameter.default is parameter.empty else optional
+                    target.append(parameter.name)
+            declaration.update(requires_services=tuple(required), optional_services=tuple(optional))
+        super().__init__(declaration)
+
     @modict.model_validator(mode="after")
     def validate_declaration(self):
         _identifier(self.name, "extension name")
@@ -601,6 +620,9 @@ def _construct_extension_service(extension, services):
             for dependency in (*extension.requires_services, *extension.optional_services)
             if dependency in services
         }
+        parameters = inspect.signature(extension.service_factory).parameters
+        if not any(item.kind == item.VAR_KEYWORD for item in parameters.values()):
+            dependencies = {name: value for name, value in dependencies.items() if name in parameters}
         service = extension.service_factory(**dependencies)
         if inspect.isawaitable(service):
             raise TypeError(

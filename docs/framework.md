@@ -281,26 +281,32 @@ reset hooks run only around a session reset, suspend in reverse registration
 order, and resume after either a successful reset or restoration of the previous
 session.
 
-When construction itself depends on other declared services, use a synchronous
-factory. Its keyword arguments are the available service-bearing names listed
-in `requires_services` or `optional_services`; construction still happens before startup, while the live
-`ServiceContext` receives each instance only after its successful start:
+When construction depends on other declared services, use a synchronous factory
+or a service class. Its named parameters declare the services to inject: a
+parameter without a default is required, and one with a default is optional.
+Construction happens before startup, while the live `ServiceContext` receives
+each instance only after its successful start:
 
 ```python
 realtime = ServerExtension(
     name="realtime",
     service_factory=lambda runtime: RealtimeController(runtime),
-    requires_services=("runtime",),
 )
 ```
 
-Use `ServerExtension.optional_services` for a service integration that should be
-injected when its extension is installed but is not necessary otherwise. A
-present optional service starts before its consumer; an absent one is not
-passed to the factory, so declare a default for that parameter. This is a
+For example, `service_factory=ConversationApi` can use a constructor
+`__init__(self, runtime, realtime=None)` without repeating either dependency.
+A present optional service starts before its consumer; an absent one is not
+passed to the factory, preserving the parameter's default. This is a
 service-name dependency, distinct from a plugin's versioned public capability
-dependency. For example, the starter chat API accepts an optional `voice`
-service while remaining usable in text-only applications.
+dependency. Application settings belong in the enclosing plugin factory or a
+closure, leaving the service factory's parameters for service inputs.
+
+Use `requires_services` and `optional_services` for additional ordering
+constraints, or to make an input with a default mandatory. Additional names are
+not passed to the factory unless it accepts them as named parameters or through
+`**services`. Positional-only and `*args` factories are rejected: injection uses
+service names, including keyword-only parameters.
 
 The same dependency injection applies to a `ServerExtension` returned by a plugin's
 server runtime factory. A plugin requiring another plugin's service must also

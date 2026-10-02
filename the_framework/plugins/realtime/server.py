@@ -12,6 +12,6 @@ def build_server_extensions(context):
         service_factory=lambda runtime: RealtimeApi(
             runtime, RealtimeController(runtime, client_factory=client_factory),
         ),
-        requires_services=("runtime",), endpoints="service",
+        endpoints="service",
         stop=lambda service, _context: service.controller.stop(),
     )

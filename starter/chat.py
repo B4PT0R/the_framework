@@ -102,6 +102,4 @@ def chat_runtime(context):
             runtime, root / "files", realtime, text_lock=text_mode_lock,
         ),
         endpoints="service",
-        requires_services=("runtime",),
-        optional_services=("realtime",),
     )

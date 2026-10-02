@@ -6,6 +6,10 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Derive service injection dependencies from factory or constructor parameters:
+  required parameters require services, defaults make integrations optional.
+  Keep explicit dependencies for extra ordering constraints and keyword adapters.
+  Simplify bundled, starter and Harness server declarations accordingly.
 - Execute resolved `ServerExtension` declarations directly for service lifecycle,
   removing the duplicate internal `ServiceSpec` model. Preserve capability and
   service dependencies, startup rollback and health diagnostics.

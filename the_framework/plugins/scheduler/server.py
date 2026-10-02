@@ -19,5 +19,5 @@ def build_server_extensions(context):
         return scheduler
 
     return ServerExtension(
-        name="scheduler", service_factory=build, requires_services=("runtime",),
+        name="scheduler", service_factory=build,
     )

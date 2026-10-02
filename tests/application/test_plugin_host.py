@@ -321,7 +321,6 @@ def test_application_service_can_depend_on_plugin_owned_service():
             service_factory=lambda provider_service: (
                 dependent if provider_service is provider else None
             ),
-            requires_services=("provider_service",),
         ),),
     ).build()
 
@@ -558,7 +557,6 @@ def test_plugin_service_factory_can_depend_on_another_plugin_capability():
                 requires_capabilities=(CapabilityRequirement(name="provider.api"),),
                 server_extension=ServerExtension(
                     name="consumer_runtime", service_factory=create,
-                    requires_services=("provider_runtime",),
                 ),
             ),
             Plugin(
@@ -578,7 +576,7 @@ def test_plugin_service_factory_can_depend_on_another_plugin_capability():
 def test_cross_plugin_service_edge_requires_a_public_capability():
     consumer = Plugin(
         name="consumer",
-        server_extension=ServerExtension(name="consumer_runtime", requires_services=("provider_runtime",)),
+        server_extension=ServerExtension(name="consumer_runtime", service_factory=lambda provider_runtime: object()),
     )
     provider = Plugin(
         name="provider",
@@ -699,9 +697,8 @@ def test_factory_service_exposes_its_decorated_routes_without_endpoint_copy():
             name="feature",
             server_extension=ServerExtension(
                 name="feature_runtime",
-                service_factory=lambda dependency: FeatureService(dependency),
+                service_factory=FeatureService,
                 endpoints="service",
-                requires_services=("dependency",),
             ),
         ),),
     )
