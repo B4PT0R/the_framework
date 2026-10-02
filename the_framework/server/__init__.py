@@ -1,3 +1,6 @@
+from .composition.runtime import application_server_extensions
+from .runtime.reset import FileResetTransaction
+from .runtime.application import ApplicationRuntime, InvalidWorkerResult
 from .api.agent import CanonicalAgentApi
 from .composition.application import (
     ApplicationSpec,
@@ -20,6 +23,10 @@ from .api.websockets import WebSocketEndpoint, websocket
 
 __all__ = [
     "ApplicationHealthApi",
+    "ApplicationRuntime",
+    "InvalidWorkerResult",
+    "FileResetTransaction",
+    "application_server_extensions",
     "ApplicationSpec",
     "BuildContext",
     "Capability",

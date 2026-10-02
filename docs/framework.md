@@ -172,6 +172,59 @@ binding requests whose tool call is no longer waiting fail instead of becoming
 late queued mutations. The worker remains the owner of activation and durable
 session writes, and confirms application before the server persists its binding.
 
+### Standard server assembly
+
+`application_server_extensions` from `the_framework.server` returns ordinary
+`ServerExtension` declarations for the runtime, canonical agent HTTP API, health
+and WebSocket transports. Authentication stays explicit:
+
+```python
+application = application.with_server_extensions(
+    *application_server_extensions(
+        runtime,
+        event_handshake=security.handshake,
+        application_handshake=security.handshake,
+    ),
+)
+```
+
+Pass `agent_api` or `health_api` to customize projections and reset policy.
+Each component can still be assembled separately. The starter uses this helper
+with its own local security and display projection.
+
+Server services may call `await runtime.update_config(updates, id=command_id)`
+and `await runtime.apply_event(name, payload, id=event_id)`. Both wait for worker
+command completion and preserve the sole history writer. `update_config` returns
+`AgentConfigUpdated`, including `result["config"]` and `restart_required`, or
+raises `InvalidWorkerResult` when the required result is missing. A supplied id
+must be reused with the same payload when retrying. This does not make a sequence
+of separate calls atomic. Ephemeral telemetry still uses `TransientEventRequest`;
+`runtime.publish` only broadcasts to connected subscribers.
+
+`ApplicationHealthApi(runtime=runtime)` includes worker readiness, activity,
+application-bridge connectivity and specialist status. Service probes use the
+existing `ServerExtension.health` callback or `service.health()`. The graph reports
+a running service as degraded if its probe raises or returns `status` equal to
+`error`, `degraded` or `unhealthy`; critical degradation affects aggregate health.
+Optional failures remain visible without degrading the aggregate. A projection
+may adapt the response to an application's existing client contract.
+
+`FileResetTransaction(root, paths)` supplies the filesystem part of a reset.
+Connect it through `ApplicationRuntime.reset_transaction_factory`; the application
+selects which relative paths to remove, while the runtime pauses reset-dependent
+services and restarts its workers. Staging restores original files after a failed
+restart, including removing newly created selected paths. Paths cannot overlap
+or escape the root, and directory symlinks cannot be traversed. This is an
+in-process rollback mechanism, not a recovery journal for host/process crashes.
+
+Remote services support ordered `add_application_event_listener` /
+`remove_application_event_listener` and `add_capabilities_changed_listener` /
+`remove_capabilities_changed_listener` subscriptions. Event callbacks run
+synchronously after lease validation; authority callbacks may be asynchronous
+and are awaited in order. Callback failures propagate. Services should subscribe
+at startup and unsubscribe at shutdown. Domain-specific authority reactions stay
+in their owning plugins.
+
 ### Application calls
 
 `ApplicationBridge.dispatch()` accepts a worker call and executes it independently

@@ -189,9 +189,14 @@ class ServiceGraph:
                 payload = await invoke_lifecycle(spec, "health", self.context)
             except Exception as error:
                 payload = {"status": "error", "error": str(error)}
+            probe_failed = (
+                isinstance(payload, dict)
+                and payload.get("status") in {"error", "degraded", "unhealthy"}
+            )
             result[name] = {
                 "status": (
                     "error" if name in self.errors
+                    else "degraded" if name in started and probe_failed
                     else "running" if name in started
                     else "stopped"
                 ),

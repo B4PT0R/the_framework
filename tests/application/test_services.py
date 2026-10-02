@@ -3,6 +3,8 @@ import asyncio
 import pytest
 
 from the_framework.server.composition.services import ServiceGraph, ServiceSpec
+from the_framework.server.api.health import ApplicationHealthApi
+from types import SimpleNamespace
 
 
 class Service:
@@ -161,5 +163,30 @@ def test_start_and_rollback_errors_are_both_preserved():
         assert str(caught.value.exceptions[0]) == "cannot start remote"
         assert str(caught.value.exceptions[1].exceptions[0]) == "cannot stop worker"
         assert not graph.running
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("probe", ["error", "degraded", "raises"])
+def test_live_health_failure_degrades_critical_service_and_recovers(probe):
+    async def run():
+        unhealthy = True
+
+        def health(_service, _context):
+            if unhealthy and probe == "raises":
+                raise RuntimeError("backend unavailable")
+            return {"status": probe if unhealthy else "ok"}
+
+        graph = ServiceGraph([ServiceSpec(name="backend", service=object(), health=health)])
+        await graph.start()
+        assert (await graph.health())["backend"]["status"] == "degraded"
+        reply = await ApplicationHealthApi().health(
+            SimpleNamespace(application=SimpleNamespace(service_graph=graph)),
+        )
+        assert reply["status"] == "degraded"
+        assert graph.started == ["backend"]
+        unhealthy = False
+        assert (await graph.health())["backend"]["status"] == "running"
+        await graph.stop()
 
     asyncio.run(run())

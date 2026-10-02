@@ -7,9 +7,12 @@ import inspect
 import logging
 import time
 
+from ...agent.models.events import Event
 from ...agent.runtime.protocol import (
     ApplicationCall,
     ApplicationCancel,
+    AgentConfigUpdated,
+    ConfigUpdateRequest,
     CommandAccepted,
     CommandCompleted,
     CommandEvent,
@@ -42,6 +45,10 @@ DEFAULT_ACTIVITY_LABELS = {
     "tool_result": "Tool result received",
     "response": "Generating response",
 }
+
+
+class InvalidWorkerResult(RuntimeError):
+    """A completed worker command did not return its required result."""
 
 
 class ApplicationRuntime:
@@ -453,6 +460,38 @@ class ApplicationRuntime:
                 while not queue.empty():
                     queue.get_nowait()
                 queue.put_nowait(_STREAM_CLOSED)
+
+    def health(self) -> dict:
+        """Report worker readiness and live application diagnostics."""
+        return {
+            "status": "ok" if self.supervisor.running and self.ready is not None else "degraded",
+            "worker": {
+                "running": self.supervisor.running,
+                "session_id": self.ready.session_id if self.ready else None,
+                "protocol": self.ready.protocol if self.ready else None,
+            },
+            "activity": self.activity_status(),
+            "application": {"connected": self.application.connected},
+            "auxiliaries": self.fleet.status() if self.fleet else [],
+        }
+
+    async def update_config(self, updates: dict, *, id: str | None = None,
+                            timeout: float = 10) -> AgentConfigUpdated:
+        """Validate and persist configuration through the sole history writer."""
+        result = await self.command(
+            ConfigUpdateRequest(id=id or timestamp_id(), updates=updates), timeout=timeout,
+        )
+        if not isinstance(result, AgentConfigUpdated):
+            raise InvalidWorkerResult("Agent completed the config update without a result")
+        return result
+
+    async def apply_event(self, name: str, payload: object, *, id: str | None = None,
+                          timeout: float = 10) -> Event | None:
+        """Wait for a durable, ordered event; reuse its id when retrying."""
+        return await self.command(
+            ExternalEventRequest(id=id or timestamp_id(), name=name, payload=payload),
+            timeout=timeout,
+        )
 
     async def request(self, payload, timeout=5):
         if self.stopping:

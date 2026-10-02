@@ -5,6 +5,9 @@ from starter.application import application, resources, scheduler_runtime, syste
 
 
 class FakeRuntime:
+    def health(self):
+        return {"status": "ok" if self.running else "degraded"}
+
     fleet = None
     running = False
 

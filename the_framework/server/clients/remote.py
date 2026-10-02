@@ -13,6 +13,7 @@ import re
 import secrets
 import time
 from collections import OrderedDict, deque
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlparse
@@ -304,11 +305,35 @@ class CapabilityLease(modict):
 class ClientRemoteService:
     connection_type = ClientApplicationConnection
 
+    def add_application_event_listener(
+        self, listener: Callable[[ClientApplicationConnection, dict], None],
+    ) -> None:
+        """Subscribe synchronously to validated events, in registration order."""
+        self.application_event_listeners.append(listener)
+
+    def remove_application_event_listener(self, listener):
+        self.application_event_listeners.remove(listener)
+
+    def add_capabilities_changed_listener(
+        self, listener: Callable[[ClientApplicationConnection], object],
+    ) -> None:
+        """Subscribe to authority changes; callbacks may be asynchronous."""
+        self.capabilities_changed_listeners.append(listener)
+
+    def remove_capabilities_changed_listener(self, listener):
+        self.capabilities_changed_listeners.remove(listener)
+
     def on_application_event(self, connection, payload):
-        """Observe an event only after its lease and capability are validated."""
+        """Observer errors propagate to the caller; validation precedes dispatch."""
+        for listener in tuple(self.application_event_listeners):
+            listener(connection, payload)
 
     async def on_capabilities_changed(self, connection):
-        """Reconcile application state after authority is released or expires."""
+        """Dispatch in order after authority changes; failures propagate."""
+        for listener in tuple(self.capabilities_changed_listeners):
+            result = listener(connection)
+            if inspect.isawaitable(result):
+                await result
 
     def __init__(
         self, harness, path, *, journal_size=2048,
@@ -320,6 +345,8 @@ class ClientRemoteService:
     ):
         if not re.fullmatch(r"[a-z][a-z0-9+.-]*", pairing_scheme):
             raise ValueError("pairing_scheme must be a valid lowercase URI scheme")
+        self.application_event_listeners = []
+        self.capabilities_changed_listeners = []
         self.harness = harness
         self.policy = policy or RemoteClientPolicy()
         self._policy_locked = False

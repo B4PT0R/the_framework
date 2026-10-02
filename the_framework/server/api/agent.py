@@ -4,12 +4,12 @@ import inspect
 
 from fastapi.responses import JSONResponse
 
+from ..runtime.application import InvalidWorkerResult
+
 from ...agent import endpoint
 from ...agent.runtime.protocol import (
-    AgentConfigUpdated,
     CompactRequest,
     ConfigSnapshotRequest,
-    ConfigUpdateRequest,
     InterruptRequest,
     SessionPageRequest,
     StateSnapshotRequest,
@@ -132,16 +132,13 @@ class CanonicalAgentApi:
     )
     async def update_config(self, **updates):
         """Validate and atomically persist an agent configuration update."""
-        command = ConfigUpdateRequest(id=timestamp_id(), updates=updates)
-        result = await self.runtime.command(command)
-        if not isinstance(result, AgentConfigUpdated):
-            raise HttpError(
-                502,
-                "invalid_agent_result",
-                "Agent completed the config update without a result",
-            )
+        command_id = timestamp_id()
+        try:
+            result = await self.runtime.update_config(updates, id=command_id)
+        except InvalidWorkerResult as cause:
+            raise HttpError(502, "invalid_agent_result", str(cause)) from cause
         return {
-            "id": command.id,
+            "id": command_id,
             "status": "applied",
             "config": result["config"],
             "restart_required": result.restart_required,

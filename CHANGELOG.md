@@ -6,6 +6,11 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Add canonical runtime configuration updates and durable event application,
+  ordered remote-service listeners, and reusable filesystem reset staging.
+- Provide explicit standard server declarations shared by starter and applications.
+  Include runtime diagnostics in health and report failed live probes as degraded.
+
 - Harmonize composition around `ApplicationSpec`, `Plugin`, `AgentExtension`
   and `ServerExtension`. Plugin contributions use `agent_extension`,
   `server_extension` and `specialists`; dependency fields distinguish public

@@ -3,11 +3,10 @@
 import asyncio
 from pathlib import Path
 
-from the_framework import ApplicationSpec, BuildContext, ServerExtension
+from the_framework import ApplicationSpec, BuildContext
 from the_framework.server import (
-    ApplicationHealthApi,
     CanonicalAgentApi,
-    CanonicalTransportSockets,
+    application_server_extensions,
     WorkerSupervisor,
 )
 from the_framework.server.runtime.application import ApplicationRuntime
@@ -27,8 +26,6 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None):
             plugin_state_path=root / "plugins.json",
         ))
     security = LocalSecurity(token, origin=origin)
-    sockets = CanonicalTransportSockets(runtime, event_handshake=security.handshake,
-                                        application_handshake=security.handshake)
     app = None
     text_mode_lock = asyncio.Lock()
 
@@ -45,11 +42,11 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None):
             await runtime.set_plugin_binding(name, enabled, call=call)
 
     definition = ApplicationSpec({**application, "security": security}).with_server_extensions(
-        ServerExtension(name="runtime", service=runtime),
-        ServerExtension(name="conversation", requires_services=("runtime",), endpoints=(
-            CanonicalAgentApi(runtime, session_projection="display"),
-            ApplicationHealthApi(),
-        ), websockets=(sockets.events_socket, sockets.application_socket)),
+        *application_server_extensions(
+            runtime, event_handshake=security.handshake,
+            application_handshake=security.handshake,
+            agent_api=CanonicalAgentApi(runtime, session_projection="display"),
+        ),
     )
     app = definition.build(BuildContext({
         "plugin_state_path": root / "plugins.json",
