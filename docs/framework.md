@@ -688,6 +688,18 @@ waiting for the next event. The framework's local and remote event streams use
 one shared routine for this, so an idle disconnected client releases its
 subscription promptly instead of lingering until a heartbeat or shutdown.
 
+## Context providers
+
+`@provider(channels=("text",))` contributes ephemeral context only to the named
+projections. The declaration is honored both when registering the function with
+`agent.providers.add(function)` and when loading it through an `AgentExtension`.
+Channels are ordinary names; plugins may introduce their own projections.
+Explicit `add(..., channels=...)` values override the decorator, including an
+empty sequence. Empty channels exclude the provider from filtered projections;
+unfiltered `outputs()` / `aoutputs()` still collect it. Without a channel override,
+standalone providers keep the default `text` / `realtime` channels, while extension
+providers use the extension's `provider_channels` (by default, `text`).
+
 ## Built-in application primitives
 
 Reusable agent plugins live in `the_framework.plugins`, separate from the product's

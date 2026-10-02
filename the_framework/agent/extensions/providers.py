@@ -14,7 +14,9 @@ def provider(func=None, *, channels=None):
     Return ``None`` for no context, a tuple for multiple outputs, a
     ``ProviderOutput`` or ``Image`` explicitly, or any JSON-compatible value
     for one automatically wrapped ``ProviderOutput``. Lists remain one JSON
-    value.
+    value. ``channels`` names the projections allowed to consume this context;
+    an empty sequence excludes it from channel-filtered projections. Explicit
+    registration channels override the decorator.
     """
     def decorate(function):
         function.agent_provider = True
@@ -33,10 +35,12 @@ class Provider(Base):
     @classmethod
     def from_function(cls, func, *, description=None, channels=None):
         specs = parse_function_specs(func)
+        if channels is None:
+            channels = getattr(func, "agent_provider_channels", None)
         provider = cls(
             name=specs["name"],
             description=description or specs.get("description"),
-            channels=channels or ["text", "realtime"],
+            channels=list(channels) if channels is not None else ["text", "realtime"],
         )
         provider.set_attr("function", func)
         return provider

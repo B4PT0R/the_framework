@@ -126,12 +126,10 @@ class AgentExtension:
                 command = Command.from_function(method)
                 self._contributions.append(("commands", command))
             if getattr(method, "agent_provider", False):
+                channels = getattr(method, "agent_provider_channels", None)
                 provider = Provider.from_function(
                     method,
-                    channels=list(
-                        getattr(method, "agent_provider_channels", None)
-                        or self.provider_channels
-                    ),
+                    channels=self.provider_channels if channels is None else channels,
                 )
                 self._contributions.append(("providers", provider))
             if getattr(method, "agent_hook", False):

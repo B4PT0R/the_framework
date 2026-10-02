@@ -454,6 +454,63 @@ def test_async_provider_output_contract_uses_the_async_projection_path():
     assert '"status":"ready"' in outputs[0].content[0].text
 
 
+@pytest.mark.parametrize("in_extension", [False, True])
+@pytest.mark.parametrize("channels", [("remote-panel",), ()])
+def test_provider_channels_keep_the_same_meaning_in_both_compositions(in_extension, channels):
+    calls = []
+
+    @provider(channels=channels)
+    def context():
+        calls.append("context")
+        return "private context"
+
+    agent = FakeAgent()
+    if in_extension:
+        class Feature(AgentExtension):
+            name = "feature"
+            provider_channels = ("text", "realtime")
+
+            @provider(channels=channels)
+            def context(self):
+                return context()
+
+        agent.add_extension(Feature)
+    else:
+        agent.providers.add(context)
+    providers = agent.registry("providers")
+    assert providers["context"].channels == list(channels)
+    assert providers.outputs(channel="text") == []
+    assert providers.outputs(channel="realtime") == []
+    assert calls == []
+    assert len(providers.outputs(channel="remote-panel")) == bool(channels)
+    assert calls == (["context"] if channels else [])
+
+
+def test_explicit_provider_registration_overrides_the_decorator_including_empty_channels():
+    @provider(channels=("remote-panel",))
+    def context():
+        return "context"
+
+    providers = Providers()
+    registered = providers.add(context, channels=[])
+    assert registered.channels == []
+    assert providers.outputs(channel="remote-panel") == []
+    registered = Providers().add(context, channels=["text"])
+    assert registered.channels == ["text"]
+    assert len(registered.outputs()) == 1
+
+
+def test_async_provider_registration_honors_declared_channels():
+    @provider(channels=("remote-panel",))
+    async def context():
+        return "context"
+
+    providers = Providers()
+    providers.add(context)
+    assert asyncio.run(providers.aoutputs(channel="text")) == []
+    assert len(asyncio.run(providers.aoutputs(channel="remote-panel"))) == 1
+
+
 def test_provider_images_bypass_session_image_limit_without_polluting_history(tmp_path):
     agent = FakeAgent()
     agent.configs.max_input_images = 0

@@ -6,6 +6,10 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Honor `@provider(channels=...)` on direct registration as well as extension
+  composition. Preserve explicit empty channels and registration overrides,
+  preventing unintended context delivery to default text or realtime projections.
+
 - Name shared application controllers and client transports around `runtime`.
   Browser UI operations use `open_application_ui` and `application_ui_origins`,
   and open the application-selected route rather than imposing Harness paths.
