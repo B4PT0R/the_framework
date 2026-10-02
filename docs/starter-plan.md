@@ -1,5 +1,9 @@
 # Neutral local-agent starter — acceptance audit
 
+This document records an earlier acceptance pass; names and module paths below
+reflect that snapshot. The current composition API is documented in
+[framework.md](framework.md), with migrations in [CHANGELOG.md](../CHANGELOG.md).
+
 ## Scope and composition
 
 The deliverable is `starter/`: a usable, editable **local desktop application**,

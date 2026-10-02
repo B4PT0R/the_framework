@@ -7,7 +7,7 @@ import socket
 import pytest
 
 from the_framework.server.clients.browser import BrowserError
-from the_framework.server.clients.browser_rpc import BrowserRPCServer
+from the_framework.server.clients.browser_rpc import BrowserRPCClient, BrowserRPCServer
 from the_framework.server.runtime.discovery import ServerAlreadyRunning
 
 
@@ -136,5 +136,68 @@ def test_shutdown_removes_socket_even_when_browser_stop_fails(tmp_path):
             await server.close()
         assert server.server is None
         assert not path.exists()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("method", ["open_harness_ui", "open_application_ui"])
+def test_browser_accepts_ui_commands_from_workers_across_upgrade(tmp_path, method):
+    async def run():
+        class Service:
+            async def open_application_ui(self, url):
+                return {"url": url}
+
+            async def stop(self):
+                pass
+
+        path = tmp_path / "browser.sock"
+        server = await BrowserRPCServer(path, Service()).start()
+        try:
+            reader, writer = await asyncio.open_unix_connection(path)
+            writer.write(json.dumps({
+                "id": "ui", "scope": "service", "method": method,
+                "args": ["http://localhost/dashboard/"],
+            }).encode() + b"\n")
+            await writer.drain()
+            response = json.loads(await asyncio.wait_for(reader.readline(), 1))
+            assert response == {
+                "id": "ui", "ok": True,
+                "result": {"url": "http://localhost/dashboard/"},
+            }
+            writer.close()
+            await writer.wait_closed()
+        finally:
+            await server.close()
+
+    asyncio.run(run())
+
+
+def test_new_worker_can_open_ui_in_browser_started_before_upgrade(tmp_path):
+    async def run():
+        received = []
+
+        async def legacy_browser(reader, writer):
+            request = json.loads(await reader.readline())
+            received.append(request)
+            writer.write(json.dumps({
+                "id": request["id"], "ok": True, "result": "opened",
+            }).encode() + b"\n")
+            await writer.drain()
+            writer.close()
+            await writer.wait_closed()
+
+        path = tmp_path / "browser.sock"
+        server = await asyncio.start_unix_server(legacy_browser, path)
+        try:
+            client = BrowserRPCClient(path)
+            result = await asyncio.to_thread(
+                client.call, "open_application_ui", "http://localhost/dashboard/",
+            )
+            assert result == "opened"
+            assert received[0]["method"] == "open_harness_ui"
+            assert received[0]["args"] == ["http://localhost/dashboard/"]
+        finally:
+            server.close()
+            await server.wait_closed()
 
     asyncio.run(run())

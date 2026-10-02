@@ -342,7 +342,7 @@ class BashExtension(AgentExtension):
     @tool
     def python(self, code: str, cwd: str = ".", timeout_seconds: int | None = None):
         """
-        description: Execute Python with the harness interpreter and local-account permissions, with an optional hard timeout.
+        description: Execute Python with the application interpreter and local-account permissions, with an optional hard timeout.
         parameters:
           properties:
             code:

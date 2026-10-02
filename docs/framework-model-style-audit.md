@@ -1,5 +1,9 @@
 # Framework model/style audit
 
+This document records an earlier acceptance pass; names and module paths below
+reflect that snapshot. The current composition API is documented in
+[framework.md](framework.md), with migrations in [CHANGELOG.md](../CHANGELOG.md).
+
 Scope: all Python modules in `the_framework.agent`, `server`, and general plugins.
 Baseline: `d9bd37c`. No deployment or restart is part of this pass.
 

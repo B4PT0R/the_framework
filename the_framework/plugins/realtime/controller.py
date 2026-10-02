@@ -48,8 +48,8 @@ class RealtimeController:
 
     recoverable_context_prefixes = ()
 
-    def __init__(self, harness, client_factory=None):
-        self.harness = harness
+    def __init__(self, runtime, client_factory=None):
+        self.runtime = runtime
         self.client_factory = client_factory or self._authenticated_client
         self.client = None
         self.prepare_task = None
@@ -77,7 +77,7 @@ class RealtimeController:
         self.pending_restart_resumes = []
         self.restart_resume_input_paused = False
         self.bind_restart_resume = None
-        harness.register_observer(self.handle_worker_output)
+        runtime.register_observer(self.handle_worker_output)
 
     def start_context(self, projection):
         """Initialize application context after the live transport is connected."""
@@ -232,7 +232,7 @@ class RealtimeController:
                 event = self._live_event_payload(live_event)
                 handled = await self._handle_sideband_event(event)
                 if not handled:
-                    await self.harness.publish(RealtimeEvent(
+                    await self.runtime.publish(RealtimeEvent(
                         call_id=self.call_id,
                         event=event,
                     ))
@@ -240,7 +240,7 @@ class RealtimeController:
                     return
         except Exception as error:
             if self.sideband is not None:
-                await self.harness.publish(RealtimeEvent(
+                await self.runtime.publish(RealtimeEvent(
                     call_id=self.call_id,
                     event={"type": "error", "error": str(error)},
                 ))
@@ -328,7 +328,7 @@ class RealtimeController:
             self.skip_assistant_turns -= 1
             return False
         turn_id = str(turn.get("id") or self._content_id(role, transcript))
-        await self.harness.supervisor.send(ExternalEventRequest(
+        await self.runtime.supervisor.send(ExternalEventRequest(
             id=f"realtime:{self.call_id}:{turn_id}:{role}",
             name="realtime_turn",
             payload={
@@ -376,13 +376,13 @@ class RealtimeController:
             "items": {},
             "context_seeded": not append_prompt,
         }
-        await self.harness.supervisor.send(PromptRequest(
+        await self.runtime.supervisor.send(PromptRequest(
             id=command_id,
             prompt=transcript,
             append_prompt=append_prompt,
             reasoning_effort="none",
         ))
-        await self.harness.publish(RealtimeDelegationUpdate(
+        await self.runtime.publish(RealtimeDelegationUpdate(
             call_id=self.call_id,
             delegation_id=delegation_id,
             command_id=command_id,
@@ -418,7 +418,7 @@ class RealtimeController:
                         feedback,
                         channel="commentary",
                     )
-                    await self.harness.publish(RealtimeDelegationUpdate(
+                    await self.runtime.publish(RealtimeDelegationUpdate(
                         call_id=self.call_id,
                         delegation_id=delegation["id"],
                         command_id=command_id,
@@ -462,7 +462,7 @@ class RealtimeController:
             self.skip_assistant_turns += 1
             self.pending_delegation_deliveries.add(delegation["id"])
             await self._send_delegation(delegation["id"], answer)
-            await self.harness.publish(RealtimeDelegationUpdate(
+            await self.runtime.publish(RealtimeDelegationUpdate(
                 call_id=self.call_id,
                 delegation_id=delegation["id"],
                 command_id=command_id,
@@ -477,7 +477,7 @@ class RealtimeController:
                 delegation["id"],
                 f"Je n’ai pas pu terminer cette demande : {output.error}",
             )
-            await self.harness.publish(RealtimeDelegationUpdate(
+            await self.runtime.publish(RealtimeDelegationUpdate(
                 call_id=self.call_id,
                 delegation_id=delegation["id"],
                 command_id=command_id,
@@ -491,7 +491,7 @@ class RealtimeController:
         if not text:
             return
         await self._send_delegation(delegation["id"], text, channel="commentary")
-        await self.harness.publish(RealtimeDelegationUpdate(
+        await self.runtime.publish(RealtimeDelegationUpdate(
             call_id=self.call_id,
             delegation_id=delegation["id"],
             command_id=delegation["command_id"],
@@ -599,7 +599,7 @@ class RealtimeController:
         turn_id = timestamp_id()
         self.realtime_response_active = True
         self.typed_inputs[text] += 1
-        await self.harness.supervisor.send(ExternalEventRequest(
+        await self.runtime.supervisor.send(ExternalEventRequest(
             id=f"realtime:{self.call_id}:typed-{turn_id}:user",
             name="realtime_turn",
             payload={
@@ -841,7 +841,7 @@ class RealtimeController:
         barrier = asyncio.get_running_loop().create_future()
         self.barriers[command_id] = barrier
         try:
-            await self.harness.supervisor.send(ExternalEventRequest(
+            await self.runtime.supervisor.send(ExternalEventRequest(
                 id=command_id,
                 name="realtime_barrier",
                 payload={"call_id": call_id},

@@ -6,6 +6,11 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Name shared application controllers and client transports around `runtime`.
+  Browser UI operations use `open_application_ui` and `application_ui_origins`,
+  and open the application-selected route rather than imposing Harness paths.
+  Preserve browser profiles, tool targets and RPC commands across upgrades.
+
 - Apply endpoint signature/docstring inference when no explicit HTTP schema is
   supplied. Validate typed JSON inputs, coerce path/query values, preserve
   Python defaults and expose inferred contracts in OpenAPI. Remove redundant

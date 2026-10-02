@@ -142,13 +142,13 @@ class ServerDescriptorStore:
     def read(self):
         payload = json.loads(self.path.read_text(encoding="utf-8"))
         if payload.get("version") != SERVER_DESCRIPTOR_VERSION:
-            raise ValueError("unsupported Harness server descriptor")
+            raise ValueError("unsupported application server descriptor")
         if payload.get("host") != "127.0.0.1":
-            raise ValueError("Harness server descriptor is not loopback-bound")
+            raise ValueError("application server descriptor is not loopback-bound")
         if not isinstance(payload.get("port"), int) or not 0 < payload["port"] < 65536:
-            raise ValueError("Harness server descriptor has an invalid port")
+            raise ValueError("application server descriptor has an invalid port")
         if not isinstance(payload.get("token"), str) or not payload["token"]:
-            raise ValueError("Harness server descriptor has no authentication token")
+            raise ValueError("application server descriptor has no authentication token")
         return payload
 
     def remove_if_owned(self, payload):

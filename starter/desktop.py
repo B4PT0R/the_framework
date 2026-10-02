@@ -106,7 +106,7 @@ async def desktop(root, *, port=0, no_browser=False, headless=False):
                             "name": LocalSecurity.cookie, "value": token, "url": origin,
                             "httpOnly": True, "sameSite": "Strict",
                         }])
-                    if not await startup(browser.open_harness_ui(origin + "/ui/")):
+                    if not await startup(browser.open_application_ui(origin + "/ui/")):
                         break
                     opened = True
                 print(f"Pandora ready at {origin}", flush=True)

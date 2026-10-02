@@ -54,7 +54,7 @@ def test_context_preserves_order_and_coalesces_latest_state_until_peer_ready():
             await voice._handle_sideband_event({
                 "type": "turn.done", "turn": {"role": "user", "transcript": text},
             })
-        assert voice.harness.supervisor.sent == []
+        assert voice.runtime.supervisor.sent == []
 
     asyncio.run(run())
 

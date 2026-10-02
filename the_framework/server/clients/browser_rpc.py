@@ -18,7 +18,7 @@ MAX_RPC_BYTES = 16 * 1024 * 1024
 SERVICE_METHODS = {
     "close_web",
     "close_web_tab",
-    "open_harness_ui",
+    "open_application_ui",
     "open_web",
     "goto",
     "observe",
@@ -132,6 +132,8 @@ class BrowserRPCServer:
     async def _dispatch(self, request):
         scope = request.get("scope")
         method = request.get("method")
+        if scope == "service" and method == "open_harness_ui":
+            method = "open_application_ui"
         args = request.get("args", [])
         kwargs = request.get("kwargs", {})
         if not isinstance(args, list) or not isinstance(kwargs, dict):
@@ -206,6 +208,10 @@ class BrowserRPCClient:
         raise BrowserError(f"persistent browser service is unavailable: {last_error}")
 
     def _request(self, scope, method, args, kwargs):
+        # The browser may predate the worker/server upgrade. Keep the established
+        # wire command while exposing an application-neutral Python operation.
+        if scope == "service" and method == "open_application_ui":
+            method = "open_harness_ui"
         request_id = str(uuid.uuid4())
         payload = json.dumps({
             "id": request_id,

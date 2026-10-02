@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 from modict import modict
 
 DEFAULT_VIEWPORT = {"width": 1365, "height": 900}
+# Persisted tool targets, profiles and DOM IDs retain their established names.
 BROWSER_AGENT_ID_ATTR = "data-harness-browser-id"
 BROWSER_TARGETS = {"web", "harness_ui"}
 
@@ -100,18 +101,18 @@ def validate_target(target: str) -> str:
     return target
 
 
-def validate_harness_ui_url(url: str, allowed_origins=()) -> str:
+def validate_application_ui_url(url: str, allowed_origins=()) -> str:
     parsed = urlparse(str(url))
     origin = f"{parsed.scheme}://{parsed.netloc}"
     loopback = parsed.hostname in {"127.0.0.1", "localhost", "::1"}
     if parsed.scheme not in {"http", "https"} or not (
         loopback or parsed.scheme == "https" and origin in set(allowed_origins)
     ):
-        raise BrowserError("Harness UI navigation is restricted to loopback or configured trusted origins")
+        raise BrowserError("application UI navigation is restricted to loopback or configured trusted origins")
     return str(url)
 
 
-def is_harness_ui_resource(url: str, allowed_origins=()) -> bool:
+def is_application_ui_resource(url: str, allowed_origins=()) -> bool:
     parsed = urlparse(str(url))
     origin = f"{parsed.scheme}://{parsed.netloc}"
     return parsed.scheme in {"about", "blob", "data"} or (
@@ -338,7 +339,7 @@ class BrowserService:
         ui_app_mode=True,
         viewport=None,
         playwright_factory=None,
-        harness_ui_origins=(),
+        application_ui_origins=(),
         initial_cookies=None,
     ):
         self.runtime_root = Path(runtime_root).expanduser().resolve()
@@ -347,7 +348,7 @@ class BrowserService:
         # Headless Chromium has no application window; suppressing its initial
         # page can otherwise leave persistent-context startup waiting forever.
         self.ui_app_mode = ui_app_mode and not ui_headless
-        self.harness_ui_origins = frozenset(harness_ui_origins)
+        self.application_ui_origins = frozenset(application_ui_origins)
         factory = playwright_factory or _default_playwright_factory
         viewport = dict(viewport or DEFAULT_VIEWPORT)
         self.sessions = {
@@ -382,13 +383,14 @@ class BrowserService:
             await session.goto(url)
         return page
 
-    async def open_harness_ui(self, url):
-        url = validate_harness_ui_url(url, self.harness_ui_origins)
+    async def open_application_ui(self, url):
+        url = validate_application_ui_url(url, self.application_ui_origins)
         session = self.session("harness_ui")
         if self.ui_app_mode and not session.started:
             parsed = urlparse(url)
-            app_path = "/remote-ui/" if parsed.path.startswith("/remote-ui") else "/ui/"
-            app_url = f"{parsed.scheme}://{parsed.netloc}{app_path}"
+            # Launch the requested application route without putting bootstrap
+            # credentials from its query or fragment in Chromium process arguments.
+            app_url = parsed._replace(query="", fragment="").geturl()
             session.extra_args = [
                 f"--app={app_url}",
                 "--start-maximized",
@@ -400,7 +402,7 @@ class BrowserService:
         pages = await session.pages()
         if hasattr(session.context, "route") and self._ui_routed_context is not session.context:
             async def restrict(route, request):
-                if is_harness_ui_resource(request.url, self.harness_ui_origins):
+                if is_application_ui_resource(request.url, self.application_ui_origins):
                     await route.continue_()
                 else:
                     await route.abort("blockedbyclient")
@@ -414,7 +416,7 @@ class BrowserService:
         return page
 
     async def close_web_tab(self, index=None):
-        """Close one web tab without exposing the Harness UI session."""
+        """Close one web tab without exposing the application UI session."""
         return await self.session("web").close_tab(index)
 
     async def close_web(self):
@@ -424,7 +426,7 @@ class BrowserService:
 
     async def goto(self, target, url):
         if validate_target(target) != "web":
-            raise BrowserError("the Harness UI target cannot be navigated by an agent tool")
+            raise BrowserError("the application UI target cannot be navigated by an agent tool")
         return await self.session(target).goto(url)
 
     async def observe(self, target, screenshot_path, *, max_elements=120):
@@ -458,7 +460,7 @@ class BrowserController:
                 loop.run_forever()
                 loop.close()
 
-            self._thread = threading.Thread(target=run, daemon=True, name="harness-playwright")
+            self._thread = threading.Thread(target=run, daemon=True, name="application-playwright")
             self._thread.start()
             ready.wait()
 

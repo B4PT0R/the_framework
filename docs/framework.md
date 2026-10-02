@@ -91,18 +91,8 @@ from the_framework import (
 )
 
 
-@endpoint(
-    "get",
-    "/api/v1/greeting",
-    request={"type": "object", "properties": {}},
-    response={
-        "type": "object",
-        "properties": {"message": {"type": "string"}},
-        "required": ["message"],
-    },
-    authenticated=False,
-)
-def greeting():
+@endpoint("get", "/api/v1/greeting", authenticated=False)
+def greeting() -> dict[str, str]:
     return {"message": "hello"}
 
 
@@ -406,6 +396,12 @@ The neutral realtime plugin exposes call creation/readiness/stop endpoints and
 its controller, with an optional `realtime_client_factory` construction input.
 The browser defaults to the agent session directory, where a browser RPC host
 must be running; applications with another browser host specialize its binding.
+`BrowserService.open_application_ui(url)` opens the application's chosen route;
+`application_ui_origins` permits explicitly trusted HTTPS origins in addition to
+loopback. Query and fragment values are excluded from Chromium launch arguments
+and passed through navigation. The isolated UI target/profile `harness_ui` and
+its historical RPC command remain stable for saved sessions and browser processes
+that survive server or worker upgrades.
 
 Customize a complete declaration explicitly without rebuilding its internals:
 
@@ -535,6 +531,13 @@ that, the server's plugin state is authoritative. Private specialist workers
 do not receive this argument. The starter demonstrates the complete wiring.
 
 ## Agent construction
+
+`AgentSpec` declares what an agent is; `AgentResources` supplies the process-local
+inputs needed to construct it: inference client, loaded configuration/state and
+callbacks that save their changes. It is not another plugin or application
+composition layer. Ordinary applications provide a `resources(session_path)`
+factory so the generic worker owns construction and the application chooses its
+storage. Use explicit resources when constructing an agent directly.
 
 ```python
 from the_framework.agent import AgentResources, AgentSpec

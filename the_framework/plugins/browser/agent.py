@@ -59,11 +59,11 @@ class ChromiumExtension(AgentExtension):
 
     @hook
     def on_external_browser_open_ui(self, payload):
-        """Open or foreground the authenticated Harness UI bootstrap URL."""
+        """Open or foreground the authenticated application UI bootstrap URL."""
         url = payload.get("url") if isinstance(payload, dict) else None
         if not isinstance(url, str) or not url:
             raise ValueError("browser UI event requires a URL")
-        self.controller.call("open_harness_ui", url)
+        self.controller.call("open_application_ui", url)
         return payload
 
     @hook
@@ -205,7 +205,7 @@ class ChromiumExtension(AgentExtension):
 
     @tool
     def close_web(self):
-        """Close the arbitrary web navigation session without closing the Harness UI."""
+        """Close the arbitrary web navigation session without closing the application UI."""
         self._activate("web")
         result = self.controller.call("close_web")
         return {"status": "success", "action": "close_web", "target": "web", **result}

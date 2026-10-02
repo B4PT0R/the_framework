@@ -156,7 +156,7 @@ class MemoryLiveContext:
         while self.controller.sideband is not None and self.controller.call_id is not None:
             self.memory_cache_refresh_pending = False
             try:
-                snapshot = await self.controller.harness.request(
+                snapshot = await self.controller.runtime.request(
                     SessionSnapshotRequest(id=timestamp_id())
                 )
                 extension = snapshot.extensions.get("realtime") or {}

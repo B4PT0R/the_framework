@@ -336,7 +336,7 @@ class ClientRemoteService:
                 await result
 
     def __init__(
-        self, harness, path, *, journal_size=2048,
+        self, runtime, path, *, journal_size=2048,
         event_heartbeat_seconds=EVENT_HEARTBEAT_SECONDS,
         pairing_scheme="agent",
         application_subprotocol="agent-application-v1",
@@ -347,7 +347,7 @@ class ClientRemoteService:
             raise ValueError("pairing_scheme must be a valid lowercase URI scheme")
         self.application_event_listeners = []
         self.capabilities_changed_listeners = []
-        self.harness = harness
+        self.runtime = runtime
         self.policy = policy or RemoteClientPolicy()
         self._policy_locked = False
         self.clients = RemoteClientStore(path, policy=self.policy)
@@ -444,7 +444,7 @@ class ClientRemoteService:
         self.notification_tasks.clear()
 
     async def _relay(self):
-        async for output in self.harness.stream():
+        async for output in self.runtime.stream():
             self.sequence += 1
             event = {
                 "v": PROTOCOL_VERSION,
@@ -886,7 +886,7 @@ class ClientRemoteService:
         ]
         for call_id in call_ids:
             self.routed_calls.pop(call_id, None)
-            await self.harness.application.reject(call_id, reason)
+            await self.runtime.application.reject(call_id, reason)
 
     async def route(self, output):
         if isinstance(output, ApplicationCancel):
@@ -929,13 +929,13 @@ class ClientRemoteService:
                         timeout_ms=request.timeout_ms,
                     )
             except (PermissionError, ValueError) as error:
-                await self.harness.application.reject(output.request.id, str(error))
+                await self.runtime.application.reject(output.request.id, str(error))
                 return True
         public_lease = lease.public()
         if connection.revoked or self.application_connections.get(lease.client_id) is not connection \
                 or self.capability_leases.get(lease.capability) is not lease \
                 or lease.expires_at <= _utc_now():
-            await self.harness.application.reject(
+            await self.runtime.application.reject(
                 request.id, "remote capability lease changed during request preparation",
             )
             return True
@@ -946,7 +946,7 @@ class ClientRemoteService:
                 "type": "application_call", "request": request, "lease": public_lease,
             })
         except asyncio.QueueFull:
-            await self.harness.application.reject(request.id, "remote application queue is full")
+            await self.runtime.application.reject(request.id, "remote application queue is full")
             return True
         self.routed_calls[output.request.id] = {
             "client_id": lease.client_id,
@@ -1039,7 +1039,7 @@ class ClientRemoteService:
                     })
                     continue
                 if message_type == "application_event" and payload.get("name") in self.policy.unleased_events:
-                    response = await self.harness.application.accept(
+                    response = await self.runtime.application.accept(
                         payload,
                         responses=connection.outgoing,
                     )
@@ -1056,7 +1056,7 @@ class ClientRemoteService:
                         self.on_application_event(connection, payload)
                     if message_type == "application_result":
                         self.validate_result_route(payload.get("id"), current)
-                response = await self.harness.application.accept(
+                response = await self.runtime.application.accept(
                     {
                         key: value for key, value in payload.items()
                         if key != "lease"
