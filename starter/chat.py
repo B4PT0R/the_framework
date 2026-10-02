@@ -98,10 +98,10 @@ def chat_runtime(context):
     text_mode_lock = context.require("text_mode_lock")
     return ServerExtension(
         name="chat",
-        service_factory=lambda runtime, voice=None: ChatApi(
-            runtime, root / "files", voice, text_lock=text_mode_lock,
+        service_factory=lambda runtime, realtime=None: ChatApi(
+            runtime, root / "files", realtime, text_lock=text_mode_lock,
         ),
         endpoints="service",
         requires_services=("runtime",),
-        optional_services=("voice",),
+        optional_services=("realtime",),
     )

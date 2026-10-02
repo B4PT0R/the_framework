@@ -1,7 +1,7 @@
 from the_framework import ApplicationSpec, AgentResources
 from the_framework.agent.context.session import Session
 from the_framework.utils.persistence import MappingStore
-from starter.application import application, resources, scheduler_runtime, system_runtime
+from starter.application import application, resources
 
 
 class FakeRuntime:
@@ -15,6 +15,12 @@ class FakeRuntime:
         from the_framework.server.runtime.bridge import ApplicationBridge
         self.application = ApplicationBridge(None)
         self.submitted = []
+        from types import SimpleNamespace
+        self.supervisor = SimpleNamespace(send=self.submit)
+        self.reset_hooks = []
+
+    def register_reset_hooks(self, *, suspend, resume):
+        self.reset_hooks.append((suspend, resume))
 
     def register_observer(self, observer):
         pass
@@ -81,8 +87,8 @@ def test_starter_declares_general_plugins_and_memory_specialist():
         "realtime", "chromium",
     }
     assert "memory.jiminy" in plan.agents
-    assert plan.plugins["scheduler"].server_extension is scheduler_runtime
-    assert plan.plugins["system"].server_extension is system_runtime
+    assert plan.plugins["scheduler"].server_extension == "the_framework.plugins.scheduler.server:build_server_extensions"
+    assert plan.plugins["system"].server_extension == "the_framework.plugins.system.server:build_server_extensions"
     assert plan.plugins["chat"].server_extension == "starter.chat:chat_runtime"
     assert [requirement.name for requirement in plan.plugins["chat"].optional_capabilities] == [
         "realtime.session",
@@ -106,7 +112,7 @@ def test_starter_assembles_without_voice_plugin(tmp_path, monkeypatch):
     app = server.create_app(
         tmp_path, token="test", origin="http://testserver", runtime=runtime,
     )
-    assert "voice" not in app.state.application.server_extensions
+    assert "realtime" not in app.state.application.server_extensions
     assert "chat" in app.state.application.server_extensions
     with TestClient(app) as client:
         client.headers["authorization"] = "Bearer test"

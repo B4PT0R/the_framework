@@ -5,7 +5,7 @@ import pytest
 
 from the_framework.agent.runtime.protocol import SessionSnapshotRequest, StatusRequest
 from the_framework.server.api.endpoints import HttpError
-from starter.voice import VoiceApi
+from the_framework.plugins.realtime.api import RealtimeApi
 from starter.chat import ChatApi
 
 
@@ -25,7 +25,7 @@ def test_voice_requires_idle_text_and_passes_canonical_snapshot():
             calls.append((offer, received))
             return {"answer_sdp": "answer"}
 
-        api = VoiceApi(SimpleNamespace(request=request), SimpleNamespace(start=start, active=False))
+        api = RealtimeApi(SimpleNamespace(request=request), SimpleNamespace(start=start, active=False))
         assert await api.start("offer", "one") == {"answer_sdp": "answer"}
         assert calls == [("offer", snapshot)]
         status.foreground_pending = 1
@@ -43,7 +43,7 @@ def test_voice_cleanup_and_readiness_are_scoped_to_the_originating_call():
         async def stop():
             stopped.append(True)
 
-        api = VoiceApi(None, SimpleNamespace(active=True, stop=stop))
+        api = RealtimeApi(None, SimpleNamespace(active=True, stop=stop))
         api.call_id = "main-window"
         with pytest.raises(HttpError):
             await api.start("offer", "preview")
@@ -73,7 +73,7 @@ def test_text_joins_voice_and_attachments_do_not_start_a_parallel_turn(tmp_path)
 
         runtime = SimpleNamespace(submit=submit)
         controller = SimpleNamespace(active=True, send_text=send_text)
-        voice = VoiceApi(runtime, controller)
+        voice = RealtimeApi(runtime, controller)
         chat = ChatApi(runtime, tmp_path, voice)
         await chat.prompt("typed", "Hello")
         assert spoken == ["Hello"]

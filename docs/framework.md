@@ -350,26 +350,50 @@ whereas a server extension is a declaration describing a service and its surface
 | `AgentSpec.extensions` | Contributions installed in that agent |
 | `AgentSpec.specialist_profiles` | Compiled worker profiles; application code normally declares specialists on their owning `Plugin` |
 
-Import each plugin's agent contribution from its `agent.py` module or package
-exports. Keep server factories in `server.py`; their declarations may reference
-that module without importing it into a worker. Agent-side composition uses
-`add_extension`, `load_extension`, `extension`, `activate_extension` and
-`deactivate_extension`; there is no separate `install()` shortcut.
-
-For an agent-only plugin, pass its class directly:
+The normal import is the complete plugin, not its agent and server parts:
 
 ```python
+from the_framework.plugins.bash import BASH
+from the_framework.plugins.memory import MEMORY
+from the_framework.plugins.scheduler import SCHEDULER
+from the_framework.plugins.system import SYSTEM
+
 application = ApplicationSpec(
     name="Example", version="1", primary_agent=primary,
-    plugins=(MemoryExtension, BashExtension),
+    plugins=(BASH, MEMORY, SCHEDULER, SYSTEM),
 )
 ```
 
-The class must declare its `name`. The application normalizes it into a
-`Plugin` without constructing or activating the plugin. Duplicate identities,
-private-agent discovery and lifecycle validation are identical to the full form.
-Use the full form when adding server runtime, dependencies or activation policy;
-there is no second installation path.
+Bundled feature packages export `BASH`, `CHROMIUM`, `MEMORY`, `REALTIME`,
+`REGISTRY`, `SCHEDULER`, `SYSTEM` and `WEB_SEARCH`. Each is an immutable `Plugin`
+declaration containing its complete feature: agent binding, private specialists,
+server services, lifecycle and capabilities where applicable. Importing or
+compiling these declarations does not import their server implementations.
+Scheduler and system services require the application's `runtime` service;
+`data_root` in `BuildContext` supplies their default storage directory. Optional
+`scheduler_state_path` and `system_state_path` override the files. System restart
+execution is an application-owned `system_restart` callback in that context.
+The neutral realtime plugin exposes call creation/readiness/stop endpoints and
+its controller, with an optional `realtime_client_factory` construction input.
+The browser defaults to the agent session directory, where a browser RPC host
+must be running; applications with another browser host specialize its binding.
+
+Customize a complete declaration explicitly without rebuilding its internals:
+
+```python
+required_system = Plugin({**SYSTEM, "agent_binding_required": True})
+custom_memory = Plugin({**MEMORY, "agent_extension": MyMemoryExtension})
+```
+
+Agent extensions and server factories remain available in `agent.py` and
+`server.py` for advanced compositions. Custom plugins should expose the same
+complete-declaration pattern, keeping server imports deferred. Agent-side
+composition uses `add_extension`, `load_extension`, `extension`,
+`activate_extension` and `deactivate_extension`.
+
+Passing an agent extension class directly remains a shorthand for a custom
+agent-only plugin. It must declare its `name`; the application normalizes it to
+`Plugin` with the same identity and private-agent validation.
 
 `Plugin` records that a product capability has an agent binding, a runtime,
 private specialist agents, or any combination of those. For a feature with

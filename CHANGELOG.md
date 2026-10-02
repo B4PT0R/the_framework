@@ -6,6 +6,12 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Export complete bundled plugin declarations; scheduler and system own their
+  server integrations and reset hooks. Move the neutral starter realtime API
+  into its framework plugin. Server modules stay deferred during worker compile.
+- Migrate starter and Harness to complete plugin imports, preserving persisted
+  plugin identities, service state paths and realtime HTTP routes.
+
 - Add canonical runtime configuration updates and durable event application,
   ordered remote-service listeners, and reusable filesystem reset staging.
 - Provide explicit standard server declarations shared by starter and applications.

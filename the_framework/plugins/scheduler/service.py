@@ -72,6 +72,12 @@ class SchedulerService:
     def running(self):
         return self.task is not None and not self.task.done()
 
+    def health(self):
+        return {
+            "running": self.running, "active": self.active,
+            "error": self.error, "wakes": len(self.wakes),
+        }
+
     async def start(self, *, active=True):
         if self.running:
             return

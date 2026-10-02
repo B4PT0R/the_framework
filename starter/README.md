@@ -119,16 +119,19 @@ Voice control disappears when that runtime is absent.
 | `ui/src/settings.jsx` | Model, plugin activation and editable configuration |
 | `ui/src/session.js` | Display projection of canonical items and streaming events |
 
-Add an agent-only plugin class to the declaration, or use `Plugin` when the
-feature also needs server services, routes or an activation policy. The
-`chat`, `scheduler` and `system` declarations in `application.py` show this pattern:
-their server factories construct their own services from the declared runtime
-dependency and the data directory supplied by `server.py`. The worker reads the
-same declaration without constructing those server services. Keep application
-policy in its own instructions and plugins; do not
-add product imports to `the_framework`. Backend contributions use the framework's
-`ServerExtension` and `@endpoint` primitives. The canonical worker remains the sole
-writer of conversation history.
+Import a complete framework plugin and add it to `ApplicationSpec.plugins`:
+`SCHEDULER`, `SYSTEM` and `REALTIME` own their agent bindings, server services,
+routes and lifecycle. Their server implementations are deferred so the worker
+can compile the same application declaration without constructing server services.
+`server.py` supplies the data directory, system state file and restart callback.
+The memory declaration shows an explicit specialization of the complete `MEMORY`
+plugin with application-owned curator instructions. The optional `chat` plugin
+keeps the starter's UI-specific attachment behavior in editable application code.
+
+Custom plugins should expose their complete `Plugin` declaration from their
+package; keep agent and server implementations inside it. Backend contributions
+use `ServerExtension` and `@endpoint`. Keep product policy in application
+instructions and plugins; the canonical worker remains the sole history writer.
 
 The system/browser plugins expose managed UI build, preview, publish and rollback.
 Edit `ui/`, build a candidate, inspect its authenticated preview in the separate

@@ -43,6 +43,19 @@ separately when you run the starter.
 | `ServerExtension` / `@endpoint` | Describes advanced server components and validated API routes inside a plugin | Service dependencies, route schemas and authorization |
 | `ClientSurface` | Builds, previews, publishes and rolls back an editable web UI | Source, build command, routes and release policy |
 
+Bundled plugins are imported as complete features:
+
+```python
+from the_framework.plugins.scheduler import SCHEDULER
+from the_framework.plugins.system import SYSTEM
+
+# In your ApplicationSpec:
+# plugins=(SCHEDULER, SYSTEM)
+```
+
+Their declarations include server wiring and lifecycle; applications supply
+storage inputs and restart policy rather than reconstruct those integrations.
+
 There is exactly **one primary, durable conversation**. Private specialist
 agents can perform bounded background work, but their sessions are not new
 user-facing conversations and they cannot edit the primary history directly.

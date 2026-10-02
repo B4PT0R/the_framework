@@ -6,82 +6,26 @@ from the_framework import (
     ApplicationSpec,
     AgentResources,
     AgentSpec,
-    Capability,
     CapabilityRequirement,
     ClientSurface,
-    ServerExtension,
     Plugin,
 )
 from the_framework.agent import Worker
 from the_framework.utils.persistence import MappingStore
-from the_framework.plugins.bash import BashExtension
-from the_framework.plugins.browser import ChromiumExtension
-from the_framework.plugins.memory.agent import MemoryExtension
-from the_framework.plugins.realtime import RealtimeExtension
-from the_framework.plugins.registry import RegistryExtension
-from the_framework.plugins.scheduler import SchedulerExtension
-from the_framework.plugins.scheduler.service import SchedulerService
-from the_framework.plugins.system import SystemExtension
-from the_framework.plugins.system.service import SystemControlService
-from the_framework.plugins.web_search import WebSearchExtension
-from the_framework.plugins.realtime.controller import RealtimeController
-
-from .voice import VoiceApi
+from the_framework.plugins.bash import BASH
+from the_framework.plugins.browser import CHROMIUM
+from the_framework.plugins.memory import MEMORY, MemoryExtension
+from the_framework.plugins.realtime import REALTIME
+from the_framework.plugins.registry import REGISTRY
+from the_framework.plugins.scheduler import SCHEDULER
+from the_framework.plugins.system import SYSTEM
+from the_framework.plugins.web_search import WEB_SEARCH
 
 ROOT = Path(__file__).resolve().parent
 
 
 class Memory(MemoryExtension):
     curator_instructions = (ROOT / "memory.md").read_text(encoding="utf-8")
-
-
-def browser(agent):
-    return ChromiumExtension(agent, runtime_root=Path(agent.session.path).parent)
-
-
-def scheduler_runtime(context):
-    root = Path(context.require("data_root"))
-
-    def create(runtime):
-        scheduler = SchedulerService(root / "scheduler.json", runtime.submit)
-        runtime.application.register("scheduler", scheduler.handle)
-        runtime.register_observer(scheduler.observe)
-        return scheduler
-
-    return ServerExtension(
-        name="scheduler",
-        service_factory=create,
-        requires_services=("runtime",),
-    )
-
-
-def system_runtime(context):
-    root = Path(context.require("data_root"))
-    restart = context.get("restart")
-
-    def create(runtime):
-        system = SystemControlService(
-            root / "system.json", runtime.submit, restart=restart,
-        )
-        runtime.application.register("system", system.handle, contextual=True)
-        runtime.register_observer(system.observe)
-        return system
-
-    return ServerExtension(
-        name="system",
-        service_factory=create,
-        requires_services=("runtime",),
-    )
-
-
-def realtime_runtime(_context):
-    return ServerExtension(
-        name="voice",
-        service_factory=lambda runtime: VoiceApi(runtime, RealtimeController(runtime)),
-        requires_services=("runtime",),
-        stop=lambda service, _context: service.controller.stop(),
-        endpoints="service",
-    )
 
 
 def resources(session_path):
@@ -111,18 +55,12 @@ application = ApplicationSpec(
         projections={"display": Worker.conversation_projection},
     ),
     plugins=(
-        BashExtension, RegistryExtension, WebSearchExtension, Memory,
+        BASH, REGISTRY, WEB_SEARCH, Plugin({**MEMORY, "agent_extension": Memory}),
         Plugin(
             name="chat", server_extension="starter.chat:chat_runtime",
             optional_capabilities=(CapabilityRequirement(name="realtime.session", min_version=1),),
         ),
-        Plugin(name="scheduler", agent_extension=SchedulerExtension, server_extension=scheduler_runtime),
-        Plugin(name="system", agent_extension=SystemExtension, server_extension=system_runtime),
-        Plugin(
-            name="realtime", agent_extension=RealtimeExtension, server_extension=realtime_runtime,
-            provides_capabilities=(Capability(name="realtime.session", version=1),),
-        ),
-        Plugin(name="chromium", agent_extension=browser),
+        SCHEDULER, SYSTEM, REALTIME, CHROMIUM,
     ),
     surfaces=(ClientSurface(name="main", source=ROOT / "ui",
                             build=("npm", "run", "build"), artifact="dist",

@@ -1,4 +1,4 @@
-"""Local voice surface over the framework's canonical realtime controller."""
+"""Neutral voice surface over the framework's canonical realtime controller."""
 
 import asyncio
 
@@ -12,7 +12,7 @@ CALL_REQUEST = {"type": "object", "properties": {
 }, "required": ["call_id"], "additionalProperties": False}
 
 
-class VoiceApi:
+class RealtimeApi:
     def __init__(self, runtime, controller):
         self.runtime = runtime
         self.controller = controller

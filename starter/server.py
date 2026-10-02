@@ -32,7 +32,7 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None):
     def voice_service():
         if app is None:
             raise RuntimeError("voice service is unavailable before application build")
-        return app.state.application.services.get("voice")
+        return app.state.application.services.get("realtime")
 
     async def binding(name, enabled, *, call=None):
         voice = voice_service()
@@ -57,6 +57,7 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None):
         "surface_progress": runtime.publish,
         "data_root": root,
         "text_mode_lock": text_mode_lock,
-        "restart": restart,
+        "system_restart": restart,
+        "system_state_path": root / "system.json",
     }))
     return app
