@@ -6,6 +6,9 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Execute resolved `ServerExtension` declarations directly for service lifecycle,
+  removing the duplicate internal `ServiceSpec` model. Preserve capability and
+  service dependencies, startup rollback and health diagnostics.
 - Export complete bundled plugin declarations; scheduler and system own their
   server integrations and reset hooks. Move the neutral starter realtime API
   into its framework plugin. Server modules stay deferred during worker compile.

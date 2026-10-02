@@ -2,7 +2,8 @@ import asyncio
 
 import pytest
 
-from the_framework.server.composition.services import ServiceGraph, ServiceSpec
+from the_framework import ServerExtension
+from the_framework.server.composition.services import ServiceGraph
 from the_framework.server.api.health import ApplicationHealthApi
 from types import SimpleNamespace
 
@@ -29,9 +30,9 @@ def test_service_graph_orders_dependencies_and_reverses_shutdown():
     async def scenario():
         events = []
         graph = ServiceGraph([
-            ServiceSpec(name="api", service=Service("api", events), depends_on=("worker",)),
-            ServiceSpec(name="worker", service=Service("worker", events)),
-            ServiceSpec(name="media", service=Service("media", events), depends_on=("api",)),
+            ServerExtension(name="api", service=Service("api", events), requires_services=("worker",)),
+            ServerExtension(name="worker", service=Service("worker", events)),
+            ServerExtension(name="media", service=Service("media", events), requires_services=("api",)),
         ])
         context = await graph.start()
         assert context["worker"].name == "worker"
@@ -48,11 +49,11 @@ def test_service_graph_rolls_back_a_partial_start():
     async def scenario():
         events = []
         graph = ServiceGraph([
-            ServiceSpec(name="worker", service=Service("worker", events)),
-            ServiceSpec(
+            ServerExtension(name="worker", service=Service("worker", events)),
+            ServerExtension(
                 name="remote",
                 service=Service("remote", events, fail_start=True),
-                depends_on=("worker",),
+                requires_services=("worker",),
             ),
         ])
         with pytest.raises(RuntimeError, match="cannot start remote"):
@@ -65,14 +66,14 @@ def test_service_graph_rolls_back_a_partial_start():
 
 def test_service_graph_rejects_missing_and_cyclic_dependencies():
     missing = ServiceGraph([
-        ServiceSpec(name="api", service=object(), depends_on=("worker",)),
+        ServerExtension(name="api", service=object(), requires_services=("worker",)),
     ])
     with pytest.raises(ValueError, match="unknown.*worker"):
         missing.resolve_order()
 
     cyclic = ServiceGraph([
-        ServiceSpec(name="one", service=object(), depends_on=("two",)),
-        ServiceSpec(name="two", service=object(), depends_on=("one",)),
+        ServerExtension(name="one", service=object(), requires_services=("two",)),
+        ServerExtension(name="two", service=object(), requires_services=("one",)),
     ])
     with pytest.raises(ValueError, match="cyclic"):
         cyclic.resolve_order()
@@ -82,12 +83,12 @@ def test_noncritical_service_failure_is_reported_without_aborting_graph():
     async def scenario():
         events = []
         graph = ServiceGraph([
-            ServiceSpec(
+            ServerExtension(
                 name="optional",
                 service=Service("optional", events, fail_start=True),
                 critical=False,
             ),
-            ServiceSpec(name="worker", service=Service("worker", events)),
+            ServerExtension(name="worker", service=Service("worker", events)),
         ])
         await graph.start()
         health = await graph.health()
@@ -105,11 +106,11 @@ def test_failed_optional_dependency_is_not_exposed_or_started_downstream():
         optional = Service("optional", events, fail_start=True)
         downstream = Service("downstream", events)
         graph = ServiceGraph([
-            ServiceSpec(name="optional", service=optional, critical=False),
-            ServiceSpec(
+            ServerExtension(name="optional", service=optional, critical=False),
+            ServerExtension(
                 name="downstream",
                 service=downstream,
-                depends_on=("optional",),
+                requires_services=("optional",),
                 critical=False,
             ),
         ])
@@ -137,8 +138,8 @@ def test_cancelled_start_rolls_back_started_services():
                 await asyncio.Event().wait()
 
         graph = ServiceGraph([
-            ServiceSpec(name="worker", service=Service("worker", events)),
-            ServiceSpec(name="waiting", service=WaitingService("waiting", events), depends_on=("worker",)),
+            ServerExtension(name="worker", service=Service("worker", events)),
+            ServerExtension(name="waiting", service=WaitingService("waiting", events), requires_services=("worker",)),
         ])
         start = asyncio.create_task(graph.start())
         await entered.wait()
@@ -155,8 +156,8 @@ def test_cancelled_start_rolls_back_started_services():
 def test_start_and_rollback_errors_are_both_preserved():
     async def run():
         graph = ServiceGraph([
-            ServiceSpec(name="worker", service=Service("worker", [], fail_stop=True)),
-            ServiceSpec(name="remote", service=Service("remote", [], fail_start=True), depends_on=("worker",)),
+            ServerExtension(name="worker", service=Service("worker", [], fail_stop=True)),
+            ServerExtension(name="remote", service=Service("remote", [], fail_start=True), requires_services=("worker",)),
         ])
         with pytest.raises(ExceptionGroup) as caught:
             await graph.start()
@@ -177,7 +178,7 @@ def test_live_health_failure_degrades_critical_service_and_recovers(probe):
                 raise RuntimeError("backend unavailable")
             return {"status": probe if unhealthy else "ok"}
 
-        graph = ServiceGraph([ServiceSpec(name="backend", service=object(), health=health)])
+        graph = ServiceGraph([ServerExtension(name="backend", service=object(), health=health)])
         await graph.start()
         assert (await graph.health())["backend"]["status"] == "degraded"
         reply = await ApplicationHealthApi().health(

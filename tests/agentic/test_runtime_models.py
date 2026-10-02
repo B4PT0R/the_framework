@@ -15,7 +15,6 @@ from the_framework.server.clients.remote import (
 )
 from the_framework.server.composition.application import ApplicationSpec, ServerExtension, Plugin
 from the_framework.server.api.endpoints import EndpointContext, Principal
-from the_framework.server.composition.services import ServiceSpec
 from the_framework.server.clients.surfaces import ClientSurface
 from the_framework.server.api.websockets import WebSocketEndpoint
 
@@ -24,7 +23,6 @@ from the_framework.server.api.websockets import WebSocketEndpoint
     lambda: AgentSpec(name="main"),
     lambda: ServerExtension(name="runtime", service=object()),
     lambda: Plugin(name="plugin"),
-    lambda: ServiceSpec(name="service", service=object()),
     lambda: WebSocketEndpoint(path="/events", handler=lambda: None),
     lambda: EndpointContext(request=Request({"type": "http"}), principal=Principal(id="caller")),
     lambda: ClientSurface(name="ui", source=".", build=("true",), artifact="dist", routes=("/ui",)),

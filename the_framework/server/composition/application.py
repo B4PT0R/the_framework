@@ -23,7 +23,7 @@ from .plugins import PluginHost
 from .controls import _bind_application_controls
 from ..runtime.application import ApplicationRuntime
 from .dependencies import dependency_order
-from .services import ServiceContext, ServiceGraph, ServiceSpec
+from .services import ServiceContext, ServiceGraph
 from ..api.websockets import WebSocketRegistry
 from ..clients.surfaces import ClientSurface, SurfaceApplication, SurfaceService
 from ..api.surfaces import SurfaceApi
@@ -518,9 +518,6 @@ def _resolve_plugin_server_extensions(plan, context):
                 raise ValueError(f"duplicate plugin runtime extension: {extension.name}")
             names.add(extension.name)
         extensions[plugin.name] = plugin_runtime
-    dependency_order(
-        _extension_dependencies(plan, extensions), kind="application extension",
-    )
     return extensions
 
 
@@ -696,20 +693,18 @@ def build_application(
                     f"extension {extension.name} declares lifecycle hooks without a service"
                 )
             continue
-        dependencies = tuple(
-            dependency for dependency in extension_dependencies[name]
-            if runtime.server_extensions[dependency].service is not None
-        )
-        services.append(ServiceSpec(
-            name=extension.name,
-            service=extension.service,
-            depends_on=dependencies,
-            start=extension.start,
-            stop=extension.stop,
-            health=extension.health,
-            critical=extension.critical,
-        ))
-    graph = ServiceGraph(services, context=runtime.services)
+        services.append(extension)
+    service_names = {extension.name for extension in services}
+    graph = ServiceGraph(
+        services, context=runtime.services,
+        dependencies={
+            extension.name: tuple(
+                dependency for dependency in extension_dependencies[extension.name]
+                if dependency in service_names
+            )
+            for extension in services
+        },
+    )
     graph.resolve_order()
     runtime.service_graph = graph
 

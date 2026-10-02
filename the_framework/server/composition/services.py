@@ -3,14 +3,8 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Callable
-
-from modict import modict
 
 from .dependencies import dependency_order
-
-Lifecycle = Callable[[Any, "ServiceContext"], object]
-HealthProbe = Callable[[Any, "ServiceContext"], object]
 
 
 async def invoke_lifecycle(spec, action, context):
@@ -24,27 +18,6 @@ async def invoke_lifecycle(spec, action, context):
             return None
         result = method()
     return await result if inspect.isawaitable(result) else result
-
-
-class ServiceSpec(modict):
-    _config = modict.config(frozen=True, strict=True, extra="forbid", auto_convert=False)
-
-    name: str
-    service: object
-    depends_on: tuple[str, ...] = ()
-    start: Lifecycle | None = None
-    stop: Lifecycle | None = None
-    health: HealthProbe | None = None
-    critical: bool = True
-
-    @modict.model_validator(mode="after")
-    def validate_declaration(self):
-        if not self.name or not self.name.replace("_", "").isalnum():
-            raise ValueError(
-                "service name must contain only letters, numbers, and underscores"
-            )
-        if self.name in self.depends_on:
-            raise ValueError(f"service cannot depend on itself: {self.name}")
 
 
 class ServiceContext:
@@ -91,35 +64,44 @@ class ServiceContext:
 class ServiceGraph:
     """Start services topologically and stop them in exact reverse order."""
 
-    def __init__(self, specs=(), *, context=None):
-        self.context = context or ServiceContext()
+    def __init__(self, extensions=(), *, context=None, dependencies=None):
+        from .application import ServerExtension
+
+        self.context = context if context is not None else ServiceContext()
         self.specs = {}
         self.order = []
         self.started = []
         self.errors = {}
-        for spec in specs:
-            self.add(spec)
+        for extension in extensions:
+            if not isinstance(extension, ServerExtension):
+                raise TypeError("application services must be resolved ServerExtension declarations")
+            if extension.service is None or extension.service_factory is not None:
+                raise ValueError("service lifecycle requires a resolved service")
+            if extension.name in self.specs:
+                raise ValueError(f"duplicate application service: {extension.name}")
+            self.specs[extension.name] = extension
+        self.dependencies = (
+            {name: tuple(values) for name, values in dependencies.items()}
+            if dependencies is not None else {
+                name: (
+                    *extension.requires_services,
+                    *(dependency for dependency in extension.optional_services if dependency in self.specs),
+                )
+                for name, extension in self.specs.items()
+            }
+        )
+        if self.dependencies.keys() != self.specs.keys():
+            raise ValueError("service dependencies must describe exactly the installed services")
 
     @property
     def running(self):
         return bool(self.started)
 
-    def add(self, spec):
-        if not isinstance(spec, ServiceSpec):
-            raise TypeError("application services must be ServiceSpec instances")
-        if self.started:
-            raise RuntimeError("cannot mutate a running service graph")
-        if spec.name in self.specs:
-            raise ValueError(f"duplicate application service: {spec.name}")
-        self.specs[spec.name] = spec
-        self.order = []
-        return spec.service
-
     def resolve_order(self):
         if self.order:
             return list(self.order)
         self.order = dependency_order(
-            {name: spec.depends_on for name, spec in self.specs.items()},
+            self.dependencies,
             kind="application service",
         )
         return list(self.order)
@@ -133,7 +115,7 @@ class ServiceGraph:
                 spec = self.specs[name]
                 unavailable = [
                     dependency
-                    for dependency in spec.depends_on
+                    for dependency in self.dependencies[name]
                     if dependency not in self.started
                 ]
                 if unavailable:

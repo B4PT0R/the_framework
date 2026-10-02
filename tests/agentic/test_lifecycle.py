@@ -6,14 +6,13 @@ import pytest
 
 from the_framework import endpoint
 from the_framework.server.composition.application import ServerExtension
-from the_framework.server.composition.services import ServiceContext, ServiceSpec, invoke_lifecycle
+from the_framework.server.composition.services import ServiceContext, invoke_lifecycle
 
 
-@pytest.mark.parametrize("declaration", [ServerExtension, ServiceSpec])
 @pytest.mark.parametrize("action", ["start", "stop", "health"])
 @pytest.mark.parametrize("adapter", [False, True])
 @pytest.mark.parametrize("asynchronous", [False, True])
-def test_lifecycle_has_one_invocation_contract(declaration, action, adapter, asynchronous):
+def test_lifecycle_has_one_invocation_contract(action, adapter, asynchronous):
     async def scenario():
         context = ServiceContext()
         calls = []
@@ -32,8 +31,8 @@ def test_lifecycle_has_one_invocation_contract(declaration, action, adapter, asy
 
         callback = async_call if asynchronous else call
         setattr(service, action, callback)
-        spec = declaration(name="example", service=service,
-                           **({action: callback} if adapter else {}))
+        spec = ServerExtension(name="example", service=service,
+                               **({action: callback} if adapter else {}))
         assert await invoke_lifecycle(spec, action, context) == "result"
         assert calls == [(service, context) if adapter else ()]
 
@@ -46,7 +45,7 @@ def test_lifecycle_propagates_failure_and_cancellation(error):
         async def fail(_service, _context):
             raise error()
 
-        spec = ServiceSpec(name="example", service=object(), start=fail)
+        spec = ServerExtension(name="example", service=object(), start=fail)
         with pytest.raises(error):
             await invoke_lifecycle(spec, "start", ServiceContext())
         assert await invoke_lifecycle(spec, "stop", ServiceContext()) is None
@@ -68,11 +67,11 @@ def test_http_endpoint_named_start_or_stop_is_not_a_lifecycle_hook():
 
     async def scenario():
         service = Service()
-        spec = ServiceSpec(name="feature", service=service)
+        spec = ServerExtension(name="feature", service=service)
         assert await invoke_lifecycle(spec, "start", ServiceContext()) is None
         assert await invoke_lifecycle(spec, "stop", ServiceContext()) is None
         assert calls == []
-        explicit = ServiceSpec(
+        explicit = ServerExtension(
             name="feature", service=service,
             start=lambda _service, _context: calls.append("lifecycle"),
         )

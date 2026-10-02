@@ -102,6 +102,42 @@ def test_plugin_runtime_factories_follow_capability_dependencies():
     assert built == ["provider", "consumer"]
 
 
+def test_failed_capability_provider_prevents_dependent_service_start():
+    events = []
+
+    class Unavailable(Service):
+        async def start(self):
+            events.append("provider")
+            raise RuntimeError("provider unavailable")
+
+    app = application("dependent services", plugins=(
+        Plugin(
+            name="consumer",
+            requires_capabilities=(CapabilityRequirement(name="feature.provider"),),
+            server_extension=ServerExtension(
+                name="consumer_service", service=Service(events), critical=False,
+            ),
+        ),
+        Plugin(
+            name="provider",
+            provides_capabilities=(Capability(name="feature.provider"),),
+            server_extension=ServerExtension(
+                name="provider_service", service=Unavailable(events), critical=False,
+            ),
+        ),
+    )).build()
+
+    with TestClient(app):
+        graph = app.state.application.service_graph
+        assert events == ["provider"]
+        assert graph.started == []
+        assert graph.errors == {
+            "provider_service": "provider unavailable",
+            "consumer_service": "application service dependencies are unavailable: provider_service",
+        }
+    assert events == ["provider"]
+
+
 @pytest.mark.parametrize("factory", [False, True])
 def test_single_service_plugin_needs_no_extension_boilerplate(factory):
     events = []
