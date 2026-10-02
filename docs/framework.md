@@ -139,6 +139,23 @@ validation then sees the final state, not intermediate per-key assignments.
 
 ### Model-based endpoint contracts
 
+Without an explicit `request`, `@endpoint` uses the handler's signature and
+docstring schema: supported annotations validate JSON inputs and coerce path
+and query values, parameters with defaults remain optional, and injected
+`context` stays outside the payload. An argument-free handler needs no empty
+request schema. For example:
+
+```python
+@endpoint("get", "/items/{item_id}", authenticated=False)
+def item(item_id: int, limit: int = 25):
+    return {"item_id": item_id, "limit": limit}
+```
+
+Explicit request/response schemas and models take precedence. Use them for
+additional constraints or types outside signature inference. `request={}` is
+an explicit permissive schema for a handler accepting dynamic keyword inputs.
+Response schemas documented in YAML are used when no explicit response is given.
+
 `@endpoint("post", "/route", request=RequestModel, response=ReplyModel)` accepts
 `modict` classes as well as explicit JSON Schema mappings. Request fields are
 passed as handler keyword arguments after the usual authentication, transport

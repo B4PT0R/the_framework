@@ -14,7 +14,6 @@ class ApplicationHealthApi:
 
     @endpoint(
         "get", "/api/v1/health",
-        request={"type": "object", "properties": {}, "additionalProperties": False},
         response={"type": "object"},
         authorization={"scope": "health:read"},
         context="call",

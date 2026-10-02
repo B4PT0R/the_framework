@@ -32,7 +32,6 @@ class CanonicalAgentApi:
 
     @endpoint(
         "get", "/api/v1/status",
-        request={"type": "object", "properties": {}, "additionalProperties": False},
         response={"type": "object"},
         authorization={"scope": "agent:read"},
     )
@@ -51,7 +50,6 @@ class CanonicalAgentApi:
 
     @endpoint(
         "post", "/api/v1/agent/compact",
-        request={"type": "object", "properties": {}, "additionalProperties": False},
         response={"type": "object"},
         authorization={"scope": "agent:write"},
         status_code=202,
@@ -86,7 +84,6 @@ class CanonicalAgentApi:
 
     @endpoint(
         "delete", "/api/v1/session",
-        request={"type": "object", "properties": {}, "additionalProperties": False},
         response={"type": "object"},
         authorization={"scope": "session:write"},
     )
@@ -106,7 +103,6 @@ class CanonicalAgentApi:
 
     @endpoint(
         "get", "/api/v1/config",
-        request={"type": "object", "properties": {}, "additionalProperties": False},
         response={"type": "object"},
         authorization={"scope": "config:read"},
     )
@@ -116,7 +112,6 @@ class CanonicalAgentApi:
 
     @endpoint(
         "get", "/api/v1/state",
-        request={"type": "object", "properties": {}, "additionalProperties": False},
         response={"type": "object"},
         authorization={"scope": "state:read"},
     )

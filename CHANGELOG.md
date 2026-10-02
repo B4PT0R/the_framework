@@ -6,6 +6,10 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Apply endpoint signature/docstring inference when no explicit HTTP schema is
+  supplied. Validate typed JSON inputs, coerce path/query values, preserve
+  Python defaults and expose inferred contracts in OpenAPI. Remove redundant
+  argument-free request schemas from framework and Harness services.
 - Use `Plugin.name` consistently for its agent binding, configuration, state,
   tool namespace and private specialists. Previously a differently named
   extension could bypass the server's binding override. Keep standalone agent

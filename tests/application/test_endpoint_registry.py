@@ -154,8 +154,60 @@ def test_endpoint_registry_accepts_inferred_modict_schemas():
 
     with TestClient(app) as client:
         response = client.post("/inferred", json={"label": "ready"})
+        invalid = client.post("/inferred", json={"label": 42})
+        missing = client.post("/inferred", json={})
+        extra = client.post("/inferred", json={"label": "ready", "extra": True})
 
     assert response.json() == {"label": "ready"}
+    assert invalid.status_code == missing.status_code == extra.status_code == 422
+
+
+def test_inferred_endpoint_contract_coerces_path_query_and_keeps_python_defaults():
+    @endpoint("get", "/typed/{item_id}", context="call")
+    def read(item_id: int, limit: int = 3, enabled: bool = False, *, call):
+        """Read typed inputs and the authenticated context."""
+        return {"item_id": item_id, "limit": limit, "enabled": enabled, "principal": call.principal.id}
+
+    @endpoint("post", "/typed", authenticated=False)
+    def write(label: str, count: int = 1):
+        """Write typed JSON inputs."""
+        return {"label": label, "count": count}
+
+    app = FastAPI()
+    register_endpoints(app, [read, write], security=PermitAllSecurity())
+    with TestClient(app) as client:
+        assert client.get("/typed/7").json() == {
+            "item_id": 7, "limit": 3, "enabled": False, "principal": "local",
+        }
+        assert client.get("/typed/7?limit=4&enabled=true").json()["enabled"] is True
+        for url in ("/typed/wrong", "/typed/7?limit=wrong", "/typed/7?call=spoofed", "/typed/7?item_id=8"):
+            assert client.get(url).status_code == 422
+        assert client.post("/typed", json={"label": "ready"}).json() == {"label": "ready", "count": 1}
+        assert client.post("/typed", json={"label": "ready", "count": "wrong"}).status_code == 422
+    parameters = app.openapi()["paths"]["/typed/{item_id}"]["get"]["parameters"]
+    assert [(item["name"], item["in"], item["required"]) for item in parameters] == [
+        ("item_id", "path", True), ("limit", "query", False), ("enabled", "query", False),
+    ]
+
+
+def test_inferred_docstring_response_contract_is_validated():
+    @endpoint("get", "/invalid-output", authenticated=False)
+    def invalid_output():
+        """
+        response:
+          type: object
+          properties:
+            label: {type: string}
+          required: [label]
+        """
+        return {"label": 42}
+
+    app = FastAPI()
+    register_endpoints(app, [invalid_output])
+    with TestClient(app) as client:
+        response = client.get("/invalid-output")
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "invalid_endpoint_response"
 
 
 def test_endpoint_context_is_injected_without_entering_the_request_schema():

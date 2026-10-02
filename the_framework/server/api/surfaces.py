@@ -15,7 +15,6 @@ class SurfaceApi:
 
     @endpoint(
         "get", "/api/v1/surfaces",
-        request={"type": "object", "properties": {}, "additionalProperties": False},
         response={"type": "object"},
         authorization={"scope": "surfaces:read"},
     )

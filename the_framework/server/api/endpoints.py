@@ -251,16 +251,12 @@ class EndpointRegistry:
             raise ValueError(
                 f"authenticated endpoint requires a security policy: {endpoint.name}"
             )
-        request_schema = (
-            endpoint.request_schema
-            if endpoint.has_attr("request_schema")
-            else endpoint.request
-        )
-        response_schema = (
-            endpoint.response_schema
-            if endpoint.has_attr("response_schema")
-            else endpoint.response
-        )
+        request_schema = getattr(endpoint, "request_schema", None)
+        if request_schema is None:
+            request_schema = endpoint.request
+        response_schema = getattr(endpoint, "response_schema", None)
+        if response_schema is None:
+            response_schema = endpoint.response
         entry = {
             "endpoint": endpoint,
             "owner": owner,

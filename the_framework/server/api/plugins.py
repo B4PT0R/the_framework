@@ -16,7 +16,6 @@ class PluginHostApi:
     @endpoint(
         "get",
         "/api/v1/plugins",
-        request={"type": "object", "properties": {}, "additionalProperties": False},
         response={
             "type": "object",
             "properties": {"plugins": {"type": "array", "items": {"type": "object"}}},
