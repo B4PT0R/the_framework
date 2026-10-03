@@ -531,7 +531,12 @@ Public inter-plugin dependencies use versioned `Capability` contracts; private
 agents are identified as `plugin.agent` and cannot be depended on directly.
 
 The plugin host reports runtime status separately from each agent's persistent
-binding. Its `binding_available` flag distinguishes server-only plugins from
+binding. `running` reflects all plugin-owned services in the started service
+context: it is false before startup, after shutdown or if any owned service failed
+to start. Plugins without lifecycle-managed services (agent-only or route-only)
+have no server service to wait for and remain available. `installed` and `loaded`
+refer to the fixed composition, not service health; live probe health is exposed
+separately through the health API. Its `binding_available` flag distinguishes server-only plugins from
 agent plugins whose binding is currently disabled. Application and plugin
 endpoints, WebSockets, middleware and mounts
 are installed on one server at startup; route and mount collisions fail before

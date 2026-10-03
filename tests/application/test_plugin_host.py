@@ -97,7 +97,7 @@ def test_binding_changes_do_not_stop_runtime_and_persist(tmp_path):
 
         restored = declaration(Service([])).build(context)
         status = restored.state.application.plugin_host.status("example")
-        assert status.running is True
+        assert status.running is False
         assert status.binding_enabled is True
 
     asyncio.run(scenario())
@@ -412,7 +412,7 @@ def test_binding_disable_does_not_reenable_after_restart(tmp_path):
 
         restored = declaration(Service([])).build(context)
         status = restored.state.application.plugin_host.status("example")
-        assert status.running is True
+        assert status.running is False
         assert status.binding_enabled is False
 
     asyncio.run(scenario())
@@ -769,3 +769,68 @@ def test_service_routes_require_explicit_opt_in():
                 ),
             ),),
         ).build()
+
+
+def test_plugin_status_uses_actual_service_lifecycle_and_keeps_failed_routes_installed():
+    async def run():
+        events = []
+        app = ApplicationSpec(
+            name="Runtime diagnostics", version="1", security=Security(),
+            primary_agent=AgentSpec(name="primary", session_mode="durable"),
+            plugins=(
+                Plugin(name="failing", server_extension=ServerExtension(
+                    name="failed_service", service=Service(events, fail=True),
+                    critical=False, endpoints=(Api(),),
+                )),
+                Plugin(name="healthy", server_extension=ServerExtension(
+                    name="healthy_service", service=Service(events),
+                )),
+                Plugin(name="routes", server_extension=ServerExtension(
+                    name="routes", endpoints=(),
+                )),
+            ),
+        ).build()
+        host = app.state.application.plugin_host
+        assert not host.status("healthy").running
+        async with app.router.lifespan_context(app):
+            assert not host.status("failing").running
+            assert host.status("failing").installed
+            assert host.status("failing").loaded
+            assert host.status("healthy").running
+            assert host.status("routes").running
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                assert (await client.get("/plugin/value")).status_code == 200
+                listing = await client.get("/api/v1/plugins", headers={"Authorization": "Bearer secret"})
+                assert listing.status_code == 200
+                statuses = {item["name"]: item for item in listing.json()["plugins"]}
+                assert statuses["failing"]["running"] is False
+                assert statuses["healthy"]["running"] is True
+        assert not host.status("healthy").running
+        assert host.status("healthy").installed
+
+    asyncio.run(run())
+
+
+def test_plugin_status_requires_all_of_its_services_and_ignores_other_owners():
+    async def run():
+        app = ApplicationSpec(
+            name="Composite diagnostics", version="1",
+            primary_agent=AgentSpec(name="primary", session_mode="durable"),
+            plugins=(
+                Plugin(name="partial", server_extension=(
+                    ServerExtension(name="store", service=Service([])),
+                    ServerExtension(name="consumer", service=Service([], fail=True), critical=False),
+                )),
+                Plugin(name="independent", server_extension=ServerExtension(
+                    name="independent", service=Service([]),
+                )),
+                Plugin(name="agent_only", agent_extension=object),
+            ),
+        ).build()
+        async with app.router.lifespan_context(app):
+            host = app.state.application.plugin_host
+            assert not host.status("partial").running
+            assert host.status("independent").running
+            assert host.status("agent_only").running
+
+    asyncio.run(run())

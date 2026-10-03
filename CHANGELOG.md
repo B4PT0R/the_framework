@@ -6,6 +6,12 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Derive plugin `running` status from its actual server service lifecycle instead
+  of reporting a constant success. Preserve installed routes after noncritical
+  startup failure and keep agent binding independent. Store only binding booleans
+  in the plugin host; runtime status comes from the existing service graph.
+  Direct `PluginHost` construction now requires that graph and its service owners.
+
 - Allow reset participants to supply only suspension or only resumption, retaining
   ordered recovery. Let the complete Realtime plugin close and reconcile its call
   before a session reset; clear API call identity on shutdown. Remove the system

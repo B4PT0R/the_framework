@@ -828,7 +828,7 @@ def build_application(
         raise ValueError("an application may install only one primary agent runtime")
     agent_runtime = agent_runtimes[0] if agent_runtimes else None
     plugin_host = PluginHost(
-        plan,
+        plan, service_graph=graph, service_owners=MappingProxyType(plugin_owners),
         state_path=build_context.get("plugin_state_path"),
         binding_update=build_context.get("plugin_binding_update", agent_runtime.set_plugin_binding if agent_runtime else None),
         binding_snapshot=build_context.get("plugin_binding_snapshot", agent_runtime.plugin_bindings if agent_runtime else None),
