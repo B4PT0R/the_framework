@@ -84,7 +84,8 @@ def test_realtime_reset_waits_for_worker_barrier_and_clears_call_identity(tmp_pa
         api.call_id = "client-call"
         api.controller.call_id = "voice-call"
 
-        async def reset():
+        async def reset(transaction_factory):
+            assert transaction_factory is runtime.reset_transaction_factory
             assert api.call_id is None
             assert not api.controller.active
             events.append("worker reset")

@@ -7,6 +7,7 @@ import inspect
 import logging
 import time
 from collections.abc import Callable
+from pathlib import Path
 
 from ...agent.models.events import Event
 from ...agent.runtime.protocol import (
@@ -202,8 +203,16 @@ class ApplicationRuntime:
         if errors:
             raise ExceptionGroup("application runtime shutdown failed", errors)
 
-    async def reset_runtime_state(self):
-        if self.reset_transaction_factory is None:
+    async def reset_runtime_state(
+        self, *, transaction_factory: Callable[[Path], object] | None = None,
+    ):
+        """Reset state with suspension and rollback.
+
+        An optional per-call transaction selects application-owned resources
+        without changing the default recipe or the lifecycle hooks.
+        """
+        factory = self.reset_transaction_factory if transaction_factory is None else transaction_factory
+        if factory is None:
             raise RuntimeError("application runtime reset is not configured")
         async with self.reset_lock:
             self.resetting = True
@@ -218,7 +227,7 @@ class ApplicationRuntime:
                             await value
                     if resume is not None:
                         resumes.append(resume)
-                result = await self._reset_canonical_runtime()
+                result = await self._reset_canonical_runtime(factory)
             except BaseException as error:
                 failure = error
             finally:
@@ -245,10 +254,10 @@ class ApplicationRuntime:
                 )
             return result
 
-    async def _reset_canonical_runtime(self):
+    async def _reset_canonical_runtime(self, transaction_factory):
         await self.stop()
         try:
-            staged = self.reset_transaction_factory(
+            staged = transaction_factory(
                 self.supervisor.session_path,
             ).stage()
         except Exception as stage_error:

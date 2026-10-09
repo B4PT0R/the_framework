@@ -237,6 +237,12 @@ restart, including removing newly created selected paths. Paths cannot overlap
 or escape the root, and directory symlinks cannot be traversed. This is an
 in-process rollback mechanism, not a recovery journal for host/process crashes.
 
+For distinct actions such as clearing a conversation or only a plugin's memory,
+call `await runtime.reset_runtime_state(transaction_factory=...)` with a factory
+that receives the canonical session path and returns a reset transaction.
+The override applies only to that call; the default factory remains unchanged.
+Every recipe uses the same serialized suspension, restart and rollback lifecycle.
+
 Plugins register their own reset participation with
 `runtime.register_reset_hooks(suspend=..., resume=...)`. Either callback may be
 omitted: a live connection may only close, while a durable service may only reload.

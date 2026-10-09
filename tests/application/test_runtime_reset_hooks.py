@@ -51,6 +51,34 @@ class ResetTransaction:
         self.events.append("commit")
 
 
+@pytest.mark.parametrize("fail_start", [False, True])
+def test_per_call_transaction_uses_lifecycle_without_replacing_default(tmp_path, fail_start):
+    async def scenario():
+        default_events, selected_events = [], []
+        runtime = ResetRuntime(tmp_path / "session.json", default_events)
+        default = runtime.reset_transaction_factory
+        runtime.fail_start_once = fail_start
+
+        def selected(path):
+            assert path == tmp_path / "session.json"
+            return ResetTransaction(selected_events)
+
+        if fail_start:
+            with pytest.raises(RuntimeError, match="previous state was restored"):
+                await runtime.reset_runtime_state(transaction_factory=selected)
+            assert selected_events == ["stage", ("restore", True)]
+        else:
+            await runtime.reset_runtime_state(transaction_factory=selected)
+            assert selected_events == ["stage", "commit"]
+        assert runtime.reset_transaction_factory is default
+        assert not runtime.resetting
+        assert "stage" not in default_events
+        await runtime.reset_runtime_state()
+        assert default_events[-3:] == ["stage", "runtime.start", "commit"]
+
+    asyncio.run(scenario())
+
+
 def test_reset_suspends_dependents_in_reverse_order_and_resumes_after_commit(tmp_path):
     async def scenario():
         events = []
