@@ -19,6 +19,14 @@ class RealtimeApi:
         self.lock = asyncio.Lock()
         self.call_id = None
 
+    async def update_plugin_binding(self, name, enabled, *, call=None):
+        """Change agent exposure under the same text/voice modality barrier."""
+        async with self.lock:
+            if name == "realtime" and not enabled:
+                await self.controller.stop()
+                self.call_id = None
+            await self.runtime.set_plugin_binding(name, enabled, call=call)
+
     @endpoint("post", "/api/v1/realtime/calls", request={
         **CALL_REQUEST, "properties": {**CALL_REQUEST["properties"],
                                       "offer_sdp": {"type": "string", "minLength": 1}},

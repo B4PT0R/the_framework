@@ -868,3 +868,26 @@ Adding power must not make the small path more ceremonial. An application
 feature belongs in the core only when it is a reusable orchestration primitive;
 identity, prompting, device semantics, media policy and product UX remain in
 the application's extensions.
+
+## Canonical chat and optional live context
+
+Import `CHAT` from `the_framework.plugins.chat` to install
+`POST /api/v1/agent/prompt` and `POST /api/v1/agent/attachments`.
+Both accept a client-generated command `id`; attachments use multipart form data
+with `files` and an optional `prompt`. The plugin coordinates with the installed
+Realtime API's lock, so attachment acceptance and voice startup cannot race.
+`BuildContext.data_root` owns storage; `attachments_root` optionally selects a
+separate attachment directory. No voice plugin is required for text-only apps.
+
+A feature that produces live context can contribute a factory through
+`the_framework.plugins.realtime.context.CONTEXT_FACTORY` in its server assembly.
+The factory receives the voice controller. Contexts implement `start(projection)`
+synchronously and optionally `ready()`, `flush()`, `handle_worker_output(output)`
+and `close()`; those optional hooks may be synchronous or awaitable. The controller
+calls them at its existing transport barriers. Each producer owns its state and
+must cancel its tasks in `close`; every producer gets cleanup even when another
+producer fails. Recovery prefixes may be declared as `recoverable_context_prefixes`.
+The memory and registry plugins are independent examples of this seam.
+
+Keep this seam narrow: it supplies context, not another event bus or task runtime.
+Applications do not need a new controller subclass just to combine these plugins.

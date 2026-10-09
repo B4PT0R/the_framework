@@ -89,7 +89,7 @@ def test_starter_declares_general_plugins_and_memory_specialist():
     assert "memory.jiminy" in plan.agents
     assert plan.plugins["scheduler"].server_extension == "the_framework.plugins.scheduler.server:build_server_extensions"
     assert plan.plugins["system"].server_extension == "the_framework.plugins.system.server:build_server_extensions"
-    assert plan.plugins["chat"].server_extension == "starter.chat:chat_runtime"
+    assert plan.plugins["chat"].server_extension == "the_framework.plugins.chat.server:build_server_extensions"
     assert [requirement.name for requirement in plan.plugins["chat"].optional_capabilities] == [
         "realtime.session",
     ]

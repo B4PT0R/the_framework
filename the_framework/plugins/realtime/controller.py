@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import inspect
 import logging
 from collections import Counter, deque
 from html import escape
@@ -48,7 +49,7 @@ class RealtimeController:
 
     recoverable_context_prefixes = ()
 
-    def __init__(self, runtime, client_factory=None):
+    def __init__(self, runtime, client_factory=None, *, context_factories=()):
         self.runtime = runtime
         self.client_factory = client_factory or self._authenticated_client
         self.client = None
@@ -77,22 +78,52 @@ class RealtimeController:
         self.pending_restart_resumes = []
         self.restart_resume_input_paused = False
         self.bind_restart_resume = None
+        self.contexts = tuple(factory(self) for factory in context_factories)
+        self.recoverable_context_prefixes = tuple(dict.fromkeys((
+            *self.recoverable_context_prefixes,
+            *(prefix for context in self.contexts
+              for prefix in getattr(context, "recoverable_context_prefixes", ())),
+        )))
         runtime.register_observer(self.handle_worker_output)
 
     def start_context(self, projection):
-        """Initialize application context after the live transport is connected."""
+        """Initialize the installed context producers for one live session."""
+        for context in self.contexts:
+            hook = getattr(context, "start", None)
+            if hook is not None:
+                hook(projection)
+
+    async def _context_hooks(self, name, *args):
+        for context in self.contexts:
+            hook = getattr(context, name, None)
+            if hook is not None:
+                result = hook(*args)
+                if inspect.isawaitable(result):
+                    await result
 
     async def ready_context(self):
-        """Seed application context once the client can receive it."""
+        await self._context_hooks("ready")
 
     async def flush_context(self):
-        """Release application updates after response/delegation barriers."""
+        await self._context_hooks("flush")
 
     async def worker_context(self, output):
-        """Offer committed worker output to optional context producers."""
+        await self._context_hooks("handle_worker_output", output)
 
     async def close_context(self):
-        """Stop application context producers before releasing the transport."""
+        # Release every producer even if one fails; never leave live tasks behind.
+        errors = []
+        for context in reversed(self.contexts):
+            hook = getattr(context, "close", None)
+            if hook is not None:
+                try:
+                    result = hook()
+                    if inspect.isawaitable(result):
+                        await result
+                except Exception as error:
+                    errors.append(error)
+        if errors:
+            raise errors[0]
 
     @staticmethod
     def _authenticated_client():

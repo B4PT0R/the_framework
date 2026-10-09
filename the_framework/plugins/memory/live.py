@@ -176,3 +176,10 @@ class MemoryLiveContext:
             await asyncio.sleep(0)
             if not self.memory_cache_refresh_pending:
                 return
+
+
+def build_server_extensions(context):
+    """Offer live context when voice is installed, without requiring voice."""
+    from ..realtime.context import CONTEXT_FACTORY
+    context.contribute(CONTEXT_FACTORY, MemoryLiveContext)
+    return ()

@@ -75,6 +75,34 @@ Specialists, durable task delivery and versioned public capabilities are
 available when a simple plugin is not enough. More detail is in the
 [framework guide](https://github.com/B4PT0R/the_framework/blob/main/docs/framework.md).
 
+## Compose conversation features without rebuilding their transport
+
+`CHAT` owns text submission, atomic file attachments and the text/voice mode
+barrier. It works on its own or alongside `REALTIME`:
+
+```python
+from the_framework.plugins.chat import CHAT
+from the_framework.plugins.memory import MEMORY
+from the_framework.plugins.registry import REGISTRY
+from the_framework.plugins.realtime import REALTIME
+
+# In your ApplicationSpec:
+# plugins=(CHAT, MEMORY, REGISTRY, REALTIME)
+# BuildContext supplies data_root and the ordinary canonical runtime.
+```
+
+When voice is installed, memory and registry contribute their own live context
+producers. Voice owns delivery and cleanup, without knowing which application
+or feature produced the context. Without voice, those contributions create no
+live producers or background tasks. An application can replace its memory
+curation or voice instructions through the plugins' agent extensions without
+rewriting the transport. The starter uses these same public features.
+
+The neutral The Harness application is the canonical, more complete consumer:
+it combines these declarations with a persistent browser, desktop lifecycle,
+application-specific instructions and a user interface. Its needs are evidence
+for useful primitives, not a reason to add application policy to the library.
+
 ## Try a working application
 
 Install [`uv`](https://docs.astral.sh/uv/) and Node.js/npm, then from this

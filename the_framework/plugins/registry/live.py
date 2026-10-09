@@ -11,6 +11,12 @@ class RegistryLiveContext:
         self.controller = controller
         self.reset()
 
+    def start(self, _projection):
+        self.reset()
+
+    def close(self):
+        self.reset()
+
     def reset(self):
         self.revision = 0
         self.pending = []
@@ -76,3 +82,10 @@ class RegistryLiveContext:
         self.pending = []
         for delta in pending:
             await self._append(delta)
+
+
+def build_server_extensions(context):
+    """Offer live context when voice is installed, without requiring voice."""
+    from ..realtime.context import CONTEXT_FACTORY
+    context.contribute(CONTEXT_FACTORY, RegistryLiveContext)
+    return ()
