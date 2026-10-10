@@ -70,6 +70,7 @@ class Worker:
         )
         self.tasks = set()
         self.live = {}
+        self.compaction_command_id = None
         self.application_calls = {}
         self.binding_lock = asyncio.Lock()
         self.quota = {"quota_5h": None, "quota_7d": None, "quota_updated_at": None}
@@ -261,6 +262,10 @@ class Worker:
         self.quota_refresh_task.add_done_callback(self.tasks.discard)
 
     async def on_event(self, command, event):
+        if event.type == "agent.compaction.start":
+            self.compaction_command_id = command.id
+        elif event.type == "agent.compaction.end":
+            self.compaction_command_id = None
         await self.send(CommandEvent(
             request_id=command.id,
             command_id=command.id,
@@ -283,6 +288,8 @@ class Worker:
                 command=command,
             ))
         finally:
+            if self.compaction_command_id == command.id:
+                self.compaction_command_id = None
             self.live.pop(command.id, None)
 
     async def complete_steering(self, request, command):
@@ -302,6 +309,8 @@ class Worker:
                 command=command,
             ))
         finally:
+            if self.compaction_command_id == command.id:
+                self.compaction_command_id = None
             self.live.pop(command.id, None)
 
     def can_steer(self, request):
@@ -444,6 +453,11 @@ class Worker:
                 foreground_pending=self.foreground_pending_count(),
                 local_input_tokens=self.agent.context.last_local_input_tokens,
                 context_token_limit=context_limit,
+                compaction_active=self.compaction_command_id is not None,
+                compaction_pending=sum(
+                    isinstance(command, CompactRequest) and command.status == "queued"
+                    for command in self.live.values()
+                ),
                 context_saturation=(
                     self.agent.context.last_local_input_tokens / context_limit
                     if context_limit > 0

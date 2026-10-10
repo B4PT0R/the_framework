@@ -912,3 +912,36 @@ def test_expired_tool_binding_is_failed_instead_of_queued():
         assert agent.session.command_status("late-binding") == "failed"
 
     asyncio.run(run())
+
+
+def test_status_recovers_automatic_compaction_and_clears_failed_lifecycle():
+    async def run():
+        outgoing = []
+        async def send(output):
+            outgoing.append(output)
+        agent = Agent()
+        worker = Worker(agent, asyncio.Queue().get, send)
+        command = SimpleNamespace(id="turn")
+        await worker.on_event(command, AgentCompactionStart())
+        await worker.handle(StatusRequest(id="during"))
+        assert outgoing[-1].compaction_active is True
+        await worker.on_event(command, AgentCompactionEnd(response={}))
+        await worker.handle(StatusRequest(id="after"))
+        assert outgoing[-1].compaction_active is False
+
+        await worker.on_event(command, AgentCompactionStart())
+        future = asyncio.get_running_loop().create_future()
+        future.set_exception(RuntimeError("compaction failed"))
+        failed = PromptRequest(id="turn", prompt="test")
+        failed.set_attr("future", future)
+        await worker.completed(failed, failed)
+        await worker.handle(StatusRequest(id="failed"))
+        assert outgoing[-1].compaction_active is False
+
+        worker.live["queued"] = CompactRequest(id="queued", status="queued")
+        await worker.handle(StatusRequest(id="pending"))
+        assert outgoing[-1].compaction_pending == 1
+        assert outgoing[-1].foreground_pending == 0
+        await worker.quota_refresh_task
+
+    asyncio.run(run())

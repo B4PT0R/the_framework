@@ -175,6 +175,8 @@ class WorkerStatus(WorkerOutput):
     local_input_tokens: int = 0
     context_token_limit: int = 0
     context_saturation: float = 0.0
+    compaction_active: bool = False
+    compaction_pending: int = 0
     quota_5h: UsageWindow | None = None
     quota_7d: UsageWindow | None = None
     quota_updated_at: int | None = None
