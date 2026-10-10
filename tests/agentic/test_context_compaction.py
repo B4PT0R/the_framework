@@ -14,6 +14,7 @@ from the_framework.agent.models.responses import Compaction as CompactionItem
 from the_framework.agent.models.responses import Image, Message, Portrait
 from the_framework.agent.context.session import Session
 from the_framework.agent.extensions.tools import Tools
+from the_framework.agent import WebSearchTool
 
 
 class Responses:
@@ -86,6 +87,16 @@ class Agent:
     def add_response_item(self, item):
         self.session.append(item)
         return item
+
+
+def test_compaction_receives_the_same_hosted_tools_as_generation(tmp_path):
+    agent = Agent(tmp_path / "session.json")
+    search = agent.tools.add(WebSearchTool())
+    agent.add_message("user", "Research a topic")
+    agent.compaction.run()
+    assert agent.responses.compaction_requests[0]["tools"] == [search]
+    payload = asyncio.run(AgenticLoop(agent).ageneration_payload())
+    assert payload["tools"] == agent.responses.compaction_requests[0]["tools"]
 
 
 def test_step_compacts_the_complete_session_including_the_active_turn(tmp_path):

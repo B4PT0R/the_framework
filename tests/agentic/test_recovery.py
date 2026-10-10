@@ -5,6 +5,7 @@ from the_framework.agent.models.usage import ResponseUsage
 from the_framework.agent.models.config import Configs
 from the_framework.agent.models.responses import Message
 from the_framework.agent.context.session import Session
+from the_framework.agent.extensions.tools import Tools
 
 
 class Responses:
@@ -30,6 +31,10 @@ class Agent:
         self.client = type("Client", (), {"responses": Responses()})()
         self.configs = Configs()
         self.session = Session.open(path)
+        self.tools = Tools()
+
+    def registry(self, name):
+        return getattr(self, name)
 
     def emit(self, event):
         return event

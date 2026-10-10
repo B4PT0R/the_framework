@@ -74,6 +74,9 @@ class Compaction:
         response = CompactionResponse.from_dict(
             self.agent.client.responses.compact(
                 input=input,
+                # Hosted-tool history needs its tool definitions during
+                # compaction just as it does during ordinary generation.
+                tools=self.agent.registry("tools").list(),
                 **config,
             )
         )
