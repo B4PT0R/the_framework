@@ -25,6 +25,7 @@ class SurfaceApi:
                 "name": name,
                 **self.service.state.get(name, {}),
                 "candidate": self.service.candidates.get(name),
+                "building": name in self.service.building,
                 "preview_route": surface.preview_route,
                 "routes": list(surface.routes),
             } for name, surface in self.service.surfaces.items()]

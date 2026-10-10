@@ -126,6 +126,14 @@ def test_surface_build_preview_publish_rollback_and_restore(tmp_path):
 
             status = await client.get("/api/v1/surfaces", headers=headers)
             assert status.json()["surfaces"][0]["active"] == first_id
+            assert status.json()["surfaces"][0]["building"] is False
+            # Other clients can see and cancel builds after their UI reconnects.
+            service.building.add("main")
+            try:
+                status = await client.get("/api/v1/surfaces", headers=headers)
+                assert status.json()["surfaces"][0]["building"] is True
+            finally:
+                service.building.remove("main")
 
         assert [item["type"] for item in notifications] == [
             "surface_published", "surface_published", "surface_rolled_back",
