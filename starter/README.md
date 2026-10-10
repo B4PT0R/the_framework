@@ -38,8 +38,8 @@ python3 -m venv .venv
 uv sync --extra dev
 npm --prefix starter/ui ci
 npm --prefix starter/ui run build
-uv run playwright install chromium
-uv run python -m starter
+PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright-browsers" uv run playwright install chromium
+PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright-browsers" uv run python -m starter
 ```
 
 On Linux, Playwright's `install --with-deps chromium` can also install required
@@ -148,9 +148,16 @@ npm --prefix starter/ui test
 npm --prefix starter/ui run build
 .venv/bin/pytest -q tests/application/test_starter.py \
   tests/application/test_starter_security.py tests/application/test_starter_desktop.py
-PLAYWRIGHT_BROWSERS_PATH=/path/to/playwright-browsers .venv/bin/pytest -q \
+PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright-browsers" uv run playwright install chromium
+PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright-browsers" uv run pytest -q \
   tests/application/test_starter_browser_recovery.py
 ```
+
+Run these commands from the repository root. The local browser directory is
+Git-ignored and must match this environment's Playwright version; reinstall after
+updating Playwright. Keeping it separate avoids inheriting another application's
+incompatible `PLAYWRIGHT_BROWSERS_PATH`. Use the same explicit path when running
+the full Python suite with browser coverage enabled.
 
 The last test uses isolated data and an actual Chromium/worker/server. It checks
 reconnection, retained history, attachments selection, settings persistence and

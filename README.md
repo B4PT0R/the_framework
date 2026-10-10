@@ -112,8 +112,8 @@ checkout run:
 uv sync
 npm --prefix starter/ui ci
 npm --prefix starter/ui run build
-uv run playwright install chromium
-uv run python -m starter
+PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright-browsers" uv run playwright install chromium
+PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright-browsers" uv run python -m starter
 ```
 
 Playwright Chromium also needs its system libraries; on Linux,
