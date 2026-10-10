@@ -141,11 +141,13 @@ class ServerDescriptorStore:
 
     def read(self):
         payload = json.loads(self.path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("application server descriptor must be an object")
         if payload.get("version") != SERVER_DESCRIPTOR_VERSION:
             raise ValueError("unsupported application server descriptor")
         if payload.get("host") != "127.0.0.1":
             raise ValueError("application server descriptor is not loopback-bound")
-        if not isinstance(payload.get("port"), int) or not 0 < payload["port"] < 65536:
+        if type(payload.get("port")) is not int or not 0 < payload["port"] < 65536:
             raise ValueError("application server descriptor has an invalid port")
         if not isinstance(payload.get("token"), str) or not payload["token"]:
             raise ValueError("application server descriptor has no authentication token")

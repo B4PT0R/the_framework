@@ -61,6 +61,25 @@ def test_server_descriptor_rejects_non_loopback_payload(tmp_path):
         store.read()
 
 
+@pytest.mark.parametrize("value", [None, [], "descriptor", 1, True])
+def test_server_descriptor_rejects_non_objects_without_removing_them(tmp_path, value):
+    store = ServerDescriptorStore(tmp_path / "server.json")
+    document = json.dumps(value)
+    store.path.write_text(document)
+    with pytest.raises(ValueError, match="must be an object"):
+        store.read()
+    assert store.remove_if_owned({"pid": os.getpid(), "token": "secret"}) is False
+    assert store.path.read_text() == document
+
+
+@pytest.mark.parametrize("port", [True, False, 0, 65536, "1234", None])
+def test_server_descriptor_rejects_invalid_ports(tmp_path, port):
+    store = ServerDescriptorStore(tmp_path / "server.json")
+    store.write({**store.payload(host="127.0.0.1", port=1234, token="secret"), "port": port})
+    with pytest.raises(ValueError, match="invalid port"):
+        store.read()
+
+
 def test_server_lease_rejects_a_second_runtime_owner(tmp_path):
     first = ServerLease(tmp_path / "server.lock").acquire()
     try:
