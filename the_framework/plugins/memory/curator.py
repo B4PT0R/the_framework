@@ -65,6 +65,7 @@ class MemoryCuratorExtension(AgentExtension):
         lines = [
             (
                 f'<curation_inventory status="{status}" '
+                f'mode="{"evidence" if self._inventory_sources else "maintenance"}" '
                 f'total="{len(self._inventory)}" '
                 f'unresolved="{len(self._unresolved_candidates())}" '
                 f'final_review="{str(self._inventory_reviewed).lower()}">'
@@ -257,7 +258,9 @@ class MemoryCuratorExtension(AgentExtension):
         description: >-
           Record the exhaustive atomic checklist extracted from the supplied
           evidence before mutating memory. Calling it again with the same sources
-          appends candidates found during a later coverage pass.
+          appends candidates found during a later coverage pass. For maintenance
+          without new evidence, pass three empty lists before rewriting existing
+          entries and again after the final review.
         parameters:
           properties:
             candidate_ids:
@@ -270,13 +273,17 @@ class MemoryCuratorExtension(AgentExtension):
                 order as candidate_ids. Do not substitute broad themes for their
                 individual facts.
             source_item_ids:
-              description: Canonical evidence IDs supplied with this curation task.
+              description: >-
+                Canonical evidence IDs supplied with this task. An empty list is
+                allowed only for maintenance with no new candidates.
         """
         sources = tuple(dict.fromkeys(
             str(source_id or "").strip() for source_id in source_item_ids
         ))
-        if not sources or any(not source_id for source_id in sources):
-            raise ValueError("source_item_ids must contain at least one non-empty ID")
+        if any(not source_id for source_id in sources):
+            raise ValueError("source_item_ids must contain only non-empty IDs")
+        if not sources and (candidate_ids or candidate_facts):
+            raise ValueError("Maintenance inventory cannot introduce new evidence without sources")
         if len(candidate_ids) != len(candidate_facts):
             raise ValueError(
                 "candidate_ids and candidate_facts must have the same length"
@@ -388,6 +395,8 @@ class MemoryCuratorExtension(AgentExtension):
         candidate_ids = self._validate_mutation_candidates(
             candidate_ids, source_item_ids
         )
+        if not candidate_ids:
+            raise ValueError("Adding memory requires inventoried candidates with canonical sources")
         entry = self.store.add(
             key=key, title=title, content=content, embedding=[],
             source_item_ids=source_item_ids,
@@ -524,7 +533,7 @@ class MemoryCuratorExtension(AgentExtension):
         source_item_ids: list[str],
         candidate_ids: list[str],
     ):
-        """Atomically replace one memory with two focused rewritten memories."""
+        """Atomically replace one memory with two; [] inherits existing evidence IDs."""
         candidate_ids = self._validate_mutation_candidates(
             candidate_ids, source_item_ids
         )

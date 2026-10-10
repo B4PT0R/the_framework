@@ -496,15 +496,18 @@ class MemoryStore:
             })
         if replacements[0]["key"] == replacements[1]["key"]:
             raise ValueError("memory split requires two distinct replacement keys")
-        ids, provenance = self._provenance(source_item_ids, "split")
-        now = provenance["recorded_at"]
         with self.connect() as connection:
+            previous = self._capacity(self._active_from_connection(connection))
             row = connection.execute(
                 "SELECT * FROM memories WHERE (id = ? OR key = ?) AND status = 'active'",
                 (reference, reference),
             ).fetchone()
             if row is None:
                 raise KeyError(reference)
+            ids, provenance = self._provenance(
+                source_item_ids or json.loads(row["source_item_ids"]), "split",
+            )
+            now = provenance["recorded_at"]
             for replacement in replacements:
                 if connection.execute(
                     "SELECT 1 FROM memories WHERE key = ?", (replacement["key"],)
@@ -541,7 +544,7 @@ class MemoryStore:
                 "DELETE FROM memory_embedding_queue WHERE memory_id = ?",
                 (row["id"],),
             )
-            self._validate_capacity(connection)
+            self._validate_capacity(connection, previous=previous)
             for memory_id, replacement in zip(new_ids, replacements):
                 self._revision(
                     connection,

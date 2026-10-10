@@ -739,6 +739,12 @@ files ship alongside their implementations. Application-specific defaults
 
 `the_framework.plugins.memory` owns storage, retrieval, curation tools and orchestration;
 applications specialize `memory.agent.MemoryExtension.curator_instructions`.
+Curator evidence tasks require an atomic candidate inventory with canonical source
+IDs. Maintenance without new evidence starts with `inventory([], [], [])`, rewrites
+existing entries with empty source/candidate lists to inherit their provenance,
+and repeats the empty inventory after a final review before `complete_curation`.
+This path cannot introduce candidates or add unsourced memories; completion still
+requires every entry within its editorial threshold and total volume below capacity.
 `the_framework.plugins.browser` accepts an explicit runtime directory and uses
 `the_framework.server.clients.browser`/`the_framework.server.clients.browser_rpc` for the persistent Playwright process.
 `the_framework.plugins.realtime` provides canonical voice projection with application-owned
