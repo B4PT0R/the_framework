@@ -6,6 +6,12 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Export `conversation.ingress` version 1 from `CHAT`. Share its transport-neutral
+  `ChatIngress.submit(PromptRequest)` with additional client transports so route
+  selection and acceptance use the same text/voice transition barrier. Preserve
+  local prompt and attachment wire contracts; reject text-only turn semantics
+  during voice instead of dropping them.
+
 - Derive plugin `running` status from its actual server service lifecycle instead
   of reporting a constant success. Preserve installed routes after noncritical
   startup failure and keep agent binding independent. Store only binding booleans

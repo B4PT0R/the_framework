@@ -885,6 +885,26 @@ Realtime API's lock, so attachment acceptance and voice startup cannot race.
 `BuildContext.data_root` owns storage; `attachments_root` optionally selects a
 separate attachment directory. No voice plugin is required for text-only apps.
 
+`CHAT` exports `conversation.ingress` version 1. Other client transports declare
+that capability requirement and inject the `chat` service into their factory,
+then reuse `chat.ingress.submit(PromptRequest(...))`. Do not inspect voice state
+and submit directly: selection and acceptance must hold the same lock as voice
+startup, shutdown and binding changes. The operation returns `{"id": ..., "route":
+"text" | "realtime"}`; in voice mode the id is the voice turn id. HTTP contracts,
+authorization and per-client idempotent receipts remain owned by the caller.
+The local prompt endpoint still returns its client-generated id.
+
+`ChatIngress` is also available from `the_framework.plugins.chat.ingress` for
+non-HTTP applications. Construct it with a runtime and, optionally, the installed
+realtime service (controller and transition lock). Without voice it uses an
+optional `text_lock`, or its own lock. Share one ingress between transports.
+Voice accepts ordinary user prompts only: input items, suppressed prompts,
+custom roles/kinds and per-command reasoning overrides raise `ValueError` rather
+than silently losing text-only semantics. Voice submission failures also raise
+`ValueError`; callers choose their transport error representation. Cancellation
+and failures release the barrier. Attachment storage continues to hold this same
+barrier until its ordered text command is accepted.
+
 A feature that produces live context can contribute a factory through
 `the_framework.plugins.realtime.context.CONTEXT_FACTORY` in its server assembly.
 The factory receives the voice controller. Contexts implement `start(projection)`

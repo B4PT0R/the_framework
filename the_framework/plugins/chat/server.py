@@ -4,6 +4,7 @@ import asyncio
 from pathlib import Path
 
 from ...server.composition.application import ServerExtension
+from .ingress import ChatIngress
 from ...server.api.declarations import endpoint
 from the_framework.agent.models.responses import Image, Message
 from the_framework.agent.runtime.protocol import PromptRequest
@@ -34,7 +35,7 @@ class ChatApi:
         self.runtime = runtime
         self.workfolder = workfolder
         self.voice = voice
-        self.text_lock = text_lock if text_lock is not None else asyncio.Lock()
+        self.ingress = ChatIngress(runtime, voice, text_lock=text_lock)
 
     @endpoint("post", "/api/v1/agent/prompt", status_code=202,
               request={"type": "object", "properties": {
@@ -44,12 +45,10 @@ class ChatApi:
               response={"type": "object"})
     async def prompt(self, id: str, prompt: str):
         """Submit a client-correlated turn to the canonical single-writer queue."""
-        voice = self.voice
-        async with (voice.lock if voice is not None else self.text_lock):
-            if voice is not None and voice.controller.active:
-                await voice.controller.send_text(prompt)
-            else:
-                await self.runtime.submit(PromptRequest(id=id, prompt=prompt))
+        try:
+            await self.ingress.submit(PromptRequest(id=id, prompt=prompt))
+        except ValueError as error:
+            raise HttpError(409, "voice_unavailable", str(error)) from error
         return {"id": id, "status": "submitted"}
 
     @endpoint("post", "/api/v1/agent/attachments", status_code=202,
@@ -62,7 +61,7 @@ class ChatApi:
     async def attachments(self, id: str, files: list, prompt: str = ""):
         """Store attachments before submitting one ordered conversation turn."""
         voice = self.voice
-        async with (voice.lock if voice is not None else self.text_lock):
+        async with self.ingress.lock:
             if voice is not None and voice.controller.active:
                 for upload in files:
                     await upload.close()
