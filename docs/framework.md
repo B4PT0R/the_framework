@@ -790,7 +790,11 @@ The public `the_framework.server` package exports reusable pieces for common age
   interruption and application-defined atomic reset;
 - `ApplicationHealthApi` for aggregate and per-service lifecycle health;
 - `CanonicalTransportSockets` for ordered agent events and the application
-  capability bridge;
+  capability bridge. `application_server_extensions()` exposes it as the
+  `canonical_transport` service. Its `event_connection_count` counts accepted
+  canonical event sockets, separately from internal stream consumers, the
+  application bridge and paired remote connections. Connectivity does not imply
+  window visibility or user attention; product presence policy belongs to the app;
 - `ApplicationSpec`, `ServerExtension`, `Plugin`, `WebSocketEndpoint` and
   `build_application` for composition.
 

@@ -30,7 +30,7 @@ def application_server_extensions(
         ServerExtension(name="health", endpoints=(
             health_api if health_api is not None else ApplicationHealthApi(runtime=runtime),
         ), requires_services=("runtime",)),
-        ServerExtension(name="canonical_transport", websockets=(
+        ServerExtension(name="canonical_transport", service=sockets, websockets=(
             sockets.events_socket, sockets.application_socket,
         ), requires_services=("runtime",)),
     )
