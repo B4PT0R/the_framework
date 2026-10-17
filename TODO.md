@@ -14,6 +14,23 @@ conceptuelle totale. Ces notes ne constituent pas des demandes de refonte imméd
 
 ## Priorité : contrats et frontières
 
+- [ ] **Artefacts comme items canoniques de conversation — proposition du 17 octobre.**
+  Baptiste propose `Artifact(type="artifact", kind="image" | "file" | "widget",
+  payload={...})`, identifié et persisté par le worker dans la session. Même
+  item pour événement live et reprise paginée, sans journal de replay UI séparé.
+  Projection UI : description JSON rendue selon le kind. Projection modèle :
+  message developer indiquant sa présence dans le flux, avec identité et
+  métadonnées utiles au feedback ; aucune affirmation implicite de rendu réussi.
+  À intégrer aux sorties d'outils/commandes, au décodage des ResponseItem, aux
+  projections de session, à la compaction et aux clients starter/Harness.
+  Le stockage durable des fichiers référencés reste nécessaire : réutiliser les
+  mécanismes de fichiers, éviter les chemins temporaires et URLs éphémères.
+  Distinguer image affichée (`Artifact`) et image fournie à la vision (`Image`).
+  Widgets : description sérialisable et renderer applicatif ; reprise historique
+  à partir de l'item, avec fallback lisible si son kind n'est pas supporté.
+  Vérifier ordre, absence de doublons, reload/reconnexion/restart et compaction.
+  Proposition consignée, pas encore implémentée.
+
 - [ ] **Activation des plugins pendant la voix — à examiner.**
   `plugins/realtime/api.py`, `plugins/memory/live.py`, `server/composition/plugins.py`.
   Le chargement du runtime, l'exposition à l'agent et la présence d'un contexte
