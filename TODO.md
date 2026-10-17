@@ -17,6 +17,10 @@ conceptuelle totale. Ces notes ne constituent pas des demandes de refonte imméd
   sous-dossiers et byte ranges ; pas de migration des données expérimentales,
   explicitement jetables pour Baptiste. Références et métadonnées seules en session.
 
+- [x] Suivi de conversation du starter synchronisé avant le rendu via un effet
+  de layout. Évite qu'un chargement d'image fasse perdre le suivi automatique ;
+  même correction et régressions Chromium dans le Harness.
+
 ## Priorité : contrats et frontières
 
 - [x] **Artefacts intégrés — 18 octobre.** `Artifact(kind, payload)` est un item

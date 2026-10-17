@@ -169,7 +169,7 @@ function App({ artifactRenderers }) {
       socket?.close();
     };
   }, []);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (follow.current)
       scroll.current?.scrollTo({ top: scroll.current.scrollHeight });
   }, [messages, artifacts, activity, captions]);
