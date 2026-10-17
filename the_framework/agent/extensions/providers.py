@@ -3,7 +3,7 @@ import inspect
 
 from modict import modict
 
-from ..models.responses import Image, ProviderOutput
+from ..models.responses import Artifact, Image, ProviderOutput
 from ..models.base import Base
 from .schema import parse_function_specs
 
@@ -12,11 +12,13 @@ def provider(func=None, *, channels=None):
     """Expose ephemeral typed context from a provider.
 
     Return ``None`` for no context, a tuple for multiple outputs, a
-    ``ProviderOutput`` or ``Image`` explicitly, or any JSON-compatible value
+    ``ProviderOutput``, ``Image`` or ``Artifact`` explicitly, or any JSON-compatible value
     for one automatically wrapped ``ProviderOutput``. Lists remain one JSON
     value. ``channels`` names the projections allowed to consume this context;
     an empty sequence excludes it from channel-filtered projections. Explicit
-    registration channels override the decorator.
+    registration channels override the decorator. All provider outputs remain
+    ephemeral, including artifacts: they request presentation during the current
+    turn, are replaced on the next sample and never enter the saved session.
     """
     def decorate(function):
         function.agent_provider = True
@@ -60,7 +62,7 @@ class Provider(Base):
                 continue
             if isinstance(value, ProviderOutput):
                 output = value.bind(name=self.name, description=self.description)
-            elif isinstance(value, Image):
+            elif isinstance(value, (Artifact, Image)):
                 output = value
             else:
                 output = ProviderOutput.from_output(

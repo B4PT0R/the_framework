@@ -88,6 +88,7 @@ from ..models.lifecycle import (
     AgentGenerationEnd,
     AgentGenerationStart,
     AgentInterrupted,
+    AgentProviderArtifactsUpdated,
     AgentStepEnd,
     AgentStepStart,
     AgentToolCallEnd,
@@ -102,6 +103,7 @@ from ..models.responses import (
     CommandOutput,
     FunctionCall,
     FunctionCallOutput,
+    Artifact,
     Image,
     ToolOutput,
     ToolSearchCall,
@@ -365,6 +367,9 @@ class AgenticLoop:
         provider_outputs = await self.agent.registry("providers").aoutputs(
             channel="text"
         )
+        self.agent.emit(AgentProviderArtifactsUpdated(
+            items=[item for item in provider_outputs if isinstance(item, Artifact)],
+        ))
         payload = await self.ageneration_payload(provider_outputs)
         if self.agent.context.needs_compaction(payload):
             await asyncio.to_thread(self.agent.compaction.run)
@@ -423,7 +428,7 @@ class AgenticLoop:
                         max_tokens=self.agent.configs.max_tool_output_tokens,
                         model=self.agent.configs.model,
                     )
-                elif isinstance(item, Image):
+                elif isinstance(item, (Artifact, Image)):
                     item.call_id = tool_call.call_id
                 else:
                     item = ToolOutput.from_output(
@@ -553,7 +558,7 @@ class AgenticLoop:
                         command_id=command_id,
                         status=status,
                     )
-                elif isinstance(value, Image):
+                elif isinstance(value, (Artifact, Image)):
                     value.command_id = command_id
                     output = value
                 else:

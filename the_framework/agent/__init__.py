@@ -34,6 +34,7 @@ from .models.lifecycle import (
     AgentGenerationStart,
     AgentInterrupted,
     AgentResponseItemAdded,
+    AgentProviderArtifactsUpdated,
     AgentStepEnd,
     AgentStepStart,
     AgentToolCallEnd,
@@ -86,6 +87,7 @@ from .runtime.protocol import (
 )
 from .extensions.providers import Provider, Providers, provider
 from .models.responses import (
+    Artifact,
     CommandOutput,
     FunctionCall,
     FunctionCallOutput,
@@ -148,6 +150,7 @@ __all__ = [
     "AgentGenerationStart",
     "AgentInterrupted",
     "AgentResponseItemAdded",
+    "AgentProviderArtifactsUpdated",
     "AgentStepEnd",
     "AgentStepStart",
     "AgentToolCallEnd",
@@ -231,6 +234,7 @@ __all__ = [
     "CommandOutput",
     "ProviderOutput",
     "ToolOutput",
+    "Artifact",
     "Image",
     "Portrait",
     "Tools",

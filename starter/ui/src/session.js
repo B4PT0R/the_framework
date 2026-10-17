@@ -15,7 +15,18 @@ export function conversationCommand(output) {
   return output.command?.type === "prompt_request";
 }
 
+// Provider presentations are a replaceable view of this turn, never history.
+export function providerArtifacts(current, event) {
+  if (event.type === "agent.provider_artifacts.updated")
+    return (event.items || []).map(message).filter((item) => item?.type === "artifact");
+  if (["agent.turn.start", "agent.turn.end", "agent.interrupted", "agent.error"].includes(event.type))
+    return [];
+  return current;
+}
+
 export function message(item) {
+  if (item?.type === "artifact")
+    return { id: item.id, type: "artifact", kind: item.kind, payload: item.payload, final: true };
   if (item?.type !== "message" || !["user", "assistant"].includes(item.role))
     return null;
   return {
@@ -40,7 +51,7 @@ export function snapshot(current, page) {
     ...committed.map((item) => {
       const pending = live.get(item.id);
       return pending &&
-        (pending.final || pending.text.length > item.text.length)
+        (pending.final || (pending.text?.length || 0) > (item.text?.length || 0))
         ? pending
         : item;
     }),

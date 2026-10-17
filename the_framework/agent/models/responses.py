@@ -21,6 +21,50 @@ class UnknownResponseItem(ResponseItem):
     type: str
 
 
+class Artifact(ResponseItem):
+    """An explicit presentation request, independent of vision inputs.
+
+    ``payload`` is JSON data interpreted by the application's renderer. It must
+    contain durable references for persisted artifacts, never live components.
+    Tools/commands persist these items; providers keep them ephemeral.
+    Presence in the session does not acknowledge rendering by any client.
+    """
+
+    id: str = modict.factory(timestamp_id)
+    kind: str = modict.field(required="always")
+    payload: dict = modict.factory(dict)
+    call_id: str | None = None
+    command_id: str | None = None
+
+    @modict.validator("payload", mode="before")
+    def validate_payload(self, value):
+        if not isinstance(value, dict):
+            raise ValueError("artifact payload must be a JSON object")
+        json.dumps(value, allow_nan=False)
+        return value
+
+    @modict.validator("kind", mode="after")
+    def validate_kind(self, value):
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("artifact kind must be a non-empty string")
+        return value
+
+    def to_api_format(self, *, ephemeral=False):
+        presence = (
+            "An ephemeral provider artifact is available for the current turn only. "
+            "It is not stored in the canonical conversation. "
+            if ephemeral else "An artifact is present in the canonical conversation. "
+        )
+        return {
+            "type": "message", "role": "developer",
+            "content": [{"type": "input_text", "text": (
+                presence +
+                "This is a presentation request, not a client rendering acknowledgement.\n"
+                + serialize_output(self)
+            )}],
+        }
+
+
 class Message(ResponseItem):
     id: str = modict.factory(timestamp_id)
     role: str

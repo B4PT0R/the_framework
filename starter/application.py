@@ -13,6 +13,7 @@ from the_framework import (
 from the_framework.agent import Worker
 from the_framework.utils.persistence import MappingStore
 from the_framework.plugins.bash import BASH
+from the_framework.plugins.artifacts import ARTIFACTS
 from the_framework.plugins.chat import CHAT
 from the_framework.plugins.browser import CHROMIUM
 from the_framework.plugins.memory import MEMORY, MemoryExtension
@@ -57,7 +58,7 @@ application = ApplicationSpec(
     ),
     plugins=(
         BASH, REGISTRY, WEB_SEARCH, Plugin({**MEMORY, "agent_extension": Memory}),
-        CHAT,
+        CHAT, ARTIFACTS,
         SCHEDULER, SYSTEM, REALTIME, CHROMIUM,
     ),
     surfaces=(ClientSurface(name="main", source=ROOT / "ui",

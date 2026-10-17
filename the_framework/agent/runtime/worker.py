@@ -41,7 +41,7 @@ from .protocol import (
     WorkerStatus,
     WorkerStopped,
 )
-from ..models.responses import FunctionCall, Image, Message
+from ..models.responses import Artifact, FunctionCall, Message
 from ..models.usage import usage_window
 
 
@@ -85,7 +85,7 @@ class Worker:
             if (
                 isinstance(item, Message)
                 and item.role in {"user", "assistant"}
-            ) or isinstance(item, Image)
+            ) or isinstance(item, Artifact)
         ]
 
     @classmethod

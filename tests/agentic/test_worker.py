@@ -496,7 +496,7 @@ def test_worker_projects_only_displayable_session_items(tmp_path):
             outgoing.append(message)
 
         agent = Agent()
-        from the_framework.agent.models.responses import Image
+        from the_framework.agent.models.responses import Artifact, Image
         image_path = tmp_path / "image.png"
         image_path.write_bytes(b"image")
 
@@ -505,6 +505,7 @@ def test_worker_projects_only_displayable_session_items(tmp_path):
             Message(id="tool", role="developer", kind="tool_output", content=[]),
             FunctionCall(id="call", name="tool", arguments="{}", call_id="call"),
             Image(id="image", path=str(image_path), description="generated"),
+            Artifact(id="artifact", kind="image", payload={"src": "/image.png"}),
             Message(id="assistant", role="assistant", content=[]),
         ])
         worker = Worker(
@@ -533,7 +534,7 @@ def test_worker_projects_only_displayable_session_items(tmp_path):
         page = next(output for output in outgoing if output.type == "session_page")
         assert [item.id for item in page.turns[0]["items"]] == [
             "user",
-            "image",
+            "artifact",
             "assistant",
         ]
         remote_page = next(
@@ -543,7 +544,7 @@ def test_worker_projects_only_displayable_session_items(tmp_path):
         assert [item.id for item in remote_page.turns[0]["items"]] == [
             "user",
             "call",
-            "image",
+            "artifact",
             "assistant",
         ]
 

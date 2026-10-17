@@ -44,6 +44,7 @@ class Context:
             *self.agent.session.to_api_format(
                 max_input_images=provider_image_count,
                 items=provider_outputs,
+                ephemeral=True,
             ),
         ]
 

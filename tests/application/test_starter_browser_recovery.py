@@ -9,7 +9,8 @@ from pathlib import Path
 import pytest
 
 from the_framework.agent.context.session import Session
-from the_framework.agent.models.responses import Message
+from the_framework.agent.models.responses import Artifact, Message
+from the_framework.plugins.artifacts.server import ArtifactAssets
 from starter import desktop
 
 
@@ -18,6 +19,14 @@ from starter import desktop
 def test_starter_preserves_browser_and_conversation_across_server_restart(tmp_path, monkeypatch):
     session = Session.open(tmp_path / "session.json")
     session.append(Message(role="user", content=[{"type": "input_text", "text": "Recovery marker"}]))
+    from PIL import Image
+    source_image = tmp_path / "generated.png"
+    Image.new("RGB", (240, 80), "teal").save(source_image)
+    payload = ArtifactAssets(tmp_path / "artifacts").publish(
+        "image", {"path": str(source_image), "title": "Durable artifact"},
+    )
+    session.append(Artifact(kind="image", payload=payload))
+    source_image.unlink()
     for index in range(30):
         session.append(Message(role="user", content=[{"type": "input_text", "text": f"History item {index}"}]))
     session.save()
@@ -61,6 +70,7 @@ def test_starter_preserves_browser_and_conversation_across_server_restart(tmp_pa
                 assert await page.get_by_text("Recovery marker", exact=True).count() == 0
                 await page.get_by_role("button", name="Earlier messages").click()
                 await page.get_by_text("Recovery marker", exact=True).wait_for()
+                await page.wait_for_function("document.querySelector('.artifact img')?.naturalWidth === 240")
                 await page.screenshot(path=str(tmp_path / "history.png"))
                 await page.evaluate("window.recoveryMarker = 'same page'")
                 result = await page.request.post(page.url.split('/ui/')[0] + '/test/restart')

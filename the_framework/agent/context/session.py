@@ -15,6 +15,7 @@ from ..models.responses import (
     FunctionCall,
     FunctionCallOutput,
     Image,
+    Artifact,
     MediaReference,
     Message,
     Portrait,
@@ -231,7 +232,7 @@ class Session(Base):
             "repaired_function_calls": repaired,
         }
 
-    def to_api_format(self, *, max_input_images=0, include_images=True, items=None):
+    def to_api_format(self, *, max_input_images=0, include_images=True, items=None, ephemeral=False):
         """Project lightweight local history into strict remote Responses input."""
         if not isinstance(max_input_images, int) or max_input_images < 0:
             raise ValueError("max_input_images must be a non-negative integer")
@@ -264,6 +265,9 @@ class Session(Base):
                     "role": item.role,
                     "content": payload.get("content", []),
                 })
+                continue
+            if isinstance(item, Artifact):
+                projected.append(item.to_api_format(ephemeral=ephemeral))
                 continue
             if isinstance(item, MediaReference):
                 projected.append(item.to_api_format())
@@ -312,6 +316,11 @@ class Session(Base):
 
     @serialized_session_write
     def append(self, item):
+        if isinstance(item, Artifact) and any(
+            existing.id == item.id for existing in self.archive
+            if isinstance(existing, Artifact)
+        ):
+            return None
         if not self._local_targets_available(item):
             return None
         self.history.append(item)

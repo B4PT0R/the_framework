@@ -295,3 +295,11 @@ h1 {
   cursor: pointer;
   font-size: 13px;
 }
+
+.artifact { border: 1px solid #3b474f; border-radius: 12px; padding: 20px; background: #202b32; }
+.artifact h3 { margin: 0 0 12px; }
+.artifact img { display: block; max-width: 100%; max-height: 32rem; border-radius: 8px; object-fit: contain; }
+.artifact-description { color: #9eafb8; margin: 12px 0 0; }
+.artifact-download { color: #9dd9c5; font-weight: 600; }
+.artifact-fallback summary { cursor: pointer; color: #9eafb8; }
+.artifact-fallback pre { overflow: auto; max-height: 20rem; }

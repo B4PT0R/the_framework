@@ -14,27 +14,21 @@ conceptuelle totale. Ces notes ne constituent pas des demandes de refonte imméd
 
 ## Priorité : contrats et frontières
 
-- [ ] **Artefacts comme items canoniques de conversation — proposition du 17 octobre.**
-  Baptiste propose `Artifact(type="artifact", kind="image" | "file" | "widget",
-  payload={...})`, identifié et persisté par le worker dans la session. Même
-  item pour événement live et reprise paginée, sans journal de replay UI séparé.
-  Projection UI : description JSON rendue selon le kind. Projection modèle :
-  message developer indiquant sa présence dans le flux, avec identité et
-  métadonnées utiles au feedback ; aucune affirmation implicite de rendu réussi.
-  À intégrer aux sorties d'outils/commandes, au décodage des ResponseItem, aux
-  projections de session, à la compaction et aux clients starter/Harness.
-  Le stockage durable des fichiers référencés reste nécessaire : réutiliser les
-  mécanismes de fichiers, éviter les chemins temporaires et URLs éphémères.
-  Contrat explicite : `Image` fournit une entrée vision à l'agent et ne demande
-  aucun affichage dans le chat. Montrer une image à l'utilisateur exige un
-  `Artifact(kind="image", ...)`. La projection UI doit exclure les `Image`
-  bruts, y compris captures d'inspection et résultats d'outils de vision.
-  Un même fichier peut être référencé par les deux items si l'agent veut à la
-  fois le voir et le montrer ; ces intentions restent indépendantes.
-  Widgets : description sérialisable et renderer applicatif ; reprise historique
-  à partir de l'item, avec fallback lisible si son kind n'est pas supporté.
-  Vérifier ordre, absence de doublons, reload/reconnexion/restart et compaction.
-  Proposition consignée, pas encore implémentée.
+- [x] **Artefacts intégrés — 18 octobre.** `Artifact(kind, payload)` est un item
+  natif : outils et commandes le rendent durable via la session canonique,
+  les providers le gardent éphémère pendant le tour courant, sans écrire leurs
+  sorties dans la session. Le modèle reçoit une notice developer avec le JSON
+  et la portée exacte, sans affirmation de rendu client. Événement de remplacement
+  pour les vues temporaires, nettoyées en fin de tour ou perte de connexion.
+  `Image` reste exclusivement une entrée vision, exclue du chat.
+  Plugin complet `ARTIFACTS` : outil facultatif de présentation, copie atomique
+  des fichiers et route authentifiée pour leurs octets, sans journal de replay.
+  Starter et Harness : images/fichiers, renderers applicatifs par kind, repli
+  pour kind inconnu ou renderer en erreur. Tests de reprise/compaction, doublons,
+  fichiers sources supprimés et UI Chromium. Les widgets ne sont pas du code
+  fourni par le modèle : leur comportement appartient au renderer applicatif.
+  Validation : 612 tests Framework, 4 skips ; scénario starter Chromium réel
+  avec image conservée malgré suppression du fichier source ; 18 tests JS et build.
 
 - [ ] **Activation des plugins pendant la voix — à examiner.**
   `plugins/realtime/api.py`, `plugins/memory/live.py`, `server/composition/plugins.py`.

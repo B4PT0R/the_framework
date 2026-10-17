@@ -84,7 +84,7 @@ def test_starter_declares_general_plugins_and_memory_specialist():
     assert plan.primary_agent.name == "assistant"
     assert {plugin.name for plugin in application.plugins} == {
         "bash", "registry", "web_search", "memory", "chat", "scheduler", "system",
-        "realtime", "chromium",
+        "realtime", "chromium", "artifacts",
     }
     assert "memory.jiminy" in plan.agents
     assert plan.plugins["scheduler"].server_extension == "the_framework.plugins.scheduler.server:build_server_extensions"

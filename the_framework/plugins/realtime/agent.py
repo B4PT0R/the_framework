@@ -4,7 +4,7 @@ from xml.etree import ElementTree
 
 from modict import modict
 
-from the_framework.agent import Config, Image, Message, AgentExtension, hook, token_count
+from the_framework.agent import Artifact, Config, Image, Message, AgentExtension, hook, token_count
 
 class RealtimeConfig(Config):
     model: str = "gpt-live-1-codex"
@@ -63,6 +63,9 @@ class RealtimeExtension(AgentExtension):
     def _initial_items(self, items):
         projected = []
         for item in items:
+            if isinstance(item, Artifact):
+                projected.append(item.to_api_format())
+                continue
             if not isinstance(item, Message):
                 continue
             if item.role not in {"user", "assistant", "developer"}:
@@ -215,7 +218,9 @@ class RealtimeExtension(AgentExtension):
         conversational_items = [
             item
             for item in snapshot["items"]
-            if isinstance(item, Message) and item.role in {"user", "assistant"}
+            if isinstance(item, Artifact) or (
+                isinstance(item, Message) and item.role in {"user", "assistant"}
+            )
         ]
         initial_items = self._initial_items(conversational_items)
         if initial_items:

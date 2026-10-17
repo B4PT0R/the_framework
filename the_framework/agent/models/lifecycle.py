@@ -1,7 +1,7 @@
 from modict import modict
 
 from .events import Event
-from .responses import ResponseItem
+from .responses import Artifact, ResponseItem
 
 
 class LocalEvent(Event):
@@ -40,6 +40,13 @@ class AgentResponseItemAdded(LocalEvent):
     @modict.validator("item", mode="before")
     def reconstruct_item(self, value):
         return value if isinstance(value, ResponseItem) else ResponseItem.from_dict(dict(value))
+
+
+class AgentProviderArtifactsUpdated(LocalEvent):
+    """Replace the current turn's provider presentations without writing history."""
+
+    type: str = "agent.provider_artifacts.updated"
+    items: list[Artifact] = modict.factory(list)
 
 
 class AgentCompactionStart(LocalEvent):

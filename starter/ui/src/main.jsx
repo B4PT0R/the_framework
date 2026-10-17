@@ -5,17 +5,20 @@ import { api } from "./api";
 import { voiceSession } from "./voice";
 import { pluginRunning } from "./plugins";
 import { Settings } from "./settings";
+import { Artifact } from "./artifact";
 import {
   conversationBusy,
   conversationCommand,
   eventMessages,
+  providerArtifacts,
   snapshot,
   voiceCaptions,
 } from "./session";
 import "./style.css";
 
-function App() {
+function App({ artifactRenderers }) {
   const [messages, setMessages] = useState([]);
+  const [artifacts, setArtifacts] = useState([]);
   const [before, setBefore] = useState(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const historyInitialized = useRef(false);
@@ -123,6 +126,7 @@ function App() {
         }
         if (output.type === "command_event") {
           const event = output.event;
+          setArtifacts((items) => providerArtifacts(items, event));
           setMessages((items) => eventMessages(items, event));
           if (event.user_feedback) setActivity(event.user_feedback);
         }
@@ -133,6 +137,7 @@ function App() {
           ["command_completed", "command_failed"].includes(output.type) &&
           conversationCommand(output)
         ) {
+          setArtifacts([]);
           if (output.error) setError(output.error);
           setActivity("");
           reconcile().catch(fail);
@@ -140,6 +145,7 @@ function App() {
       };
       active.onclose = () => {
         if (!current()) return;
+        setArtifacts([]);
         void voice.current?.stop();
         transcripts.reset();
         setCaptions({});
@@ -166,7 +172,7 @@ function App() {
   useEffect(() => {
     if (follow.current)
       scroll.current?.scrollTo({ top: scroll.current.scrollHeight });
-  }, [messages, activity, captions]);
+  }, [messages, artifacts, activity, captions]);
   useLayoutEffect(() => {
     if (historyScroll.current && scroll.current) {
       const { height, top } = historyScroll.current;
@@ -238,6 +244,7 @@ function App() {
             className="conversation"
             ref={scroll}
             aria-label="Conversation"
+            onLoadCapture={() => { if (follow.current) scroll.current?.scrollTo({top: scroll.current.scrollHeight}); }}
             onScroll={() => {
               const el = scroll.current;
               follow.current =
@@ -263,12 +270,15 @@ function App() {
                 </p>
               </div>
             )}
-            {messages.map((message) => (
+            {messages.map((message) => message.type === "artifact" ? (
+              <Artifact key={message.id} {...message} renderers={artifactRenderers} />
+            ) : (
               <article key={message.id} className={`message ${message.role}`}>
                 <small>{message.role === "user" ? "You" : "Assistant"}</small>
                 <div>{message.text}</div>
               </article>
             ))}
+            {artifacts.map((item) => <Artifact key={`provider-${item.id}`} {...item} temporary renderers={artifactRenderers} />)}
             {Object.entries(captions).map(([role, text]) => (
               <article key={role} className={`message ${role}`}>
                 <small>{role === "user" ? "You" : "Assistant"} · Live</small>

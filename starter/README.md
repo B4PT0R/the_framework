@@ -83,7 +83,7 @@ and changes to the backend remain external prerequisites.
   configuration** edits the same configuration draft, including agent-plugin settings.
   Save applies and persists it. Model availability depends on the backend account.
 
-General plugins include Bash, registry, web search, memory, chat, scheduler,
+General plugins include Bash, registry, web search, memory, chat, artifacts, scheduler,
 system, browser and realtime declarations. The `chat` plugin owns the prompt
 and attachment HTTP routes; it has no agent-side binding, so settings show its
 server status without an agent toggle. **Loaded** describes local runtime state,
@@ -179,3 +179,12 @@ with Playwright Chromium installed.
 This starter is local-only for now. It does not ship remote pairing, a mobile
 shell or a public deployment configuration. Never expose its port publicly as a
 substitute for an authenticated remote-client implementation.
+
+### Presenting artifacts
+
+The bundled `ARTIFACTS` plugin can present images and downloads while preserving
+published local files. Extensions may return `Artifact(kind=..., payload=...)`
+directly; tools/commands persist it and providers display it only during the
+current turn. `Image` remains vision-only. Add a React renderer through `App`'s
+`artifactRenderers` prop for a custom widget kind; unknown kinds fall back to JSON.
+See [the artifact contract](../docs/framework.md#conversation-artifacts).

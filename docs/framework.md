@@ -767,10 +767,74 @@ unfiltered `outputs()` / `aoutputs()` still collect it. Without a channel overri
 standalone providers keep the default `text` / `realtime` channels, while extension
 providers use the extension's `provider_channels` (by default, `text`).
 
+## Conversation artifacts
+
+`Artifact` from `the_framework.agent` expresses presentation explicitly:
+
+```python
+from the_framework.agent import Artifact, Image
+
+return (
+    Image(path=screenshot),  # vision input, invisible in the chat
+    Artifact(kind="widget", payload={"widget": "weather", "temperature": 18}),
+)
+```
+
+Tools and commands can return an artifact directly or among tuple outputs. The
+worker commits and emits the same item; session pages and archive retention supply
+replay after reconnect, restart and compaction. A repeated artifact id is an
+idempotent publication while retained in the archive. Its developer-message API
+projection includes the id, kind and payload, confirming canonical presence only,
+never successful client rendering. It does not send image pixels to the model.
+Use `Image` separately when vision is required.
+
+Providers can return the same typed item, but **all provider outputs are ephemeral**.
+On each model step, `agent.provider_artifacts.updated` replaces the current turn's
+provider presentations. No provider output is appended to history or archive;
+its API projection identifies its temporary scope. Clients discard these views
+on turn completion, interruption, failure or connection loss. They are absent
+from replay and renewed by a later provider sample. This supports a current
+browser screenshot without filling the conversation with successive screenshots.
+
+Add `ARTIFACTS` from `the_framework.plugins.artifacts` to the application's
+plugins for local file publication. Its optional `artifacts.show_artifact` tool
+accepts `kind="image"` or `"file"` and `payload={"path": "/local/result.png",
+"title": "Result", "description": "..."}`. It copies the bytes atomically below
+`data_root/artifacts` and returns an artifact with `payload.src`, `name`, `size`
+and `mime_type`; deleting or overwriting the source cannot change this publication.
+The asset route requires authentication and `session:read`; filenames are not
+credentials. Assets are bytes, with no second conversation or replay registry.
+Image publication validates raster PNG/JPEG/WebP/GIF. Downloads cannot execute
+supplied HTML in the application's origin. Assets remain available when the
+plugin's agent binding is disabled, and are not automatically deleted on reset.
+
+An extension producing a file can use the same service without a second model
+call or an explicit display tool invocation:
+
+```python
+payload = await self.agent.application.call(
+    "artifacts", "publish", {"kind": "image", "payload": {"path": result_path}},
+)
+return Artifact(kind="image", payload=payload)
+```
+
+Returning an artifact with already usable JSON or durable URLs needs no service.
+Providers should reference their own current resources; presentation lifetime does
+not imply deletion of referenced bytes. File asset cleanup is independent of
+session replay. Avoid temporary paths and expiring URLs for durable artifacts.
+
+Both UIs render `image` (`payload.src`, optional `alt`, `title`, `description`) and
+`file` (`src`, `name`, optional `title`, `description`). Unknown kinds show expandable
+JSON; a failing custom renderer falls back without breaking chat. Widgets are
+serializable descriptions, interpreted by application-owned React components.
+The Harness exposes `artifactRenderers={{weather: Weather}}` on `AssistantApp`
+and `Conversation`; each renderer receives `{kind, payload}`. The starter's `App`
+has the same prop for local composition. No supplied HTML or JavaScript is executed.
+
 ## Built-in application primitives
 
 Reusable agent plugins live in `the_framework.plugins`, separate from the product's
-`the_harness.plugins`: `bash`, `system`, `registry`, `scheduler`, and
+`the_harness.plugins`: `artifacts`, `bash`, `system`, `registry`, `scheduler`, and
 `web_search`. Import each capability directly from its subpackage; importing
 one does not load the other plugins or product services. Their instruction
 files ship alongside their implementations. Application-specific defaults

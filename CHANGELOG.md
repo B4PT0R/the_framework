@@ -6,6 +6,13 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Add native `Artifact` outputs: tools and commands persist them in the canonical
+  session; providers expose replaceable current-turn views without persistence.
+  Project artifacts as developer notices with JSON, separately from vision-only
+  `Image` inputs. Add the complete `ARTIFACTS` plugin for durable local assets and
+  authenticated delivery. Starter and Harness render images/files and support
+  application renderers with fallbacks for unknown kinds and rendering failures.
+
 - Add `ApplicationSpec.build_conversation(reference, context, ...)` as the standard
   assembly path for the primary supervisor, runtime, authenticated API, health
   and transports. Migrate the starter and Harness; remove the former public

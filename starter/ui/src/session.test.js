@@ -4,6 +4,7 @@ import {
   conversationBusy,
   conversationCommand,
   eventMessages,
+  providerArtifacts,
   snapshot,
   voiceCaptions,
 } from "./session.js";
@@ -115,4 +116,33 @@ test("user commit and subsequent snapshot produce only one bubble", () => {
     item: question,
   });
   assert.deepEqual(snapshot(messages, page(question)), messages);
+});
+
+test("artifacts keep their place through live events, replay and repeated snapshots", () => {
+  const artifact = { type: "artifact", id: "figure", kind: "image", payload: { src: "/figure.png" } };
+  let current = eventMessages([], { type: "agent.response_item.added", item: artifact });
+  current = snapshot(current, page(item("question", "Show it", "user"), artifact));
+  current = eventMessages(current, { type: "agent.response_item.added", item: artifact });
+  current = snapshot(current, page(artifact, item("answer", "Here it is")));
+  assert.deepEqual(current.map((value) => value.id), ["question", "figure", "answer"]);
+  assert.equal(current[1].type, "artifact");
+  assert.deepEqual(current[1].payload, artifact.payload);
+  assert.deepEqual(snapshot([], page(artifact))[0], current[1]);
+});
+
+test("vision inputs never become chat presentations", () => {
+  const vision = { type: "image", id: "private-screenshot", path: "/tmp/screenshot.png" };
+  assert.deepEqual(snapshot([], page(vision)), []);
+  assert.deepEqual(eventMessages([], { type: "agent.response_item.added", item: vision }), []);
+});
+
+test("provider artifacts replace this turn's view and never become replay history", () => {
+  const first = { type: "artifact", id: "screen-1", kind: "image", payload: { src: "/1.png" } };
+  const second = { ...first, id: "screen-2", payload: { src: "/2.png" } };
+  let transient = providerArtifacts([], { type: "agent.provider_artifacts.updated", items: [first] });
+  transient = providerArtifacts(transient, { type: "agent.provider_artifacts.updated", items: [second] });
+  assert.deepEqual(transient.map((item) => item.id), ["screen-2"]);
+  assert.deepEqual(eventMessages([], { type: "agent.provider_artifacts.updated", items: [first] }), []);
+  for (const type of ["agent.turn.start", "agent.turn.end", "agent.interrupted", "agent.error"])
+    assert.deepEqual(providerArtifacts(transient, { type }), []);
 });
