@@ -802,6 +802,12 @@ accepts `kind="image"` or `"file"` and `payload={"path": "/local/result.png",
 "title": "Result", "description": "..."}`. It copies the bytes atomically below
 `data_root/artifacts` and returns an artifact with `payload.src`, `name`, `size`
 and `mime_type`; deleting or overwriting the source cannot change this publication.
+Only references and JSON metadata enter the session; neither original nor copied
+file bytes are embedded there as base64. The copy lives separately in the served
+files. If it disappears, the artifact remains in history and the UI reports the
+content as unavailable. Vision inputs are encoded only for the outgoing model
+request; that transient API representation is never written back to the session.
+
 The asset route requires authentication and `session:read`; filenames are not
 credentials. Assets are bytes, with no second conversation or replay registry.
 Image publication validates raster PNG/JPEG/WebP/GIF. Downloads cannot execute

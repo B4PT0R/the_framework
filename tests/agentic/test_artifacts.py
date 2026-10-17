@@ -114,3 +114,29 @@ def test_durable_artifacts_are_in_voice_initial_context_but_providers_are_not():
     assert agent.session.history == [artifact]
     initial = snapshot["extensions"]["realtime"]["session"]["initial_items"]
     assert initial == [artifact.to_api_format()]
+
+
+def test_saved_session_contains_references_not_image_bytes(tmp_path):
+    import base64
+    from PIL import Image as PILImage
+    from the_framework.plugins.artifacts.server import ArtifactAssets
+    image = tmp_path / "source.png"
+    PILImage.new("RGB", (20, 10), "teal").save(image)
+    encoded = base64.b64encode(image.read_bytes()).decode()
+    session = Session.open(tmp_path / "session.json")
+    session.append(Image(path=str(image), description="Vision only"))
+    payload = ArtifactAssets(tmp_path / "assets").publish("image", {"path": str(image)})
+    artifact = Artifact(kind="image", payload=payload)
+    session.append(artifact)
+    on_disk = session.path.read_text()
+    assert encoded not in on_disk and "base64," not in on_disk
+    # Encoding for the remote vision API is transient and never written back.
+    assert encoded in json.dumps(session.to_api_format(max_input_images=1))
+    session.save()
+    assert encoded not in session.path.read_text()
+    image.unlink()
+    from urllib.parse import unquote
+    copied = tmp_path / "assets" / unquote(payload["src"].rsplit("/", 1)[-1])
+    assert copied.is_file()
+    copied.unlink()
+    assert any(item.id == artifact.id for item in Session.open(session.path).archive)
