@@ -5,19 +5,13 @@ import mimetypes
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
-from urllib.parse import quote
 
-from ...server.api.declarations import endpoint
-from ...server.api.endpoints import HttpError
-from ...server.api.media import MediaFileResponse
+from ...server.api.bucket import FileBucket
 from ...server.api.uploads import copy_uploaded_files, safe_filename
 from ...server.composition.application import ServerExtension
 
 
-class ArtifactAssets:
-    def __init__(self, root):
-        self.root = Path(root).resolve()
-
+class ArtifactAssets(FileBucket):
     async def handle(self, method, payload):
         if method != "publish":
             raise ValueError(f"unknown artifact operation: {method}")
@@ -56,27 +50,13 @@ class ArtifactAssets:
             raise
         return {
             **{key: value for key, value in payload.items() if key not in {"path", "src"}},
-            "src": f"/api/v1/artifacts/{quote(copied.name, safe='')}",
+            "src": self.url(copied.path),
             "name": name, "mime_type": mime_type, "size": copied.size,
         }
 
-    @endpoint("get", "/api/v1/artifacts/{asset}",
-              request={"type": "object", "properties": {"asset": {"type": "string"}},
-                       "required": ["asset"], "additionalProperties": False},
-              authorization={"scope": "session:read"})
-    async def content(self, asset: str):
-        path = (self.root / asset).resolve()
-        if path.parent != self.root or not path.is_file():
-            raise HttpError(404, "artifact_unavailable", "Artifact file is unavailable")
-        return MediaFileResponse(
-            path, filename=asset.partition("-")[2] or asset,
-            content_disposition_type="attachment",
-            headers={"X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox"},
-        )
-
 
 def build_server_extensions(context):
-    root = Path(context.require("data_root")) / "artifacts"
+    root = context.require("data_root")
 
     def build(runtime):
         assets = ArtifactAssets(root)

@@ -19,10 +19,15 @@ file records the constraints to preserve when changing the framework.
   supervision. Workers own inference, tools and their sessions. Clients own
   their local interface and media/device execution. Do not move a
   responsibility across these process boundaries merely to simplify a call.
-- Treat saved sessions, task delivery, HTTP/WebSocket payloads and client
-  security as contracts. Preserve them when refactoring, or provide an explicit
-  tested migration. A client reconnection or worker restart must not create a
-  second main conversation or bypass safety controls.
+- Keep session, task-delivery, HTTP/WebSocket and client-security contracts
+  coherent across the Framework, starter and Harness. During this experimental
+  phase the test data is disposable: update all consumers together and remove
+  obsolete paths, schemas and aliases instead of accumulating compatibility or
+  migration code. Preserve old data only when Baptiste explicitly requires it.
+  When needed, migrations are standalone, one-shot scripts under `migrations/`,
+  removable after execution; never embed them in runtime/startup code.
+  Ordinary reconnection/restart must still resume the canonical conversation
+  and enforce authentication; disposable test data does not weaken those features.
 - Plugins contribute through the framework's declarations and lifecycle, not
   by mutating FastAPI internals or global registries. The complete declared
   plugin graph starts with the server and keeps its routes and services until

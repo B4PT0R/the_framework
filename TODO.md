@@ -12,6 +12,11 @@ conceptuelle totale. Ces notes ne constituent pas des demandes de refonte imméd
   producteurs ; le transport les assemble et garantit leur nettoyage.
 - [x] Vérifier le framework et le starter indépendamment des imports de produit.
 
+- [x] Bucket client unique `data_root/bucket/` pour uploads et publications,
+  sans distinction image/vidéo/audio/fichier. Route générique authentifiée,
+  sous-dossiers et byte ranges ; pas de migration des données expérimentales,
+  explicitement jetables pour Baptiste. Références et métadonnées seules en session.
+
 ## Priorité : contrats et frontières
 
 - [x] **Artefacts intégrés — 18 octobre.** `Artifact(kind, payload)` est un item

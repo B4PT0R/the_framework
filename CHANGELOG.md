@@ -6,6 +6,12 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Unify client-visible files under `data_root/bucket/`: chat uploads and artifact
+  publications share this tree, with authenticated, range-capable
+  `/api/v1/bucket/{path:path}` delivery for any file type and nested paths. Remove
+  the separate attachment-directory option and artifact-only file route. Earlier
+  experimental storage layouts are not migrated.
+
 - Add native `Artifact` outputs: tools and commands persist them in the canonical
   session; providers expose replaceable current-turn views without persistence.
   Project artifacts as developer notices with JSON, separately from vision-only

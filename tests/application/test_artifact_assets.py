@@ -14,7 +14,7 @@ def test_artifact_asset_survives_source_deletion_and_service_restart(tmp_path):
     Image.new("RGB", (24, 16), "teal").save(source)
     original = source.read_bytes()
     root = tmp_path / "app"
-    payload = asyncio.run(ArtifactAssets(root / "artifacts").handle("publish", {
+    payload = asyncio.run(ArtifactAssets(root).handle("publish", {
         "kind": "image", "payload": {"path": str(source), "title": "Résultat"},
     }))
     source.unlink()
@@ -29,13 +29,13 @@ def test_artifact_asset_survives_source_deletion_and_service_restart(tmp_path):
         assert response.headers["content-type"] == "image/png"
         assert "attachment" in response.headers["content-disposition"]
         assert response.headers["x-content-type-options"] == "nosniff"
-        assert client.get("/api/v1/artifacts/absent").status_code == 404
+        assert client.get("/api/v1/bucket/absent").status_code == 404
 
 
 def test_assets_are_immutable_and_invalid_images_do_not_leave_copies(tmp_path):
     source = tmp_path / "report.html"
     source.write_text("<h1>report</h1>")
-    assets = ArtifactAssets(tmp_path / "assets")
+    assets = ArtifactAssets(tmp_path)
     first = assets.publish("file", {"path": str(source)})
     source.write_text("updated")
     second = assets.publish("file", {"path": str(source)})
@@ -47,11 +47,11 @@ def test_assets_are_immutable_and_invalid_images_do_not_leave_copies(tmp_path):
 
 
 def test_asset_route_rejects_symlink_escape(tmp_path):
-    root = tmp_path / "assets"
+    root = tmp_path / "bucket"
     root.mkdir()
     outside = tmp_path / "private.txt"
     outside.write_text("private")
     (root / "linked").symlink_to(outside)
     from the_framework.server.api.endpoints import HttpError
     with pytest.raises(HttpError):
-        asyncio.run(ArtifactAssets(root).content("linked"))
+        asyncio.run(ArtifactAssets(tmp_path).content("linked"))

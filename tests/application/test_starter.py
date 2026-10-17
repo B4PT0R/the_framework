@@ -127,7 +127,7 @@ def test_starter_assembles_without_voice_plugin(tmp_path, monkeypatch):
         assert prompt.status_code == 202
         assert attachment.status_code == 202
         assert [command.id for command in runtime.submitted] == ["text", "files"]
-        assert (tmp_path / "files" / "notes.txt").read_bytes() == b"notes"
+        assert (tmp_path / "bucket" / "notes.txt").read_bytes() == b"notes"
 
 
 def test_starter_chat_plugin_owns_client_routes(tmp_path, monkeypatch):
@@ -241,20 +241,20 @@ def test_starter_http_uses_authenticated_canonical_queue(tmp_path):
         assert response.status_code == 202, response.text
         command = runtime.submitted[-1]
         assert command.prompt == "Read these notes"
-        assert (tmp_path / "files/notes.txt").read_bytes() == b"Important notes"
+        assert (tmp_path / "bucket/notes.txt").read_bytes() == b"Important notes"
         assert command.input_items[0].kind == "attachments"
         assert command.input_items[1].kind == "copied_files"
         response = client.post("/api/v1/agent/attachments", data={"id": "files-2"},
                                files=[("files", ("notes.txt", b"Other notes", "text/plain"))])
         assert response.status_code == 202, response.text
         assert not runtime.submitted[-1].append_prompt
-        assert (tmp_path / "files/notes (2).txt").read_bytes() == b"Other notes"
+        assert (tmp_path / "bucket/notes (2).txt").read_bytes() == b"Other notes"
         count = len(runtime.submitted)
         response = client.post("/api/v1/agent/attachments", data={"id": "bad-image"},
                                files=[("files", ("invalid.png", b"not an image", "image/png"))])
         assert response.status_code == 422
         assert len(runtime.submitted) == count
-        assert not (tmp_path / "files/invalid.png").exists()
+        assert not (tmp_path / "bucket/invalid.png").exists()
         from io import BytesIO
         from PIL import Image
         image = BytesIO()

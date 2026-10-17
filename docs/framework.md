@@ -767,6 +767,23 @@ unfiltered `outputs()` / `aoutputs()` still collect it. Without a channel overri
 standalone providers keep the default `text` / `realtime` channels, while extension
 providers use the extension's `provider_channels` (by default, `text`).
 
+## Client file bucket
+
+All client-visible files share one tree: `data_root/bucket/`, or `~/TheHarness/bucket/`
+for the Harness default installation. Uploads and published images, documents,
+audio and videos use this same root. Subfolders may organize projects or resources;
+there are no separate storage roots by media type. Private sessions, credentials,
+memory, browser profiles and UI releases remain outside this tree.
+
+`FileBucket(data_root)` from `the_framework.server.api.bucket` exposes `.root`,
+`.url(path)` and an authenticated `GET /api/v1/bucket/{path:path}` endpoint. The
+complete `ARTIFACTS` plugin includes that endpoint; the same files are served to
+local clients and authorized remote desktop clients. Nested paths are supported;
+directory listing, traversal and symlinks escaping the bucket are rejected.
+Delivery supports byte ranges for large media and uses attachment disposition.
+Only publish files intended for clients into this tree. There is no migration or
+alias for earlier experimental `files/` and `artifacts/` layouts.
+
 ## Conversation artifacts
 
 `Artifact` from `the_framework.agent` expresses presentation explicitly:
@@ -800,7 +817,7 @@ Add `ARTIFACTS` from `the_framework.plugins.artifacts` to the application's
 plugins for local file publication. Its optional `artifacts.show_artifact` tool
 accepts `kind="image"` or `"file"` and `payload={"path": "/local/result.png",
 "title": "Result", "description": "..."}`. It copies the bytes atomically below
-`data_root/artifacts` and returns an artifact with `payload.src`, `name`, `size`
+`data_root/bucket` and returns an artifact with `payload.src`, `name`, `size`
 and `mime_type`; deleting or overwriting the source cannot change this publication.
 Only references and JSON metadata enter the session; neither original nor copied
 file bytes are embedded there as base64. The copy lives separately in the served
@@ -1002,8 +1019,8 @@ Import `CHAT` from `the_framework.plugins.chat` to install
 Both accept a client-generated command `id`; attachments use multipart form data
 with `files` and an optional `prompt`. The plugin coordinates with the installed
 Realtime API's lock, so attachment acceptance and voice startup cannot race.
-`BuildContext.data_root` owns storage; the `chat.attachments_root` plugin option
-selects a separate attachment directory when needed. No voice plugin is required for text-only apps.
+`BuildContext.data_root` owns storage; uploads use its shared `bucket/` tree.
+No voice plugin is required for text-only apps.
 
 `CHAT` exports `conversation.ingress` version 1. Other client transports declare
 that capability requirement and inject the `chat` service into their factory,

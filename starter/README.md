@@ -188,3 +188,7 @@ directly; tools/commands persist it and providers display it only during the
 current turn. `Image` remains vision-only. Add a React renderer through `App`'s
 `artifactRenderers` prop for a custom widget kind; unknown kinds fall back to JSON.
 See [the artifact contract](../docs/framework.md#conversation-artifacts).
+
+All uploaded and published client files share `data_root/bucket/`, including images,
+video and other media. `ARTIFACTS` serves this tree through authenticated
+`/api/v1/bucket/...` URLs. Application-private state stays outside the bucket.

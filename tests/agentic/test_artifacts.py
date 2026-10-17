@@ -45,7 +45,7 @@ def test_artifact_requires_kind_and_json_object(kwargs):
 
 def test_tool_and_command_return_native_artifacts_without_display_call(tmp_path):
     agent = Agent(client=object())
-    artifact = Artifact(kind="file", payload={"src": "/api/v1/artifacts/report.txt"})
+    artifact = Artifact(kind="file", payload={"src": "/api/v1/bucket/report.txt"})
     image = tmp_path / "vision.png"
     image.write_bytes(b"vision")
 
@@ -125,7 +125,7 @@ def test_saved_session_contains_references_not_image_bytes(tmp_path):
     encoded = base64.b64encode(image.read_bytes()).decode()
     session = Session.open(tmp_path / "session.json")
     session.append(Image(path=str(image), description="Vision only"))
-    payload = ArtifactAssets(tmp_path / "assets").publish("image", {"path": str(image)})
+    payload = ArtifactAssets(tmp_path).publish("image", {"path": str(image)})
     artifact = Artifact(kind="image", payload=payload)
     session.append(artifact)
     on_disk = session.path.read_text()
@@ -136,7 +136,7 @@ def test_saved_session_contains_references_not_image_bytes(tmp_path):
     assert encoded not in session.path.read_text()
     image.unlink()
     from urllib.parse import unquote
-    copied = tmp_path / "assets" / unquote(payload["src"].rsplit("/", 1)[-1])
+    copied = tmp_path / "bucket" / unquote(payload["src"].rsplit("/", 1)[-1])
     assert copied.is_file()
     copied.unlink()
     assert any(item.id == artifact.id for item in Session.open(session.path).archive)

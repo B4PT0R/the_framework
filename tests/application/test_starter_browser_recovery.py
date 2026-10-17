@@ -22,7 +22,7 @@ def test_starter_preserves_browser_and_conversation_across_server_restart(tmp_pa
     from PIL import Image
     source_image = tmp_path / "generated.png"
     Image.new("RGB", (240, 80), "teal").save(source_image)
-    payload = ArtifactAssets(tmp_path / "artifacts").publish(
+    payload = ArtifactAssets(tmp_path).publish(
         "image", {"path": str(source_image), "title": "Durable artifact"},
     )
     session.append(Artifact(kind="image", payload=payload))

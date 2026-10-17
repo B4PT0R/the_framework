@@ -10,6 +10,7 @@ from the_framework.agent.models.responses import Image, Message
 from the_framework.agent.runtime.protocol import PromptRequest
 from the_framework.server.api.endpoints import HttpError
 from the_framework.server.api.uploads import copied_files_message, copy_uploaded_files
+from the_framework.server.api.bucket import FileBucket
 
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
@@ -100,7 +101,7 @@ def build_server_extensions(context):
     return ServerExtension(
         name="chat",
         service_factory=lambda runtime, realtime=None: ChatApi(
-            runtime, Path(options.get("attachments_root", root / "files")), realtime, text_lock=text_mode_lock,
+            runtime, FileBucket(root).root, realtime, text_lock=text_mode_lock,
         ),
         endpoints="service",
     )
