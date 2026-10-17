@@ -94,10 +94,10 @@ and changes to the backend remain external prerequisites.
   configuration** edits the same configuration draft, including agent-plugin settings.
   Save applies and persists it. Model availability depends on the backend account.
 
-General plugins include Bash, registry, web search, memory, chat, artifacts, scheduler,
-system, browser and realtime declarations. The `chat` plugin owns the prompt
-and attachment HTTP routes; it has no agent-side binding, so settings show its
-server status without an agent toggle. **Loaded** describes local runtime state,
+General plugins include Bash, registry, web search, memory, artifacts, scheduler,
+system, browser and realtime declarations. The host owns prompt and attachment
+HTTP routes through `build_conversation()`; chat is not a plugin or a settings
+toggle. **Loaded** describes plugin runtime state,
 not confirmation of external-service availability. Inference, hosted search and
 memory embeddings require a usable backend account and supported capabilities.
 The starter defaults to `gpt-5.6-luna`; saved model settings take precedence.
@@ -134,9 +134,10 @@ Import a complete framework plugin and add it to `ApplicationSpec.plugins`:
 routes and lifecycle. Their server implementations are deferred so the worker
 can compile the same application declaration without constructing server services.
 `server.py` supplies the data directory, plugin options and restart callback to
-`build_conversation`; the framework constructs the worker and canonical transport.
+`build_conversation`; the framework constructs the worker, text/file ingress and canonical transport.
 The memory declaration shows an explicit specialization of the complete `MEMORY`
-plugin with application-owned curator instructions. The optional shared `CHAT` plugin owns the prompt and attachment routes.
+plugin with application-owned curator instructions. Text/file ingress is always
+available, with optional realtime coordination through the shared voice lock.
 
 Custom plugins should expose their complete `Plugin` declaration from their
 package; keep agent and server implementations inside it. Backend contributions

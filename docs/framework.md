@@ -1095,16 +1095,19 @@ the application's extensions.
 
 ## Canonical chat and optional live context
 
-Import `CHAT` from `the_framework.plugins.chat` to install
-`POST /api/v1/agent/prompt` and `POST /api/v1/agent/attachments`.
+`ApplicationSpec.build_conversation()` installs the host-owned `chat` service,
+including `POST /api/v1/agent/prompt` and `POST /api/v1/agent/attachments`.
+It is part of the conversation assembly, absent from the plugin catalogue, and
+cannot be disabled through plugin controls. A client can omit the chat UI while
+keeping these APIs available. `ApplicationSpec.build()` remains a lower-level
+assembly without implicit conversation services.
 Both accept a client-generated command `id`; attachments use multipart form data
-with `files` and an optional `prompt`. The plugin coordinates with the installed
+with `files` and an optional `prompt`. The service coordinates with the installed
 Realtime API's lock, so attachment acceptance and voice startup cannot race.
 `BuildContext.data_root` owns storage; uploads use its shared `bucket/` tree.
 No voice plugin is required for text-only apps.
 
-`CHAT` exports `conversation.ingress` version 1. Other client transports declare
-that capability requirement and inject the `chat` service into their factory,
+Other client transports inject the host-owned `chat` service into their factory,
 then reuse `chat.ingress.submit(PromptRequest(...))`. Do not inspect voice state
 and submit directly: selection and acceptance must hold the same lock as voice
 startup, shutdown and binding changes. The operation returns `{"id": ..., "route":
@@ -1112,7 +1115,7 @@ startup, shutdown and binding changes. The operation returns `{"id": ..., "route
 authorization and per-client idempotent receipts remain owned by the caller.
 The local prompt endpoint still returns its client-generated id.
 
-`ChatIngress` is also available from `the_framework.plugins.chat.ingress` for
+`ChatIngress` is also available from `the_framework.server.runtime.ingress` for
 non-HTTP applications. Construct it with a runtime and, optionally, the installed
 realtime service (controller and transition lock). Without voice it uses an
 optional `text_lock`, or its own lock. Share one ingress between transports.

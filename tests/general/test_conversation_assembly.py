@@ -41,11 +41,10 @@ def test_assembly_recreates_one_durable_conversation(tmp_path, monkeypatch, voic
     module = tmp_path / "assembly_fixture.py"
     module.write_text('''
 from the_framework import ApplicationSpec, AgentSpec
-from the_framework.plugins.chat import CHAT
 from the_framework.plugins.realtime import REALTIME
 application = ApplicationSpec(name="Fixture", version="1",
     primary_agent=AgentSpec(name="primary", session_mode="durable"),
-    plugins=(CHAT, REALTIME) if VOICE else (CHAT,))
+    plugins=(REALTIME,) if VOICE else ())
 '''.replace("VOICE", str(voice)))
     monkeypatch.syspath_prepend(str(tmp_path))
     monkeypatch.setenv("PYTHONPATH", str(tmp_path) + os.pathsep + os.environ.get("PYTHONPATH", ""))
@@ -72,6 +71,7 @@ application = ApplicationSpec(name="Fixture", version="1",
                 assert runtime.supervisor.application_reference == "assembly_fixture:application"
                 assert runtime.supervisor.session_path == root / "session.json"
                 assert "canonical_transport" in context.services
+                assert "chat" not in app.state.application.plugins
                 chat = context.services["chat"]
                 assert (chat.voice is not None) == voice
                 if voice:
@@ -172,3 +172,28 @@ def test_conversation_requires_explicit_security_and_socket_handshakes(tmp_path)
     with pytest.raises(ValueError, match="handshakes"):
         declaration().build_conversation("example:application", BuildContext(data_root=tmp_path))
     assert not list(tmp_path.iterdir())
+
+
+def test_minimal_host_accepts_text_and_files_without_plugins(tmp_path):
+    from starlette.testclient import TestClient
+    from tests.fixtures.runtime import FakeRuntime
+
+    runtime = FakeRuntime()
+    app = declaration().build_conversation(
+        "example:application", BuildContext(data_root=tmp_path),
+        handshake=lambda socket: None, runtime_factory=lambda supervisor: runtime,
+    )
+    with TestClient(app) as client:
+        assert client.post('/api/v1/agent/prompt', json={
+            'id': 'denied', 'prompt': 'Private',
+        }).status_code == 401
+        client.headers['authorization'] = 'Bearer test'
+        assert client.post('/api/v1/agent/prompt', json={
+            'id': 'text', 'prompt': 'Hello',
+        }).status_code == 202
+        assert client.post('/api/v1/agent/attachments', data={'id': 'file'}, files={
+            'files': ('notes.txt', b'Keep this file', 'text/plain'),
+        }).status_code == 202
+        assert [command.id for command in runtime.submitted] == ['text', 'file']
+        assert (tmp_path / 'bucket/notes.txt').read_bytes() == b'Keep this file'
+        assert not app.state.application.plugins

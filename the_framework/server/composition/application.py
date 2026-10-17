@@ -391,8 +391,10 @@ class ApplicationSpec(modict):
         reset_handler: Callable | None = None,
         extensions: tuple[ServerExtension, ...] | Callable = (),
     ):
-        """Assemble one durable worker, its API, health and authenticated sockets.
+        """Assemble one durable worker, text/files, health and authenticated sockets.
 
+        Text and attachment ingress is always included and shares the installed
+        realtime service’s transition lock when voice is available.
         ``reference`` is the importable ``module:application`` used by workers.
         ``handshake`` authenticates both sockets unless individually overridden.
         Advanced applications can supply a supervisor or a runtime factory,
@@ -440,7 +442,8 @@ class ApplicationSpec(modict):
             "server_extensions": (
                 *self.server_extensions,
                 *_conversation_extensions(
-                    runtime, event_handshake=event_handshake,
+                    runtime, data_root=context.require("data_root"),
+                    event_handshake=event_handshake,
                     application_handshake=application_handshake,
                     agent_api=CanonicalAgentApi(
                         runtime, session_projection=session_projection,

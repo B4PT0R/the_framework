@@ -6,7 +6,7 @@ import pytest
 from the_framework.agent.runtime.protocol import SessionSnapshotRequest, StatusRequest
 from the_framework.server.api.endpoints import HttpError
 from the_framework.plugins.realtime.api import RealtimeApi
-from the_framework.plugins.chat.server import ChatApi
+from the_framework.server.api.chat import ChatApi
 
 
 def test_voice_requires_idle_text_and_passes_canonical_snapshot():

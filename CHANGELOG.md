@@ -48,8 +48,9 @@ Until a stable release, minor versions may revise the public composition API.
   connectivity distinct from internal consumers, capability bridges and paired
   clients; release it on disconnect, stream failure and cancellation.
 
-- Export `conversation.ingress` version 1 from `CHAT`. Share its transport-neutral
-  `ChatIngress.submit(PromptRequest)` with additional client transports so route
+- Integrate the host-owned chat service into `build_conversation()`, removing
+  the `CHAT` plugin and its synthetic capability requirement. Share
+  `server.runtime.ingress.ChatIngress.submit(PromptRequest)` with client transports so route
   selection and acceptance use the same text/voice transition barrier. Preserve
   local prompt and attachment wire contracts; reject text-only turn semantics
   during voice instead of dropping them.

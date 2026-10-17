@@ -1,16 +1,15 @@
-"""Optional client chat routes over the canonical agent and live voice."""
+"""Host-owned text and attachment routes over the durable conversation."""
 
 import asyncio
 from pathlib import Path
 
-from ...server.composition.application import ServerExtension
-from .ingress import ChatIngress
-from ...server.api.declarations import endpoint
 from the_framework.agent.models.responses import Image, Message
 from the_framework.agent.runtime.protocol import PromptRequest
 from the_framework.server.api.endpoints import HttpError
 from the_framework.server.api.uploads import copied_files_message, copy_uploaded_files
-from the_framework.server.api.bucket import FileBucket
+
+from ..runtime.ingress import ChatIngress
+from .declarations import endpoint
 
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
@@ -92,16 +91,3 @@ class ChatApi:
             id=id, prompt=prompt, append_prompt=bool(prompt.strip()), input_items=items,
         ))
         return {"id": id, "status": "submitted"}
-
-
-def build_server_extensions(context):
-    root = Path(context.require("data_root"))
-    options = context.plugin("chat")
-    text_mode_lock = options.get("text_mode_lock")
-    return ServerExtension(
-        name="chat",
-        service_factory=lambda runtime, realtime=None: ChatApi(
-            runtime, FileBucket(root).root, realtime, text_lock=text_mode_lock,
-        ),
-        endpoints="service",
-    )

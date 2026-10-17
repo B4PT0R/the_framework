@@ -6,8 +6,13 @@ conceptuelle totale. Ces notes ne constituent pas des demandes de refonte imméd
 
 ## Livré dans cette passe
 
-- [x] `CHAT` partagé : le starter et The Harness utilisent les mêmes routes texte,
-  pièces jointes et barrière texte/voix, au lieu de reconstruire cette plomberie.
+- [x] **Chat intégré à l’hôte — 18 octobre.** `build_conversation()` assemble les
+  routes texte/pièces jointes et la barrière texte/voix. Plugin `CHAT` et capacité
+  artificielle supprimés ; transports locaux/distants injectent le service `chat`.
+  Starter et Harness partagent ce socle, absent du catalogue des plugins.
+  Validation : 642 tests Framework, 3 skips, 18 tests JS et build ; scénario
+  Chromium réel avec reprise, pièces jointes, aperçu, publication et rollback.
+  Harness : 151 tests, 46 tests JS, build et installation locale vérifiée.
 - [x] Contributions de contexte vocal : mémoire et registre possèdent leurs
   producteurs ; le transport les assemble et garantit leur nettoyage.
 - [x] Vérifier le framework et le starter indépendamment des imports de produit.

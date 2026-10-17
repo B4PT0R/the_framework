@@ -77,17 +77,17 @@ available when a simple plugin is not enough. More detail is in the
 
 ## Compose conversation features without rebuilding their transport
 
-`CHAT` owns text submission, atomic file attachments and the text/voice mode
-barrier. It works on its own or alongside `REALTIME`:
+`build_conversation()` includes text submission, atomic file attachments and the
+text/voice mode barrier as host services. No chat plugin is needed; `REALTIME`
+optionally adds voice:
 
 ```python
-from the_framework.plugins.chat import CHAT
 from the_framework.plugins.memory import MEMORY
 from the_framework.plugins.registry import REGISTRY
 from the_framework.plugins.realtime import REALTIME
 
 # In your ApplicationSpec:
-# plugins=(CHAT, MEMORY, REGISTRY, REALTIME)
+# plugins=(MEMORY, REGISTRY, REALTIME)
 # build_conversation assembles the supervised runtime from BuildContext(data_root=...).
 ```
 

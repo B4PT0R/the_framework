@@ -38,7 +38,7 @@ def test_starter_worker_compiles_without_importing_chat_server():
 import sys
 from starter.application import application
 application.compile()
-assert 'starter.chat' not in sys.modules
+assert 'the_framework.server.api.chat' not in sys.modules
 """], capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stderr
 
@@ -77,27 +77,23 @@ def test_starter_assembles_without_voice_plugin(tmp_path, monkeypatch):
         assert (tmp_path / "bucket" / "notes.txt").read_bytes() == b"notes"
 
 
-def test_starter_chat_plugin_owns_client_routes(tmp_path, monkeypatch):
+def test_starter_host_provides_chat_outside_the_plugin_catalogue(tmp_path):
     from fastapi.testclient import TestClient
-    from starter import server
+    from starter.server import create_app
 
-    without_chat = ApplicationSpec({
-        **application,
-        "plugins": tuple(
-            plugin for plugin in application.plugins if plugin.name != "chat"
-        ),
-    })
-    monkeypatch.setattr(server, "application", without_chat)
-    app = server.create_app(
-        tmp_path, token="test", origin="http://testserver", runtime=FakeRuntime(),
-    )
-    assert "chat" not in app.state.application.server_extensions
-    assert "/api/v1/session" in {route.path for route in app.routes}
+    runtime = FakeRuntime()
+    app = create_app(tmp_path, token="test", origin="http://testserver", runtime=runtime)
+    assert "chat" not in application.compile().plugins
+    assert "chat" in app.state.application.server_extensions
     with TestClient(app) as client:
         client.headers["authorization"] = "Bearer test"
+        assert "chat" not in {
+            plugin["name"] for plugin in client.get("/api/v1/plugins").json()["plugins"]
+        }
         assert client.post(
             "/api/v1/agent/prompt", json={"id": "text", "prompt": "Hello"},
-        ).status_code == 404
+        ).status_code == 202
+        assert runtime.submitted[-1].prompt == "Hello"
 
 
 def test_starter_worker_uses_declared_primary_agent_name(tmp_path):
@@ -176,12 +172,6 @@ def test_starter_http_uses_authenticated_canonical_queue(tmp_path):
         assert {
             plugin["name"] for plugin in client.get("/api/v1/plugins").json()["plugins"]
         } == {plugin.name for plugin in application.plugins}
-        chat_status = next(
-            plugin for plugin in client.get("/api/v1/plugins").json()["plugins"]
-            if plugin["name"] == "chat"
-        )
-        assert chat_status["running"] is True
-        assert chat_status["binding_available"] is False
         response = client.post("/api/v1/agent/attachments",
                                data={"id": "files-1", "prompt": "Read these notes"},
                                files=[("files", ("notes.txt", b"Important notes", "text/plain"))])

@@ -6,8 +6,8 @@ from types import SimpleNamespace
 import pytest
 
 from the_framework.agent.runtime.protocol import PromptRequest, StatusRequest
-from the_framework.plugins.chat.ingress import ChatIngress
-from the_framework.plugins.chat.server import ChatApi
+from the_framework.server.runtime.ingress import ChatIngress
+from the_framework.server.api.chat import ChatApi
 from the_framework.plugins.realtime.api import RealtimeApi
 
 

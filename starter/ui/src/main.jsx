@@ -35,7 +35,6 @@ function App({ artifactRenderers }) {
   const [error, setError] = useState("");
   const [settings, setSettings] = useState(false);
   const [voiceState, setVoiceState] = useState("idle");
-  const [chatAvailable, setChatAvailable] = useState(null);
   const [voiceAvailable, setVoiceAvailable] = useState(false);
   const [captions, setCaptions] = useState({});
   const voice = useRef(null);
@@ -43,7 +42,6 @@ function App({ artifactRenderers }) {
     const controller = new AbortController();
     api("plugins", { signal: controller.signal })
       .then((result) => {
-        setChatAvailable(pluginRunning(result.plugins, "chat"));
         setVoiceAvailable(pluginRunning(result.plugins, "realtime"));
       })
       .catch((cause) => {
@@ -202,7 +200,7 @@ function App({ artifactRenderers }) {
   }
   async function send(event) {
     event.preventDefault();
-    if (preview || chatAvailable !== true || sending || (!draft.trim() && !files.length)) return;
+    if (preview || sending || (!draft.trim() && !files.length)) return;
     const text = draft;
     setError("");
     if (voiceState === "idle") setBusy(true);
@@ -296,9 +294,7 @@ function App({ artifactRenderers }) {
               </div>
             )}
             <div className="activity" role="status">
-              {chatAvailable === false
-                ? "Text chat is not installed in this application"
-                : (busy ? activity || "Working…" : "Ready when you are")}
+              {busy ? activity || "Working…" : "Ready when you are"}
             </div>
             <form className="composer" onSubmit={send}>
               {!!files.length && (
@@ -327,7 +323,7 @@ function App({ artifactRenderers }) {
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 rows={3}
-                disabled={sending || chatAvailable !== true}
+                disabled={sending}
               />
               <div className="composer-actions">
                 <span>Local · Persistent · Yours</span>
@@ -344,7 +340,7 @@ function App({ artifactRenderers }) {
                 />
                 <button
                   type="button"
-                  disabled={sending || chatAvailable !== true || voiceState !== "idle"}
+                  disabled={sending || voiceState !== "idle"}
                   onClick={() => fileInput.current.click()}
                 >
                   Attach
@@ -393,7 +389,6 @@ function App({ artifactRenderers }) {
                   className="primary"
                   disabled={
                     preview || sending ||
-                    chatAvailable !== true ||
                     (!draft.trim() && !files.length) ||
                     connection !== "Connected"
                   }
