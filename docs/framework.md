@@ -175,9 +175,9 @@ introduced; model metadata is adapted only at the HTTP/OpenAPI boundary.
 
 Installing one `ApplicationRuntime` service through a `ServerExtension` automatically
 connects the plugin host's binding updates and startup snapshot to its worker,
-and registers the agent-facing plugin and installed surface controls. Supply
-`ui_root` in `BuildContext` to bootstrap a surface's initial artifact. There is
-no separate post-build control-registration call.
+and registers the agent-facing plugin and installed surface controls. Surface
+initialization belongs to the server lifespan and also works without an agent
+runtime. There is no separate post-build control-registration call.
 
 A plugin can declare a `plugins.binding_update` contribution for a modality or
 policy barrier; at most one such coordinator may be installed. Its callback can
@@ -975,12 +975,40 @@ surface = ClientSurface(
 )
 ```
 
+Declare one `ClientSurface` per client interface when devices need different
+applications: desktop, mobile and Quest can have separate sources, commands,
+artifacts and routes. Every release operation takes its surface name; the system
+plugin defaults to `main` only for convenience. Updating or rolling back one
+surface leaves the others unchanged. Device selection and client-specific
+capabilities remain application policy; all surfaces may share the same server
+and durable conversation.
+
 The surface service copies sources into an isolated workspace, executes the
 fixed argv without a shell, verifies the artifact, hashes it and creates an
 immutable release. Candidates are served on authenticated preview URLs.
 Publication atomically swaps the persisted active release and notifies clients;
 rollback swaps back without rebuilding. Build success is evidence only: the
 agent remains responsible for inspecting the preview before publication.
+
+The initial startup path uses the same declaration: if no published release is
+available, the server adopts `source / artifact` during its lifespan. An external
+packaged main bundle may be supplied with `BuildContext(ui_root=...)`. This only
+seeds an unpublished surface; it never replaces an existing selected release.
+Missing initial bundles leave the surface at HTTP 503 while the server and
+conversation remain available for repair. If a selected release has disappeared,
+an intact previous release takes precedence over any source bundle.
+
+Active, previous and candidate selections persist together. Restarting preserves
+an unpublished preview and never promotes it. Failed builds preserve all three
+selections. New release directories become visible only after a complete copy;
+incomplete staging directories are neither previews nor published releases.
+
+The base chat UI has no deployment controls. The system plugin exposes
+`system.surfaces`, `system.build_surface`, `system.publish_surface` and
+`system.rollback_surface`; the browser plugin inspects authenticated previews.
+HTTP controls remain available to integrations. Publication and rollback notify
+connected clients to refresh; conversation history comes from the durable worker
+session. A backend restart alone does not navigate the existing browser page.
 `server_routes` explicitly reserves routes beneath a surface mount for an
 application or plugin endpoint, such as a login/bootstrap exchange. Other
 endpoints and WebSockets under the mounted path are rejected at build time.

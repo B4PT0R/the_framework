@@ -1,17 +1,9 @@
 """Agent-facing controls for the application plugin and surface hosts."""
 
-from pathlib import Path
-
-
-def _bind_application_controls(runtime, app, *, ui_root=None):
+def _bind_application_controls(runtime, app):
     """Expose generic plugin and surface hosts to the canonical agent."""
     plugin_host = app.state.application.plugin_host
     surface_service = app.state.application.surface_service
-    if ui_root is not None and surface_service is not None and surface_service.active_path("main") is None:
-        resolved_ui_root = Path(ui_root).expanduser().resolve()
-        if resolved_ui_root.is_dir():
-            surface_service.bootstrap("main", resolved_ui_root)
-
     async def handle_plugins(method, payload, *, call):
         if method == "list":
             return {"plugins": plugin_host.status()}
@@ -21,6 +13,8 @@ def _bind_application_controls(runtime, app, *, ui_root=None):
         raise ValueError(f"unknown plugin operation: {method}")
 
     async def handle_surfaces(method, payload):
+        if method == "list":
+            return surface_service.status()
         name = str(payload.get("name") or "main")
         if method == "build":
             surface = surface_service.surfaces.get(name)

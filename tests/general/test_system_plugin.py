@@ -126,16 +126,18 @@ def test_system_plugin_builds_publishes_and_rolls_back_surfaces():
 
         agent.application.bind(request)
         plugin = agent.add_extension(SystemExtension)
+        inspected = await plugin.surfaces()
         built = await plugin.build_surface()
         published = await plugin.publish_surface(release="release-1")
         rolled_back = await plugin.rollback_surface()
 
-        assert built == published == rolled_back == {"release": "release-1"}
-        assert [call.capability for call in calls] == ["surfaces"] * 3
-        assert [call.method for call in calls] == ["build", "publish", "rollback"]
-        assert calls[0].payload == {"name": "main"}
-        assert calls[1].payload == {"name": "main", "release": "release-1"}
-        assert calls[2].payload == {"name": "main"}
+        assert inspected == built == published == rolled_back == {"release": "release-1"}
+        assert [call.capability for call in calls] == ["surfaces"] * 4
+        assert [call.method for call in calls] == ["list", "build", "publish", "rollback"]
+        assert calls[0].payload == {}
+        assert calls[1].payload == {"name": "main"}
+        assert calls[2].payload == {"name": "main", "release": "release-1"}
+        assert calls[3].payload == {"name": "main"}
         assert agent.end_of_turn_requested is False
 
     asyncio.run(test())

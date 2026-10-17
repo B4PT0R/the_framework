@@ -144,6 +144,7 @@ use `ServerExtension` and `@endpoint`. Keep product policy in application
 instructions and plugins; the canonical worker remains the sole history writer.
 
 The system/browser plugins expose managed UI build, preview, publish and rollback.
+These are agent tools; the base settings UI does not expose deployment controls.
 Edit `ui/`, build a candidate, inspect its authenticated preview in the separate
 browser context, then publish. Publication refreshes the UI; the conversation
 remains on the server. The supervised restart action replaces the server/worker
@@ -157,6 +158,10 @@ require a healthy worker and a descriptor belonging to the new child. Browser
 cookies use a persistent private key; control tokens rotate with the server.
 Stopping the server child leaves the page intact; stopping the desktop launcher
 closes its child, RPC connections and Chromium contexts.
+
+Each surface adopts its declared compiled artifact on first startup. Published
+releases take precedence over source bundles, and unpublished previews survive
+server restarts. A missing initial bundle leaves the server available for repair.
 
 ## Verification and boundaries
 

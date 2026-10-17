@@ -947,10 +947,12 @@ def build_application(
     )
     runtime.plugin_host = plugin_host
     if agent_runtime is not None:
-        _bind_application_controls(agent_runtime, app, ui_root=build_context.get("ui_root"))
+        _bind_application_controls(agent_runtime, app)
 
     @asynccontextmanager
     async def lifespan(_app):
+        if runtime.surface_service is not None:
+            await runtime.surface_service.initialize(ui_root=build_context.get("ui_root"))
         await graph.start()
         try:
             await plugin_host.start()

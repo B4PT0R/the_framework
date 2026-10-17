@@ -4,7 +4,7 @@ from pathlib import Path
 
 from the_framework import BuildContext
 
-from .application import ROOT, application
+from .application import application
 from .security import LocalSecurity
 
 REFERENCE = "starter.application:application"
@@ -15,7 +15,7 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None, browser_
     return application.build_conversation(
         REFERENCE,
         BuildContext(
-            data_root=data_root, ui_root=ROOT / "ui/dist", restart=restart,
+            data_root=data_root, restart=restart,
             plugins={"system": {"state_path": Path(data_root) / "system.json"}},
         ),
         security=security, handshake=security.handshake,

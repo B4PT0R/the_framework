@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import os
+import re
 import signal
 import shutil
 import tempfile
@@ -93,24 +94,31 @@ class SurfaceService:
         self.notify = notify
         self.progress = progress
         self.state = self.store.load()
-        self.candidates = {}
         self.processes = {}
         self.building = set()
         self._validate_state()
+        self.candidates = {name: value["candidate"] for name, value in self.state.items() if value.get("candidate")}
 
     def _validate_state(self):
         cleaned = {}
         for name, value in self.state.items():
             if name not in self.surfaces or not isinstance(value, dict):
                 continue
-            active = value.get("active")
-            previous = value.get("previous")
-            if active and not self.release_path(name, active).is_dir():
-                active = None
-            if previous and not self.release_path(name, previous).is_dir():
-                previous = None
-            cleaned[name] = {"active": active, "previous": previous}
+            cleaned[name] = {
+                key: value.get(key) if self._release_exists(name, value.get(key)) else None
+                for key in ("active", "previous", "candidate")
+            }
+            if cleaned[name]["active"] is None and cleaned[name]["previous"] is not None:
+                cleaned[name]["active"] = cleaned[name]["previous"]
+                cleaned[name]["previous"] = None
         self.state = cleaned
+
+    def _release_exists(self, name, release):
+        return (
+            isinstance(release, str)
+            and re.fullmatch(r"[0-9a-f]{64}", release) is not None
+            and (self.release_path(name, release) / "index.html").is_file()
+        )
 
     def release_path(self, surface, release):
         return self.releases_root / surface / release
@@ -123,10 +131,50 @@ class SurfaceService:
         release = release or self.candidates.get(surface)
         if release is None:
             raise LookupError(f"surface has no preview candidate: {surface}")
-        path = self.release_path(surface, release)
-        if not path.is_dir():
+        if not self._release_exists(surface, release):
             raise LookupError(f"surface release does not exist: {surface}/{release}")
-        return path
+        return self.release_path(surface, release)
+
+    def status(self):
+        """One release view shared by agent controls and HTTP clients."""
+        return {"surfaces": [{
+            "name": name,
+            "active": self.state.get(name, {}).get("active"),
+            "previous": self.state.get(name, {}).get("previous"),
+            "candidate": self.candidates.get(name),
+            "building": name in self.building,
+            "preview_route": surface.preview_route,
+            "routes": list(surface.routes),
+        } for name, surface in self.surfaces.items()]}
+
+    async def initialize(self, *, ui_root=None):
+        """Adopt compiled artifacts only where no published release is available.
+
+        Run before accepting requests. The declared source/artifact is the default;
+        ui_root can supply an external main bundle (for packaged applications).
+        Missing initial artifacts leave the surface unpublished, not the chat down.
+        """
+        for name, surface in self.surfaces.items():
+            if self.active_path(name) is not None:
+                continue
+            artifact = Path(ui_root) if name == "main" and ui_root is not None else surface.source / surface.artifact
+            if (artifact / "index.html").is_file():
+                await asyncio.to_thread(self.bootstrap, name, artifact)
+
+    def _store_release(self, name, artifact):
+        """Copy and hash a complete snapshot before exposing an immutable release."""
+        parent = self.releases_root / name
+        parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix=".incoming-", dir=parent) as temporary:
+            snapshot = Path(temporary) / "content"
+            shutil.copytree(artifact, snapshot)
+            if not (snapshot / "index.html").is_file():
+                raise RuntimeError("surface artifact has no index.html")
+            release_id = self._hash_tree(snapshot)
+            release = self.release_path(name, release_id)
+            if not release.exists():
+                snapshot.rename(release)
+        return release_id
 
     async def _progress(self, payload):
         if self.progress is None:
@@ -179,11 +227,12 @@ class SurfaceService:
         if name in self.building:
             raise RuntimeError(f"surface build already running: {name}")
         self.building.add(name)
-        self.work_root.mkdir(parents=True, exist_ok=True)
-        workspace = Path(tempfile.mkdtemp(prefix=f"{name}-", dir=self.work_root))
-        source = workspace / "source"
-        await self._progress({"surface": name, "phase": "copying"})
+        workspace = None
         try:
+            self.work_root.mkdir(parents=True, exist_ok=True)
+            workspace = Path(tempfile.mkdtemp(prefix=f"{name}-", dir=self.work_root))
+            source = workspace / "source"
+            await self._progress({"surface": name, "phase": "copying"})
             await asyncio.to_thread(self._copy_source, surface.source, source)
             artifact = source / surface.artifact
             argv = tuple(
@@ -213,11 +262,13 @@ class SurfaceService:
                 )
             if not (artifact / "index.html").is_file():
                 raise RuntimeError("surface artifact has no index.html")
-            release_id = await asyncio.to_thread(self._hash_tree, artifact)
-            release = self.release_path(name, release_id)
-            if not release.exists():
-                release.parent.mkdir(parents=True, exist_ok=True)
-                await asyncio.to_thread(shutil.copytree, artifact, release)
+            release_id = await asyncio.to_thread(self._store_release, name, artifact)
+            next_state = {
+                **self.state,
+                name: {**self.state.get(name, {}), "candidate": release_id},
+            }
+            self.store.save(next_state)
+            self.state = next_state
             self.candidates[name] = release_id
             await self._progress({
                 "surface": name,
@@ -238,7 +289,8 @@ class SurfaceService:
         finally:
             self.processes.pop(name, None)
             self.building.discard(name)
-            await asyncio.to_thread(shutil.rmtree, workspace, True)
+            if workspace is not None:
+                await asyncio.to_thread(shutil.rmtree, workspace, True)
 
     @staticmethod
     async def _terminate(process):
@@ -267,14 +319,10 @@ class SurfaceService:
         artifact = Path(artifact).expanduser().resolve()
         if not (artifact / "index.html").is_file():
             raise RuntimeError("surface artifact has no index.html")
-        release_id = self._hash_tree(artifact)
-        release = self.release_path(name, release_id)
-        if not release.exists():
-            release.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(artifact, release)
+        release_id = self._store_release(name, artifact)
         next_state = {
             **self.state,
-            name: {"active": release_id, "previous": None},
+            name: {**self.state.get(name, {}), "active": release_id, "previous": None},
         }
         self.store.save(next_state)
         self.state = next_state
@@ -297,8 +345,7 @@ class SurfaceService:
     async def publish(self, name, release=None):
         if name not in self.surfaces:
             raise ValueError(f"unknown client surface: {name}")
-        release = release or self.candidates.get(name)
-        self.preview_path(name, release)
+        release = self.preview_path(name, release).name
         current = self.state.get(name, {})
         previous = current.get("active")
         if release == previous:
@@ -307,7 +354,7 @@ class SurfaceService:
             )
         next_state = {
             **self.state,
-            name: {"active": release, "previous": previous},
+            name: {**current, "active": release, "previous": previous},
         }
         self.store.save(next_state)
         self.state = next_state
@@ -327,7 +374,7 @@ class SurfaceService:
         active = current.get("active")
         next_state = {
             **self.state,
-            name: {"active": previous, "previous": active},
+            name: {**current, "active": previous, "previous": active},
         }
         self.store.save(next_state)
         self.state = next_state
@@ -346,7 +393,7 @@ class SurfaceService:
             self.candidates.get(name)
         }
         releases = sorted(
-            (path for path in (self.releases_root / name).glob("*") if path.is_dir()),
+            (path for path in (self.releases_root / name).glob("*") if path.is_dir() and not path.name.startswith(".")),
             key=lambda path: path.stat().st_mtime,
             reverse=True,
         )

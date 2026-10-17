@@ -20,16 +20,7 @@ class SurfaceApi:
     )
     def status(self):
         """Return active, previous and candidate releases."""
-        return {
-            "surfaces": [{
-                "name": name,
-                **self.service.state.get(name, {}),
-                "candidate": self.service.candidates.get(name),
-                "building": name in self.service.building,
-                "preview_route": surface.preview_route,
-                "routes": list(surface.routes),
-            } for name, surface in self.service.surfaces.items()]
-        }
+        return self.service.status()
 
     @endpoint(
         "post", "/api/v1/surfaces/{name}/build",

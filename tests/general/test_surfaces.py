@@ -326,3 +326,177 @@ def test_surface_server_route_must_belong_to_surface(tmp_path):
             name="main", source=source, build=("true",), artifact="build",
             routes=("/ui",), server_routes=("/api/v1/unrelated",),
         )
+
+
+def test_initial_artifacts_are_adopted_without_an_agent_runtime_and_never_replace_publication(tmp_path):
+    from fastapi.testclient import TestClient
+
+    source = source_tree(tmp_path)
+    compiled = source / "build"
+    compiled.mkdir()
+    (compiled / "index.html").write_text("Initial bundle")
+    specification = declaration(source)
+    context = BuildContext(surface_root=tmp_path / "runtime")
+    app = specification.build(context)
+    with TestClient(app) as client:
+        assert client.get("/ui/").text == "Initial bundle"
+        selected = app.state.application.surface_service.active_path("main").name
+    (compiled / "index.html").write_text("Unreviewed replacement")
+    restored = specification.build(BuildContext(surface_root=tmp_path / "runtime"))
+    with TestClient(restored) as client:
+        assert client.get("/ui/").text == "Initial bundle"
+        assert restored.state.application.surface_service.active_path("main").name == selected
+
+
+def test_missing_initial_artifact_leaves_server_available_and_can_be_repaired(tmp_path):
+    from fastapi.testclient import TestClient
+
+    app = declaration(source_tree(tmp_path)).build(BuildContext(surface_root=tmp_path / "runtime"))
+    with TestClient(app) as client:
+        assert client.get("/openapi.json").status_code == 200
+        assert client.get("/ui/").status_code == 503
+        headers = {"Authorization": "Bearer secret"}
+        assert client.post("/api/v1/surfaces/main/build", headers=headers).status_code == 200
+        assert client.post("/api/v1/surfaces/main/publish", headers=headers).status_code == 200
+        assert client.get("/ui/").text == "<main>first</main>"
+
+
+def test_preview_survives_restart_and_failure_without_becoming_published(tmp_path):
+    async def scenario():
+        source = source_tree(tmp_path)
+        specification = declaration(source)
+        service = specification.build(BuildContext(surface_root=tmp_path / "runtime")).state.application.surface_service
+        first = await service.build("main")
+        await service.publish("main")
+        (source / "content.txt").write_text("Reviewed later")
+        candidate = await service.build("main")
+        (source / "behavior.txt").write_text("fail")
+        with pytest.raises(RuntimeError, match="build failed"):
+            await service.build("main")
+        restored = specification.build(BuildContext(surface_root=tmp_path / "runtime")).state.application.surface_service
+        assert restored.status()["surfaces"][0]["candidate"] == candidate.release
+        assert restored.active_path("main").name == first.release
+        assert (restored.preview_path("main") / "index.html").read_text() == "<main>Reviewed later</main>"
+        await restored.publish("main")
+        assert restored.active_path("main").name == candidate.release
+        await restored.rollback("main")
+        assert restored.active_path("main").name == first.release
+
+    asyncio.run(scenario())
+
+
+def test_interrupted_release_copy_is_not_visible_and_build_can_be_retried(tmp_path, monkeypatch):
+    import shutil
+    import the_framework.server.clients.surfaces as surfaces
+
+    async def scenario():
+        source = source_tree(tmp_path)
+        service = declaration(source).build(BuildContext(surface_root=tmp_path / "runtime")).state.application.surface_service
+        copy = shutil.copytree
+
+        def interrupted(source, target, *args, **kwargs):
+            if str(target).endswith("/content"):
+                target.mkdir()
+                (target / "index.html").write_text("Incomplete")
+                raise OSError("copy interrupted")
+            return copy(source, target, *args, **kwargs)
+
+        with monkeypatch.context() as patch:
+            patch.setattr(surfaces.shutil, "copytree", interrupted)
+            with pytest.raises(OSError, match="copy interrupted"):
+                await service.build("main")
+        assert service.active_path("main") is None
+        assert service.candidates == {}
+        assert list((service.releases_root / "main").iterdir()) == []
+        assert not service.building
+        await service.build("main")
+        await service.publish("main")
+        assert (service.active_path("main") / "index.html").read_text() == "<main>first</main>"
+
+    asyncio.run(scenario())
+
+
+def test_failed_build_preparation_releases_the_build_slot(tmp_path):
+    async def scenario():
+        service = declaration(source_tree(tmp_path)).build(BuildContext(surface_root=tmp_path / "runtime")).state.application.surface_service
+
+        def fail(_payload):
+            raise RuntimeError("progress unavailable")
+
+        service.progress = fail
+        with pytest.raises(RuntimeError, match="progress unavailable"):
+            await service.build("main")
+        assert not service.building
+        service.progress = None
+        await service.build("main")
+
+    asyncio.run(scenario())
+
+
+def test_missing_active_release_recovers_previous_before_any_source_bundle(tmp_path):
+    import shutil
+
+    async def scenario():
+        source = source_tree(tmp_path)
+        specification = declaration(source)
+        service = specification.build(BuildContext(surface_root=tmp_path / "runtime")).state.application.surface_service
+        first = await service.build("main")
+        await service.publish("main")
+        (source / "content.txt").write_text("second")
+        await service.build("main")
+        await service.publish("main")
+        shutil.rmtree(service.active_path("main"))
+        compiled = source / "build"
+        compiled.mkdir()
+        (compiled / "index.html").write_text("Unreviewed bundle")
+        restored = specification.build(BuildContext(surface_root=tmp_path / "runtime")).state.application.surface_service
+        await restored.initialize()
+        assert restored.active_path("main").name == first.release
+        assert restored.state["main"]["previous"] is None
+
+    asyncio.run(scenario())
+
+
+def test_device_surfaces_have_independent_initial_bundles_previews_and_rollbacks(tmp_path):
+    from fastapi.testclient import TestClient
+
+    surfaces = []
+    for name in ("desktop", "mobile", "quest"):
+        root = tmp_path / name
+        root.mkdir()
+        source = source_tree(root)
+        (source / "build").mkdir()
+        (source / "build/index.html").write_text(f"Initial {name}")
+        (source / "content.txt").write_text(f"Edited {name}")
+        surfaces.append(ClientSurface(
+            name=name, source=source, build=(sys.executable, "builder.py", "{artifact}"),
+            artifact="build", routes=(f"/{name}",),
+        ))
+    specification = ApplicationSpec(
+        name="Multiple devices", version="1",
+        primary_agent=AgentSpec(name="primary", session_mode="durable"),
+        surfaces=surfaces, security=Security(),
+    )
+    app = specification.build(BuildContext(surface_root=tmp_path / "runtime"))
+    headers = {"Authorization": "Bearer secret"}
+    with TestClient(app) as client:
+        for name in ("desktop", "mobile", "quest"):
+            assert client.get(f"/{name}/").text == f"Initial {name}"
+        before = client.get("/api/v1/surfaces", headers=headers).json()["surfaces"]
+        built = client.post("/api/v1/surfaces/mobile/build", headers=headers).json()
+        assert client.get(built["preview"]).status_code == 401
+        assert client.get(built["preview"], headers=headers).text == "<main>Edited mobile</main>"
+        assert client.get("/mobile/").text == "Initial mobile"
+        assert client.post("/api/v1/surfaces/mobile/publish", headers=headers).status_code == 200
+        assert client.get("/mobile/").text == "<main>Edited mobile</main>"
+        assert client.post("/api/v1/surfaces/mobile/rollback", headers=headers).status_code == 200
+        assert client.get("/mobile/").text == "Initial mobile"
+        after = client.get("/api/v1/surfaces", headers=headers).json()["surfaces"]
+        for name in ("desktop", "quest"):
+            assert next(item for item in after if item["name"] == name) == next(item for item in before if item["name"] == name)
+            assert client.get(f"/{name}/").text == f"Initial {name}"
+    restored = specification.build(BuildContext(surface_root=tmp_path / "runtime"))
+    with TestClient(restored) as client:
+        assert client.get("/mobile/").text == "Initial mobile"
+        assert client.get("/quest/").text == "Initial quest"
+        assert client.get("/desktop/").text == "Initial desktop"

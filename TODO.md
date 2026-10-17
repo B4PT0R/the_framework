@@ -59,6 +59,10 @@ conceptuelle totale. Ces notes ne constituent pas des demandes de refonte imméd
   une autre politique et un middleware HTTP. Définir d'abord leurs invariants
   communs ; ne pas ajouter un « security manager » de plus. Tester cookie,
   bearer, CSRF, DNS rebinding, aperçu de surface et échanges WebSocket.
+  Constat concret du 18 octobre : le contexte web du navigateur Harness n'a pas
+  le cookie du contexte UI ; son aperçu reçoit un 401. Un contexte distinct
+  authentifié fonctionne avec le desktop connecté. Prévoir un accès d'aperçu
+  agentique authentifié sans navigation ni fermeture de la conversation active.
 
 - [x] **CLI de bootstrap complète — 18 octobre.** `bootstrap` crée et prépare,
   `prepare` reprend une installation interrompue, `run` prépare si besoin puis
@@ -85,18 +89,25 @@ conceptuelle totale. Ces notes ne constituent pas des demandes de refonte imméd
   Chromium, abonnements aux signaux bornés et surveillance parent sans thread.
   Readiness du starter liée au PID attendu et à un worker sain. Tests de reprise
   avec vrais processus/Chromium et carte des propriétaires dans docs/framework.md.
-- [ ] **Surface éditable — contrat de livraison à clarifier.**
-  `server/composition/application.py`, `server/clients/surfaces.py`,
-  `server/composition/controls.py`.
-  Distinguer build initial, artefact de secours, aperçu authentifié, version publiée
-  et rafraîchissement. Montrer dans les exemples une seule voie canonique.
-  Validation : premier démarrage, build échoué, rollback, restart avec UI connectée.
+- [x] **Surfaces éditables — livraison clarifiée le 18 octobre.** Initialisation
+  dans le lifespan du service, indépendante du runtime agent ; artefact initial
+  déduit de chaque déclaration, avec bundle main externe facultatif. Version
+  publiée prioritaire, repli vers la précédente si ses fichiers ont disparu,
+  copies complètes avant exposition et candidat persisté sans publication au
+  restart. `system.surfaces` partage la vue d'état HTTP ; build/publication/rollback
+  restent des outils agentiques, sans contrôles dans l'UI de base. Scénario réel
+  starter avec restart avant publication ; initialisation et versions indépendantes
+  desktop/mobile/Quest couvertes par test. Clients natifs toujours à développer.
 - [ ] **Clients distants — extraction éventuelle, pas automatique.**
   `server/clients/remote.py`, `server/clients/tailscale.py` et le plugin distant du
   produit. Le transport générique existe déjà ; la composition produit reste
   volumineuse. Faire l'inventaire des policies, projections et contributions avant
   de décider s'il manque réellement une feature déclarative côté bibliothèque.
   Ne pas déplacer en bloc les protocoles ou choix de desktop/VR du produit.
+  Prendre en compte plusieurs surfaces clientes et types de device. Le bridge
+  local `/api/v1/application` reste exclusif (seconde socket refusée en 1013),
+  contrairement au flux `/api/v1/events`. Distinguer cette autorité locale des
+  clients distants multiples avant d'adapter le routage des capacités.
 
 ## Documentation et validations ultérieures
 

@@ -32,7 +32,7 @@ def test_starter_preserves_browser_and_conversation_across_server_restart(tmp_pa
     session.save()
     source = tmp_path / "ui-source"
     original_ui = Path(__file__).resolve().parents[2] / "starter/ui"
-    shutil.copytree(original_ui, source, ignore=shutil.ignore_patterns("node_modules", "dist"))
+    shutil.copytree(original_ui, source, ignore=shutil.ignore_patterns("node_modules"))
     (source / "node_modules").symlink_to(original_ui / "node_modules", target_is_directory=True)
     monkeypatch.setenv("STARTER_TEST_UI", str(source))
     browsers = []
@@ -73,18 +73,21 @@ def test_starter_preserves_browser_and_conversation_across_server_restart(tmp_pa
                 await page.wait_for_function("document.querySelector('.artifact img')?.naturalWidth === 240")
                 await page.screenshot(path=str(tmp_path / "history.png"))
                 await page.evaluate("window.recoveryMarker = 'same page'")
-                result = await page.request.post(page.url.split('/ui/')[0] + '/test/restart')
-                assert result.ok, await result.text()
-                old = (await result.json())["pid"]
                 origin = page.url.split('/ui/')[0]
-                while True:
-                    try:
-                        response = await page.request.get(origin + '/test/process', timeout=1000)
-                        if response.ok and (await response.json())["pid"] != old:
-                            break
-                    except Exception:
-                        pass
-                    await asyncio.sleep(0.1)
+
+                async def restart_server():
+                    result = await page.request.post(page.url.split('/ui/')[0] + '/test/restart')
+                    assert result.ok, await result.text()
+                    old = (await result.json())["pid"]
+                    while True:
+                        try:
+                            response = await page.request.get(origin + '/test/process', timeout=1000)
+                            if response.ok and (await response.json())["pid"] != old:
+                                break
+                        except Exception:
+                            pass
+                        await asyncio.sleep(0.1)
+                await restart_server()
                 await page.get_by_text("Connected", exact=True).wait_for()
                 await page.get_by_text("Ready when you are", exact=True).wait_for()
                 assert await page.evaluate("window.recoveryMarker") == "same page"
@@ -128,6 +131,11 @@ def test_starter_preserves_browser_and_conversation_across_server_restart(tmp_pa
                 assert built.ok, await built.text()
                 candidate = await built.json()
                 release = candidate["release"]
+                await restart_server()
+                status = await page.request.get(origin + '/api/v1/surfaces')
+                state = (await status.json())["surfaces"][0]
+                assert state["candidate"] == release
+                assert state["active"] != release
                 preview = await browsers[0].open_web(origin + candidate["preview"])
                 await preview.get_by_text("Preview Agent", exact=True).wait_for()
                 assert await page.get_by_text("Pandora", exact=True).count() == 1

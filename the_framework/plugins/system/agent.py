@@ -78,6 +78,11 @@ class SystemExtension(AgentExtension):
         }
 
     @tool
+    async def surfaces(self):
+        """Inspect published, previous and preview releases, including running builds."""
+        return await self.agent.application.call("surfaces", "list", {}, timeout_ms=10_000)
+
+    @tool
     async def build_surface(self, name: str = "main"):
         """Build an isolated immutable candidate for one client surface."""
         result = await self.agent.application.call(

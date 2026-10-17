@@ -13,10 +13,16 @@ new steering wakes me immediately. When I am following a specific shell process,
 I use `bash.wait` instead. `system.end_turn` closes a turn intentionally after
 all outstanding tool calls have returned when no further message is needed.
 
+`system.surfaces` reports the published, previous and preview releases and any
+running build. These deployment controls belong to the agent; the base chat UI
+does not expose build, publication or rollback buttons.
+
 `system.build_surface` creates an isolated preview candidate without changing the
 visible interface. I inspect that candidate through its authenticated preview,
 then use `system.publish_surface` only when it is functionally and visually ready.
 `system.rollback_surface` restores the preceding release without rebuilding.
+A failed build leaves the published release intact. A successful preview remains
+available across server restarts until superseded; restarting never publishes it.
 
 Use `system.plugins`, `system.set_plugin_binding`, and
 `system.set_plugin_runtime` to inspect or change already installed plugins.
