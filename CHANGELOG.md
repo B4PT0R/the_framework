@@ -6,6 +6,13 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Make `the-framework bootstrap` prepare an independent app environment, Chromium
+  and the editable UI by default, with `--run` for immediate launch and
+  `--no-prepare` for source only. Add resumable `prepare` and `run` commands;
+  checkpoint npm stages and rebuild when sources change. Diagnose missing uv/
+  Node/npm before creation. Generated apps pin the framework and explicitly link
+  its source checkout when bootstrapped during development.
+
 - Unify client-visible files under `data_root/bucket/`: chat uploads and artifact
   publications share this tree, with authenticated, range-capable
   `/api/v1/bucket/{path:path}` delivery for any file type and nested paths. Remove

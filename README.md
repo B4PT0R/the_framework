@@ -28,9 +28,9 @@ python3 -m venv .venv
 python -m pip install b4pt0r-the-framework
 ```
 
-The Python wheel includes the framework and the editable starter template, but
-not a prebuilt browser UI or Playwright's Chromium binary. Those are prepared
-separately when you run the starter.
+The Python wheel includes the framework and editable starter template. The
+bootstrap CLI prepares its Python environment, browser UI and Chromium runtime;
+these generated dependencies are not bundled in the wheel.
 
 ## What an application is made of
 
@@ -159,15 +159,31 @@ with `uv run`:
 uv run the-framework bootstrap --code-dir /path/to/my-agent-code --data-dir /path/to/my-agent-data
 ```
 
-Both directories must be empty or absent, distinct and non-overlapping. The
-command copies the starter source and records the private data location; it
-does not install npm dependencies, build the UI or launch the app. From the new
-code directory, run `npm --prefix starter/ui ci`,
-`npm --prefix starter/ui run build`, then `python -m starter` in an environment
-with `b4pt0r-the-framework` installed. Change `starter/application.py` and
-`starter/instructions.md` first; `starter/ui/` contains the editable interface.
-Keep the data directory private: it holds conversation history, configuration,
-uploads, memory and browser profiles.
+Both directories must be empty or absent, distinct and non-overlapping. Install
+`uv` and Node.js/npm first; missing prerequisites are reported before creation.
+The command copies editable source, creates a `pyproject.toml` and a private
+`.venv`, installs Chromium and UI dependencies, then builds the interface.
+It pins the installed framework version; from a development checkout it links
+that checkout explicitly in the generated manifest.
+
+Start it with:
+
+```sh
+the-framework run --code-dir /path/to/my-agent-code
+```
+
+Add `--run` to `bootstrap` to create, prepare and start in one command. Use
+`bootstrap --no-prepare` for source only, or `the-framework prepare --code-dir ...`
+to resume a failed preparation without overwriting the app. `run` prepares first,
+reusing successful stages and rebuilding changed UI sources. It accepts `--port`,
+`--headless` and `--no-browser`. Commands also work as `python -m the_framework`;
+inside the generated project, `uv run the-framework run` uses its own environment.
+
+Change `starter/application.py` and `starter/instructions.md` first;
+`starter/ui/` contains the editable interface. Keep the data directory private:
+it holds conversation history, configuration, the file bucket, memory and browser
+profiles. Backend account sign-in and optional capabilities follow the starter
+guide; preparation does not make an inference request or install system packages.
 
 ## Build a small application yourself
 

@@ -73,7 +73,7 @@ def test_wheel_contains_standalone_framework_and_prompt_resources(tmp_path, monk
     code = tmp_path / "my-agent"
     data = tmp_path / "my-agent-data"
     subprocess.run(
-        [sys.executable, "-m", "the_framework", "bootstrap", "--code-dir", str(code), "--data-dir", str(data)],
+        [sys.executable, "-m", "the_framework", "bootstrap", "--no-prepare", "--code-dir", str(code), "--data-dir", str(data)],
         check=True, capture_output=True, text=True, timeout=30,
     )
     assert (code / "starter/ui/src/realtime-audio.js").is_file()

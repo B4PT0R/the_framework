@@ -60,6 +60,14 @@ conceptuelle totale. Ces notes ne constituent pas des demandes de refonte imméd
   communs ; ne pas ajouter un « security manager » de plus. Tester cookie,
   bearer, CSRF, DNS rebinding, aperçu de surface et échanges WebSocket.
 
+- [x] **CLI de bootstrap complète — 18 octobre.** `bootstrap` crée et prépare,
+  `prepare` reprend une installation interrompue, `run` prépare si besoin puis
+  démarre. Projet Python/venv propre à l'application, Chromium, npm et build ;
+  caches par étapes avec reconstruction après édition de l'UI. Copie seule via
+  `--no-prepare`, lancement immédiat via `--run`. Validation : 621 tests Framework
+  et démarrage réel d'une application hors dépôt, dans un chemin avec espaces,
+  avec Python isolé, Chromium connecté et réutilisation du build au second lancement.
+
 ## Priorité : assemblage public et cycle de vie
 
 - [x] **Point d'assemblage conversationnel unique — livré le 17 octobre.**

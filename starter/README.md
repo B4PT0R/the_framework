@@ -6,20 +6,31 @@ window. This is application source to make your own, not a mandatory framework U
 
 ## Create your own copy
 
-From an environment with `b4pt0r-the-framework` installed, run `the-framework bootstrap`
-(or `python -m the_framework bootstrap`). Enter an empty directory for editable
-application code and a different empty directory for private application data.
-The CLI copies this complete starter, records the data location in
-`starter/instance.json`, and never overwrites an existing nonempty directory.
-You can also pass `--code-dir` and `--data-dir` non-interactively. Then, from the
-new code directory:
+From an environment with `b4pt0r-the-framework` installed, plus `uv` and
+Node.js/npm:
 
 ```sh
-npm --prefix starter/ui ci
-npm --prefix starter/ui run build
-python -m playwright install chromium
-python -m starter
+the-framework bootstrap --code-dir /path/to/app --data-dir /path/to/private-data --run
 ```
+
+Or omit the directory flags to enter them interactively. Both directories must
+be empty/absent and separate. The CLI copies the starter, writes a project
+manifest, creates the app's `.venv`, prepares Chromium, installs npm dependencies,
+builds the interface and starts it. Source stays editable and a nonempty project
+is never overwritten. Omit `--run` to prepare without launching.
+
+To launch again, or resume setup after correcting a missing dependency:
+
+```sh
+the-framework run --code-dir /path/to/app
+the-framework prepare --code-dir /path/to/app
+```
+
+`run` prepares first, reuses successful npm stages and rebuilds edited UI sources.
+It also accepts `--headless`, `--no-browser` and `--port`. Inside the generated
+project you can use `uv run the-framework run`. `bootstrap --no-prepare` copies
+source without installing dependencies. System browser libraries and account
+sign-in remain explicit prerequisites; no inference is performed by preparation.
 
 The launcher's `--data-dir` option can override the generated data location.
 Keep `starter/instance.json` private if the path itself is sensitive. The UI
