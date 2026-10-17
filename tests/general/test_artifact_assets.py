@@ -6,7 +6,7 @@ from PIL import Image, UnidentifiedImageError
 
 from starter.server import create_app
 from the_framework.plugins.artifacts.server import ArtifactAssets
-from tests.application.test_starter import FakeRuntime
+from tests.fixtures.runtime import FakeRuntime
 
 
 def test_artifact_asset_survives_source_deletion_and_service_restart(tmp_path):

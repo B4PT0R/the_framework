@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test src/*.test.js",
+    "test": "node --test",
     "build": "vite build",
     "dev": "vite"
   },

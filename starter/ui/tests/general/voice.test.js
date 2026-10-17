@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { voiceSession } from "./voice.js";
+import { voiceSession } from "../../src/voice.js";
 
 test("start, ready and cleanup target the same unique call attempt", async () => {
   const requests = [];

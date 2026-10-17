@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { pluginRunning } from "./plugins.js";
+import { pluginRunning } from "../../src/plugins.js";
 
 test("optional interface controls follow installed plugin runtimes", () => {
   assert.equal(pluginRunning([], "realtime"), false);

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { RemoteRealtimeTranscriptAssembler } from "./realtime-transcript.js";
+import { RemoteRealtimeTranscriptAssembler } from "../../src/realtime-transcript.js";
 
 test("live deltas remain captions and final turn has canonical correlation", () => {
   const assembler = new RemoteRealtimeTranscriptAssembler();

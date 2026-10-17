@@ -57,10 +57,14 @@ Add focused tests for the behavior being changed. Then run the framework suite:
 
 ```sh
 uv sync --extra dev
-uv run pytest -q tests/application tests/agentic
+uv run pytest -q tests/general tests/agentic
 ```
 
-`tests/application/` covers observable contracts and includes wheel-only
-checks. `tests/agentic/` covers internals that may evolve. For changes to the
+`tests/general/` protects deliberately durable behavior and API/application
+contracts, including wheel-only checks. `tests/agentic/` provides empirical
+feedback on evolving implementation choices; review and remove obsolete or
+redundant checks periodically. Classify by the guarantee and intended lifetime,
+not by test technology or authorship. Promote useful agentic tests when their
+contract is intentionally made durable. See [tests/README.md](tests/README.md). For changes to the
 starter UI, also run its npm tests and build as described in
 [starter/README.md](starter/README.md).

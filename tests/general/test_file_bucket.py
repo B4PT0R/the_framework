@@ -7,7 +7,7 @@ from starter.server import create_app
 from the_framework.server.api.bucket import FileBucket
 from the_framework.server.api.endpoints import HttpError
 from the_framework.plugins.artifacts.server import ArtifactAssets
-from tests.application.test_starter import FakeRuntime
+from tests.fixtures.runtime import FakeRuntime
 
 
 def test_uploads_and_published_files_share_one_authenticated_bucket(tmp_path):

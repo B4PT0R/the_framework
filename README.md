@@ -283,7 +283,7 @@ without requiring you to adopt its UI design.
 
 ```sh
 uv sync --extra dev
-uv run pytest -q tests/application tests/agentic
+uv run pytest -q tests/general tests/agentic
 uv build
 ```
 

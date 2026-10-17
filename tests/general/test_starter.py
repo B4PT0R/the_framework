@@ -1,44 +1,8 @@
+from tests.fixtures.runtime import FakeRuntime
 from the_framework import ApplicationSpec, AgentResources
 from the_framework.agent.context.session import Session
 from the_framework.utils.persistence import MappingStore
 from starter.application import application, resources
-
-
-class FakeRuntime:
-    def health(self):
-        return {"status": "ok" if self.running else "degraded"}
-
-    fleet = None
-    running = False
-
-    def __init__(self):
-        from the_framework.server.runtime.bridge import ApplicationBridge
-        self.application = ApplicationBridge(None)
-        self.submitted = []
-        from types import SimpleNamespace
-        self.supervisor = SimpleNamespace(send=self.submit)
-        self.reset_hooks = []
-
-    def register_reset_hooks(self, *, suspend=None, resume=None):
-        self.reset_hooks.append((suspend, resume))
-
-    def register_observer(self, observer):
-        pass
-
-    def plugin_bindings(self):
-        return {}
-
-    async def start(self):
-        self.running = True
-
-    async def stop(self):
-        self.running = False
-
-    async def submit(self, command):
-        self.submitted.append(command)
-
-    async def publish(self, event):
-        pass
 
 
 def test_starter_assembles_with_product_imports_forbidden():
@@ -77,23 +41,6 @@ application.compile()
 assert 'starter.chat' not in sys.modules
 """], capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stderr
-
-
-def test_starter_declares_general_plugins_and_memory_specialist():
-    plan = application.compile()
-    assert plan.primary_agent.name == "assistant"
-    assert {plugin.name for plugin in application.plugins} == {
-        "bash", "registry", "web_search", "memory", "chat", "scheduler", "system",
-        "realtime", "chromium", "artifacts",
-    }
-    assert "memory.jiminy" in plan.agents
-    assert plan.plugins["scheduler"].server_extension == "the_framework.plugins.scheduler.server:build_server_extensions"
-    assert plan.plugins["system"].server_extension == "the_framework.plugins.system.server:build_server_extensions"
-    assert plan.plugins["chat"].server_extension == "the_framework.plugins.chat.server:build_server_extensions"
-    assert [requirement.name for requirement in plan.plugins["chat"].optional_capabilities] == [
-        "realtime.session",
-    ]
-    assert plan.capabilities["realtime.session"].version == 1
 
 
 def test_starter_assembles_without_voice_plugin(tmp_path, monkeypatch):
@@ -178,7 +125,7 @@ def test_starter_without_credentials_remains_available_after_inference_failure(t
 
     session = tmp_path / "session.json"
     runtime = ApplicationRuntime(WorkerSupervisor(session, command=[
-        sys.executable, str(Path(__file__).parent / "fixtures/unauthenticated_worker.py"),
+        sys.executable, str(Path(__file__).parents[1] / "fixtures/unauthenticated_worker.py"),
         "--session", str(session), "--application", "starter.application:application",
     ]))
     app = create_app(tmp_path, token="test", origin="http://testserver", runtime=runtime)

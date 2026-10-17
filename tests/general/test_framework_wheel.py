@@ -9,9 +9,7 @@ import zipfile
 
 import pytest
 
-from test_framework_independence import (
-    test_framework_and_general_plugins_do_not_require_product_modules as check_independence,
-)
+from tests.fixtures.independence import check_independence
 
 
 def test_wheel_contains_standalone_framework_and_prompt_resources(tmp_path, monkeypatch):

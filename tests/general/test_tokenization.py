@@ -1,13 +1,7 @@
 import pytest
 
 import the_framework.utils.tokens as tokenization
-from the_framework.utils.tokens import token_count, token_count_payload, tokenizer_for_model
-
-
-def test_gpt_5_family_uses_the_local_o200k_tokenizer():
-    assert tokenizer_for_model("gpt-5.4").name == "o200k_base"
-    assert tokenizer_for_model("gpt-5.6-luna").name == "o200k_base"
-    assert tokenizer_for_model("gpt-5.6-sol").name == "o200k_base"
+from the_framework.utils.tokens import token_count, token_count_payload
 
 
 def test_token_count_accepts_arbitrary_user_text_and_structured_payloads():

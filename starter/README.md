@@ -156,11 +156,11 @@ the user's OS permissions.
 ```sh
 npm --prefix starter/ui test
 npm --prefix starter/ui run build
-.venv/bin/pytest -q tests/application/test_starter.py \
-  tests/application/test_starter_security.py tests/application/test_starter_desktop.py
+.venv/bin/pytest -q tests/general/test_starter.py \
+  tests/general/test_starter_security.py tests/general/test_starter_desktop.py
 PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright-browsers" uv run playwright install chromium
 PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright-browsers" uv run pytest -q \
-  tests/application/test_starter_browser_recovery.py
+  tests/general/test_starter_browser_recovery.py
 ```
 
 Run these commands from the repository root. The local browser directory is
@@ -179,12 +179,12 @@ checks WebRTC connection, received audio, live captions, persisted transcription
 and cleanup with Chromium's fake microphone (never the user's microphone).
 
 To explicitly spend backend quota on a short tool/inference smoke test, run
-`STARTER_LIVE_TESTS=1 .venv/bin/pytest -q tests/application/test_starter_live.py`.
+`STARTER_LIVE_TESTS=1 .venv/bin/pytest -q tests/general/test_starter_live.py`.
 It uses temporary data and checks an innocuous Bash `printf` plus a separate
 memory request, curator completion, embeddings and retrieval after reconstruction.
 Both tests are skipped by default.
 For the separate audio test, build the UI and run
-`STARTER_LIVE_TESTS=1 .venv/bin/pytest -q tests/application/test_starter_voice_live.py`
+`STARTER_LIVE_TESTS=1 .venv/bin/pytest -q tests/general/test_starter_voice_live.py`
 with Playwright Chromium installed.
 
 This starter is local-only for now. It does not ship remote pairing, a mobile

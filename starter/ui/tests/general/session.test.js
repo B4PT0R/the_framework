@@ -7,7 +7,7 @@ import {
   providerArtifacts,
   snapshot,
   voiceCaptions,
-} from "./session.js";
+} from "../../src/session.js";
 
 test("live voice captions replace drafts and disappear on canonical completion", () => {
   const user = voiceCaptions({}, { role: "user", completeText: "Hello", final: false });

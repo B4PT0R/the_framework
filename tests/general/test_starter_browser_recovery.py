@@ -47,7 +47,7 @@ def test_starter_preserves_browser_and_conversation_across_server_restart(tmp_pa
     async def spawn(*args, **kwargs):
         if args[1:3] != ("-m", "starter"):
             return await original_spawn(*args, **kwargs)
-        fixture = Path(__file__).parent / "fixtures/starter_restart_server.py"
+        fixture = Path(__file__).parents[1] / "fixtures/starter_restart_server.py"
         return await original_spawn(args[0], str(fixture), *args[3:], **kwargs)
 
     monkeypatch.setattr(desktop, "BrowserService", browser)
