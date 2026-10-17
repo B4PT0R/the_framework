@@ -6,6 +6,11 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Release the Playwright driver after failed or cancelled persistent-browser
+  startup, including cookie initialization failures. Serialize session startup
+  and shutdown, and ignore delayed close events from an older context. Repeated
+  attempts can recover without accumulating drivers and exhausting file handles.
+
 - Expose `CanonicalTransportSockets` as the `canonical_transport` service, with
   `event_connection_count` for accepted canonical event sockets. Keep this
   connectivity distinct from internal consumers, capability bridges and paired

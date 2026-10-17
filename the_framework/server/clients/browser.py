@@ -143,6 +143,7 @@ class BrowserSession(modict):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.set_attr("_cleanup_tasks", set())
+        self.set_attr("_lifecycle_lock", asyncio.Lock())
 
     @property
     def started(self):
@@ -155,28 +156,43 @@ class BrowserSession(modict):
         return self._context
 
     async def start(self):
-        if self.started:
-            return self
-        self.profile_dir.mkdir(parents=True, exist_ok=True)
-        self._manager = modict.attr(self.playwright_factory())
-        self._playwright = modict.attr(await self._manager.start())
-        self._context = modict.attr(await self._playwright.chromium.launch_persistent_context(
-            user_data_dir=str(self.profile_dir),
-            headless=self.headless,
-            viewport=self.viewport,
-            no_viewport=self.no_viewport,
-            args=list(self.extra_args),
-            ignore_default_args=list(self.ignore_default_args),
-        ))
-        if self.initial_cookies:
-            await self._context.add_cookies(self.initial_cookies)
-        if hasattr(self._context, "on"):
-            # Playwright caches bound-method wrappers on their owner. Keep its
-            # private attributes off this strict payload model.
-            self._context.on("close", lambda *_args: self._closed())
+        async with self._lifecycle_lock:
+            if self.started:
+                return self
+            self.profile_dir.mkdir(parents=True, exist_ok=True)
+            manager = self.playwright_factory()
+            playwright = context = None
+            try:
+                playwright = await manager.start()
+                context = await playwright.chromium.launch_persistent_context(
+                    user_data_dir=str(self.profile_dir),
+                    headless=self.headless,
+                    viewport=self.viewport,
+                    no_viewport=self.no_viewport,
+                    args=list(self.extra_args),
+                    ignore_default_args=list(self.ignore_default_args),
+                )
+                if self.initial_cookies:
+                    await context.add_cookies(self.initial_cookies)
+                if hasattr(context, "on"):
+                    # Ignore late close events from an earlier incarnation.
+                    context.on("close", lambda *_args: self._closed(context))
+            except BaseException:
+                try:
+                    if context is not None:
+                        await context.close()
+                finally:
+                    if playwright is not None:
+                        await playwright.stop()
+                raise
+            self._manager = modict.attr(manager)
+            self._playwright = modict.attr(playwright)
+            self._context = modict.attr(context)
         return self
 
-    def _closed(self, *_args):
+    def _closed(self, context):
+        if self._context is not context:
+            return
         playwright = self._playwright
         self._context = modict.attr(None)
         self._playwright = modict.attr(None)
@@ -192,14 +208,17 @@ class BrowserSession(modict):
         task.add_done_callback(self._cleanup_tasks.discard)
 
     async def stop(self):
-        context, playwright = self._context, self._playwright
-        self._context = self._playwright = self._manager = self._active_page = modict.attr(None)
-        if context is not None:
-            await context.close()
-        if playwright is not None:
-            await playwright.stop()
-        if self._cleanup_tasks:
-            await asyncio.gather(*tuple(self._cleanup_tasks), return_exceptions=True)
+        async with self._lifecycle_lock:
+            context, playwright = self._context, self._playwright
+            self._context = self._playwright = self._manager = self._active_page = modict.attr(None)
+            try:
+                if context is not None:
+                    await context.close()
+            finally:
+                if playwright is not None:
+                    await playwright.stop()
+                if self._cleanup_tasks:
+                    await asyncio.gather(*tuple(self._cleanup_tasks), return_exceptions=True)
 
     async def pages(self):
         await self.start()
