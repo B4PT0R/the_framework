@@ -151,6 +151,13 @@ while retaining the browser and listening address. These facilities are a
 development workflow, not a sandbox: the agent's Bash capability executes with
 the user's OS permissions.
 
+The desktop launcher owns the listener and browser RPC for its whole lifetime;
+each replaceable HTTP child uses the Framework's `LocalServer`. Readiness checks
+require a healthy worker and a descriptor belonging to the new child. Browser
+cookies use a persistent private key; control tokens rotate with the server.
+Stopping the server child leaves the page intact; stopping the desktop launcher
+closes its child, RPC connections and Chromium contexts.
+
 ## Verification and boundaries
 
 ```sh

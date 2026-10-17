@@ -233,6 +233,32 @@ through `restart_server`, `surface_notify` and `surface_progress`. Managed surfa
 use those methods automatically; there is no need to copy publish callbacks into
 construction inputs.
 
+### Local desktop process ownership
+
+`the_framework.server.runtime.local.LocalServer` owns one replaceable HTTP
+process: instance lease, loopback listener, private discovery descriptor and
+credentials. Compose the app inside its context, pass `process.request_restart`
+to `BuildContext`, then run `await process.serve(app)`. It returns
+`RESTART_EXIT_CODE` (75) after a requested restart and zero after a normal stop.
+Discovery and the lease are released even if application construction fails.
+Bearer credentials rotate per server process; the browser cookie secret remains
+in `runtime/ui-session.key`. The application's security policy validates each
+credential in its own channel.
+
+| Owner | Lifetime and responsibility |
+| --- | --- |
+| Desktop supervisor | Starts/replaces the HTTP process. The starter retains an inherited listening socket; the Harness uses systemd with a fixed configured port. |
+| Browser RPC daemon | Owns Chromium contexts, tabs and unsent UI state, independently of HTTP/worker replacement. Its async context closes RPCs and Chromium exactly at daemon shutdown. |
+| LocalServer | Owns the current HTTP process, discovery and graceful shutdown. It never closes the desktop browser. |
+| Application runtime / worker | Supervision and the canonical durable conversation; the worker remains its sole writer. |
+
+With an inherited listener, the supervisor keeps its own descriptor open while
+each server closes its copy. With separately supervised processes, use the same
+configured port for every replacement so the existing page can reconnect.
+`shutdown_event()` scopes SIGINT/SIGTERM handling to a long-lived desktop owner;
+`serve(..., parent_stream=...)` optionally stops a child when its parent pipe closes.
+Neither requires a new framework-level supervisor or a process-wide task manager.
+
 `ApplicationSpec.build(context)` remains the low-level server composition operation
 for applications that explicitly assemble their own services or do not need a
 conversation runtime. The former public `application_server_extensions` helper

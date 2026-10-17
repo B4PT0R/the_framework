@@ -99,6 +99,12 @@ class BrowserRPCServer:
             raise
         return self
 
+    async def __aenter__(self):
+        return await self.start()
+
+    async def __aexit__(self, *_exc):
+        await self.close()
+
     def _connected(self, reader, writer):
         task = asyncio.create_task(self._handle(reader, writer))
         self.connections[task] = writer

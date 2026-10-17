@@ -10,8 +10,8 @@ from .security import LocalSecurity
 REFERENCE = "starter.application:application"
 
 
-def create_app(data_root, *, token, origin, runtime=None, restart=None):
-    security = LocalSecurity(token, origin=origin)
+def create_app(data_root, *, token, origin, runtime=None, restart=None, browser_token=None):
+    security = LocalSecurity(token, origin=origin, browser_token=browser_token)
     return application.build_conversation(
         REFERENCE,
         BuildContext(

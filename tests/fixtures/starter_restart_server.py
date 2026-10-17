@@ -22,7 +22,7 @@ def create_app(*args, **kwargs):
 
     @app.post("/test/restart")
     async def restart(request: Request):
-        if request.cookies.get("starter_session") != kwargs["token"]:
+        if request.cookies.get("starter_session") != kwargs["browser_token"]:
             raise HTTPException(401)
         asyncio.get_running_loop().call_later(
             0.1, lambda: asyncio.create_task(kwargs["restart"](None)),

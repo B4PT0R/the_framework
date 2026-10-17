@@ -76,11 +76,15 @@ conceptuelle totale. Ces notes ne constituent pas des demandes de refonte imméd
   d'accès, resets et runtime spécialisé restent applicatifs. Le serveur Harness
   ne reconstruit plus son superviseur. Tests avec vrais workers : même session
   et historique après reconstruction, texte seul et voix installée.
-- [ ] **Bootstrap desktop persistant — duplication observée.**
-  `starter/desktop.py`, `server/runtime/discovery.py`, `server/clients/browser_rpc.py`.
-  Comparer au serveur/navigateur indépendants de The Harness. Protéger la continuité
-  du navigateur et l'écoute locale pendant le remplacement du serveur. Identifier
-  une éventuelle primitive de cycle de vie, pas une succession de wrappers.
+- [x] **Cycle de vie desktop commun — 18 octobre.** `LocalServer` possède le
+  verrou d'instance, le socket local, la découverte, les credentials et l'arrêt
+  Uvicorn ; starter et Harness l'utilisent sans dupliquer ces responsabilités.
+  Le starter conserve son superviseur et son socket parent ; systemd conserve
+  la supervision du Harness sur un port fixe. Navigateur indépendant, clé cookie
+  persistante et bearer renouvelé par processus. Contexte RPC propriétaire de
+  Chromium, abonnements aux signaux bornés et surveillance parent sans thread.
+  Readiness du starter liée au PID attendu et à un worker sain. Tests de reprise
+  avec vrais processus/Chromium et carte des propriétaires dans docs/framework.md.
 - [ ] **Surface éditable — contrat de livraison à clarifier.**
   `server/composition/application.py`, `server/clients/surfaces.py`,
   `server/composition/controls.py`.

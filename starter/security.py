@@ -8,10 +8,13 @@ from the_framework.server.api.endpoints import Principal
 class LocalSecurity:
     cookie = "starter_session"
 
-    def __init__(self, token, *, origin):
+    def __init__(self, token, *, origin, browser_token=None):
         if not token:
             raise ValueError("a private local session token is required")
         self.token = token
+        self.browser_token = token if browser_token is None else browser_token
+        if not self.browser_token:
+            raise ValueError("a private browser session token is required")
         self.origin = origin.rstrip("/")
 
     async def authenticate(self, request):
@@ -26,7 +29,8 @@ class LocalSecurity:
             return None
         bearer = request.headers.get("authorization", "")
         supplied = bearer[7:] if bearer.startswith("Bearer ") else request.cookies.get(self.cookie, "")
-        if not isinstance(supplied, str) or not compare_digest(supplied.encode(), self.token.encode()):
+        expected = self.token if bearer.startswith("Bearer ") else self.browser_token
+        if not isinstance(supplied, str) or not compare_digest(supplied.encode(), expected.encode()):
             return None
         return Principal(id="local", scopes=frozenset({"*"}))
 

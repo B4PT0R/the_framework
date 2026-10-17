@@ -32,3 +32,13 @@ def test_browser_cookie_and_websocket_origin():
     assert asyncio.run(security.handshake(request(
         *headers, ("origin", "http://127.0.0.1:8123"),
     ))) == {"subprotocol": None}
+
+
+def test_browser_cookie_survives_control_token_rotation_without_crossing_channels():
+    headers = (("host", "127.0.0.1:8123"),)
+    for token in ("first-process", "replacement-process"):
+        security = LocalSecurity(token, origin="http://127.0.0.1:8123", browser_token="stable-browser")
+        assert asyncio.run(security.authenticate(request(*headers, ("cookie", "starter_session=stable-browser"))))
+        assert asyncio.run(security.authenticate(request(*headers, ("authorization", f"Bearer {token}"))))
+        assert asyncio.run(security.authenticate(request(*headers, ("cookie", f"starter_session={token}")))) is None
+        assert asyncio.run(security.authenticate(request(*headers, ("authorization", "Bearer stable-browser")))) is None
