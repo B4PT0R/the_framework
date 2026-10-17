@@ -1004,14 +1004,41 @@ selections. New release directories become visible only after a complete copy;
 incomplete staging directories are neither previews nor published releases.
 
 The base chat UI has no deployment controls. The system plugin exposes
-`system.surfaces`, `system.build_surface`, `system.publish_surface` and
-`system.rollback_surface`; the browser plugin inspects authenticated previews.
+`system.surfaces`, `system.build_surface`, `system.preview_surface`,
+`system.publish_surface` and `system.rollback_surface`. The preview tool opens a
+new browser web tab and returns only surface/release metadata, keeping temporary
+credentials out of conversation history. It needs `BuildContext(origin=...)`
+and the local browser RPC service. Without an explicit release, it opens the
+candidate or the active release.
 HTTP controls remain available to integrations. Publication and rollback notify
 connected clients to refresh; conversation history comes from the durable worker
 session. A backend restart alone does not navigate the existing browser page.
 `server_routes` explicitly reserves routes beneath a surface mount for an
 application or plugin endpoint, such as a login/bootstrap exchange. Other
 endpoints and WebSockets under the mounted path are rejected at build time.
+
+One principal desktop owns the application bridge and primary event connection.
+A second primary event connection is rejected with code 1013. Authenticated
+previews receive concurrent event streams without claiming desktop ownership or
+suppressing desktop notifications. They cannot open the application bridge.
+The chat shows a read-only badge: drafts and local navigation remain testable,
+but prompts, voice, configuration writes and deployment actions are denied.
+Previewing never publishes a release or navigates the principal page.
+
+Integrations can request `POST /api/v1/surfaces/{name}/preview` with an optional
+`release` to obtain a one-use link valid for 30 seconds. Opening that link on the
+configured origin sets an HttpOnly, SameSite=Strict preview cookie valid for eight
+hours, then redirects to the selected release. Its private signing key persists
+across server replacement; unconsumed links do not. Preview credentials carry
+`*:read` and `surfaces:preview`, and HTTP access is limited to GET/HEAD API and
+preview routes. The initial link and preview HTML disable caching and referrers.
+
+The starter and Harness integrate the shared `preview_access`, `is_preview` and
+`authorize_preview` helpers into their own Host/Origin and authorization policies.
+Custom applications must do the same when exposing previews: validate the preview
+cookie before ordinary desktop credentials, enforce safe HTTP methods and read
+scopes, and supply `client_role="preview"` on the event handshake. Device-specific
+mobile/Quest authority remains application policy; a preview grants no such role.
 
 Middleware and mounted ASGI applications belong on a `ServerExtension`, so they are
 validated and installed with the rest of the graph, whether that extension is

@@ -101,7 +101,8 @@ def test_surface_build_preview_publish_rollback_and_restore(tmp_path):
             first_id = first.json()["release"]
             assert (await client.get(first.json()["preview"])).status_code == 401
             preview = await client.get(first.json()["preview"], headers=headers)
-            assert preview.text == "<main>first</main>"
+            assert preview.text.endswith("<main>first</main>")
+            assert 'framework-client-role' in preview.text
 
             published = await client.post(
                 "/api/v1/surfaces/main/publish",
@@ -485,7 +486,7 @@ def test_device_surfaces_have_independent_initial_bundles_previews_and_rollbacks
         before = client.get("/api/v1/surfaces", headers=headers).json()["surfaces"]
         built = client.post("/api/v1/surfaces/mobile/build", headers=headers).json()
         assert client.get(built["preview"]).status_code == 401
-        assert client.get(built["preview"], headers=headers).text == "<main>Edited mobile</main>"
+        assert client.get(built["preview"], headers=headers).text.endswith("<main>Edited mobile</main>")
         assert client.get("/mobile/").text == "Initial mobile"
         assert client.post("/api/v1/surfaces/mobile/publish", headers=headers).status_code == 200
         assert client.get("/mobile/").text == "<main>Edited mobile</main>"

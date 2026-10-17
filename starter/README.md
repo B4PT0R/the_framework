@@ -146,7 +146,12 @@ instructions and plugins; the canonical worker remains the sole history writer.
 The system/browser plugins expose managed UI build, preview, publish and rollback.
 These are agent tools; the base settings UI does not expose deployment controls.
 Edit `ui/`, build a candidate, inspect its authenticated preview in the separate
-browser context, then publish. Publication refreshes the UI; the conversation
+browser context with `system.preview_surface(name="main")`, then publish.
+The tool handles private authentication through a one-use link. Only one principal
+desktop may connect; previews use separate read-only event connections and cannot
+claim its application bridge. Preview drafts and local settings navigation are
+testable, while prompts, voice and persistent writes are blocked. Named mobile
+or Quest surfaces use the same tool without disturbing the principal desktop. Publication refreshes the UI; the conversation
 remains on the server. The supervised restart action replaces the server/worker
 while retaining the browser and listening address. These facilities are a
 development workflow, not a sandbox: the agent's Bash capability executes with

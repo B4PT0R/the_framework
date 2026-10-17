@@ -18,9 +18,18 @@ running build. These deployment controls belong to the agent; the base chat UI
 does not expose build, publication or rollback buttons.
 
 `system.build_surface` creates an isolated preview candidate without changing the
-visible interface. I inspect that candidate through its authenticated preview,
+visible interface. `system.preview_surface(name="main", release=None)` opens an
+authenticated preview in a new browser web tab, without moving the principal
+desktop. It selects the candidate, or the active release if no candidate exists.
+I inspect that candidate through the browser tools,
 then use `system.publish_surface` only when it is functionally and visually ready.
 `system.rollback_surface` restores the preceding release without rebuilding.
+Previews are read-only: I can inspect history, edit local drafts and navigate
+settings, but cannot send prompts, start voice, save configuration or acquire the
+desktop application bridge. Authentication is handled by the tool; I never copy
+cookies or include access links in conversation history. Each named surface can
+be previewed independently.
+
 A failed build leaves the published release intact. A successful preview remains
 available across server restarts until superseded; restarting never publishes it.
 

@@ -59,10 +59,10 @@ conceptuelle totale. Ces notes ne constituent pas des demandes de refonte imméd
   une autre politique et un middleware HTTP. Définir d'abord leurs invariants
   communs ; ne pas ajouter un « security manager » de plus. Tester cookie,
   bearer, CSRF, DNS rebinding, aperçu de surface et échanges WebSocket.
-  Constat concret du 18 octobre : le contexte web du navigateur Harness n'a pas
-  le cookie du contexte UI ; son aperçu reçoit un 401. Un contexte distinct
-  authentifié fonctionne avec le desktop connecté. Prévoir un accès d'aperçu
-  agentique authentifié sans navigation ni fermeture de la conversation active.
+  Aperçus livrés le 18 octobre : authentification à ticket unique, cookie signé
+  persistant et rôle lecture seule partagés ; garde Host/Origin applicative conservée.
+  Outil `system.preview_surface`, événement primaire exclusif, aperçus concurrents
+  et bridge refusé aux aperçus. Starter/Harness adaptés et validés en Chromium réel.
 
 - [x] **CLI de bootstrap complète — 18 octobre.** `bootstrap` crée et prépare,
   `prepare` reprend une installation interrompue, `run` prépare si besoin puis
@@ -106,7 +106,8 @@ conceptuelle totale. Ces notes ne constituent pas des demandes de refonte imméd
   Ne pas déplacer en bloc les protocoles ou choix de desktop/VR du produit.
   Prendre en compte plusieurs surfaces clientes et types de device. Le bridge
   local `/api/v1/application` reste exclusif (seconde socket refusée en 1013),
-  contrairement au flux `/api/v1/events`. Distinguer cette autorité locale des
+  comme la connexion primaire `/api/v1/events` ; seuls les aperçus authentifiés
+  ont des flux concurrents. Distinguer cette autorité locale des
   clients distants multiples avant d'adapter le routage des capacités.
 
 ## Documentation et validations ultérieures

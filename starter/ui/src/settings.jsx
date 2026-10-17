@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { api } from "./api";
 
-export function Settings({ onClose, report }) {
+export function Settings({ onClose, report, readOnly = false }) {
   const [config, setConfig] = useState("");
   const [plugins, setPlugins] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -81,7 +81,7 @@ export function Settings({ onClose, report }) {
               type="checkbox"
               aria-label={`Expose ${plugin.name} to the agent`}
               checked={plugin.binding_enabled}
-              disabled={plugin.binding_required || !plugin.running}
+              disabled={readOnly || plugin.binding_required || !plugin.running}
               onChange={() => toggle(plugin)}
             />}
             <span>{plugin.name}</span>
@@ -110,7 +110,7 @@ export function Settings({ onClose, report }) {
       </details>
       <button
         className="primary"
-        disabled={saving || typeof parsed?.model !== "string" || !parsed.model.trim()}
+        disabled={readOnly || saving || typeof parsed?.model !== "string" || !parsed.model.trim()}
         onClick={save}
       >
         {saving ? "Saving…" : "Save configuration"}

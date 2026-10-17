@@ -303,3 +303,5 @@ h1 {
 .artifact-download { color: #9dd9c5; font-weight: 600; }
 .artifact-fallback summary { cursor: pointer; color: #9eafb8; }
 .artifact-fallback pre { overflow: auto; max-height: 20rem; }
+
+.preview-badge { color: #80b7ff; font-size: .8rem; }

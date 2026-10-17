@@ -915,6 +915,7 @@ def build_application(
         surface_service = SurfaceService(
             application.surfaces,
             surface_root,
+            origin=build_context.get("origin"),
             notify=build_context.get("surface_notify", agent_runtime.surface_notify if agent_runtime else None),
             progress=build_context.get("surface_progress", agent_runtime.surface_progress if agent_runtime else None),
         )
@@ -947,7 +948,7 @@ def build_application(
     )
     runtime.plugin_host = plugin_host
     if agent_runtime is not None:
-        _bind_application_controls(agent_runtime, app)
+        _bind_application_controls(agent_runtime, app, build_context)
 
     @asynccontextmanager
     async def lifespan(_app):

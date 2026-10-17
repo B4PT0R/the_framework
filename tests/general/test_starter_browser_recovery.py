@@ -136,8 +136,19 @@ def test_starter_preserves_browser_and_conversation_across_server_restart(tmp_pa
                 state = (await status.json())["surfaces"][0]
                 assert state["candidate"] == release
                 assert state["active"] != release
-                preview = await browsers[0].open_web(origin + candidate["preview"])
+                await page.get_by_role('button', name='Close', exact=True).click()
+                await page.get_by_role('textbox', name='Message', exact=True).fill('Principal draft')
+                link = await page.request.post(origin + '/api/v1/surfaces/main/preview', data={'release': release})
+                assert link.ok, await link.text()
+                preview = await browsers[0].open_web((await link.json())['url'])
                 await preview.get_by_text("Preview Agent", exact=True).wait_for()
+                await preview.get_by_text('Preview · read only', exact=True).wait_for()
+                await preview.get_by_role('textbox', name='Message', exact=True).fill('Preview draft')
+                assert await preview.get_by_role('button', name='Send', exact=True).is_disabled()
+                assert await page.get_by_role('textbox', name='Message', exact=True).input_value() == 'Principal draft'
+                assert await page.evaluate('window.recoveryMarker') == 'same page'
+                blocked = await preview.request.post(origin + '/api/v1/agent/prompt', data={'prompt': 'Must not submit'})
+                assert blocked.status in (401, 403)
                 assert await page.get_by_text("Pandora", exact=True).count() == 1
                 published = await page.request.post(origin + '/api/v1/surfaces/main/publish', data={"release": release})
                 assert published.ok, await published.text()

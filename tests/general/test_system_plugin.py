@@ -162,3 +162,20 @@ def test_failed_reboot_request_does_not_end_the_turn():
         assert agent.end_of_turn_requested is False
 
     asyncio.run(test())
+
+
+def test_system_opens_a_named_preview_without_restarting_or_publishing():
+    async def run():
+        calls = []
+        agent = Agent(client=object())
+        async def request(payload):
+            calls.append(payload)
+            return {'role': 'preview', 'target': 'web'}
+        agent.application.bind(request)
+        plugin = agent.add_extension(SystemExtension)
+        assert await plugin.preview_surface(name='quest', release='candidate') == {'role': 'preview', 'target': 'web'}
+        assert len(calls) == 1
+        assert calls[0].capability == 'surfaces' and calls[0].method == 'preview'
+        assert calls[0].payload == {'name': 'quest', 'release': 'candidate'}
+        assert not agent.end_of_turn_requested
+    asyncio.run(run())

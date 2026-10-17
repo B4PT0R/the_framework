@@ -207,3 +207,24 @@ def test_stopping_bridge_releases_server_requests_to_client():
             await asyncio.wait_for(request, 1)
 
     asyncio.run(run())
+
+
+def test_failed_primary_accept_does_not_prevent_reconnection():
+    async def run():
+        bridge = ApplicationBridge(Supervisor())
+        class Failed(WebSocket):
+            async def accept(self, **kwargs):
+                raise RuntimeError('accept failed')
+        try:
+            await bridge.serve(Failed())
+        except RuntimeError:
+            pass
+        assert not bridge.connected
+        valid = WebSocket()
+        task = asyncio.create_task(bridge.serve(valid))
+        await asyncio.sleep(0)
+        assert valid.accepted
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        assert not bridge.connected
+    asyncio.run(run())

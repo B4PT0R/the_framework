@@ -3,6 +3,11 @@
 from hmac import compare_digest
 
 from the_framework.server.api.endpoints import Principal
+from the_framework.server.clients.previews import (
+    authorize_preview,
+    is_preview,
+    preview_access,
+)
 
 
 class LocalSecurity:
@@ -27,6 +32,12 @@ class LocalSecurity:
         origin = request.headers.get("origin")
         if origin is not None and origin != self.origin:
             return None
+        previews = preview_access(request)
+        if previews is not None and previews.cookie in request.cookies:
+            principal = previews.authenticate(request)
+            if request.scope['type'] == 'http' and not previews.allows_http(request):
+                return None
+            return principal
         bearer = request.headers.get("authorization", "")
         supplied = bearer[7:] if bearer.startswith("Bearer ") else request.cookies.get(self.cookie, "")
         expected = self.token if bearer.startswith("Bearer ") else self.browser_token
@@ -35,11 +46,17 @@ class LocalSecurity:
         return Principal(id="local", scopes=frozenset({"*"}))
 
     async def authorize(self, principal, requirement, request):
+        if is_preview(principal):
+            return authorize_preview(principal, requirement)
         return principal.id == "local"
 
     async def handshake(self, socket):
         if socket.headers.get("origin") != self.origin:
             return None
-        if await self.authenticate(socket) is None:
+        principal = await self.authenticate(socket)
+        if principal is None:
             return None
-        return {"subprotocol": None}
+        role = 'preview' if is_preview(principal) else 'primary'
+        if role == 'preview' and socket.url.path != '/api/v1/events':
+            return None
+        return {"subprotocol": None, **({"client_role": "preview"} if role == "preview" else {})}

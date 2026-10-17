@@ -16,6 +16,8 @@ import {
 } from "./session";
 import "./style.css";
 
+const preview = document.querySelector('meta[name="framework-client-role"]')?.content === 'preview';
+
 function App({ artifactRenderers }) {
   const [messages, setMessages] = useState([]);
   const [artifacts, setArtifacts] = useState([]);
@@ -200,7 +202,7 @@ function App({ artifactRenderers }) {
   }
   async function send(event) {
     event.preventDefault();
-    if (chatAvailable !== true || sending || (!draft.trim() && !files.length)) return;
+    if (preview || chatAvailable !== true || sending || (!draft.trim() && !files.length)) return;
     const text = draft;
     setError("");
     if (voiceState === "idle") setBusy(true);
@@ -233,7 +235,7 @@ function App({ artifactRenderers }) {
     <div className="app">
       <header className="topbar">
         <div>
-          <strong>Pandora</strong>
+          <strong>Pandora</strong>{preview && <span className="preview-badge">Preview · read only</span>}
           <span className="connection">{connection}</span>
         </div>
         <button onClick={() => setSettings((value) => !value)}>Settings</button>
@@ -351,7 +353,7 @@ function App({ artifactRenderers }) {
                   <button
                     type="button"
                     disabled={
-                      voiceState === "stopping" ||
+                      preview || voiceState === "stopping" ||
                       (voiceState === "idle" &&
                         (busy ||
                           sending ||
@@ -376,6 +378,7 @@ function App({ artifactRenderers }) {
                 {busy && (
                   <button
                     type="button"
+                    disabled={preview}
                     onClick={() =>
                       api("agent/interrupt", {
                         method: "POST",
@@ -389,7 +392,7 @@ function App({ artifactRenderers }) {
                 <button
                   className="primary"
                   disabled={
-                    sending ||
+                    preview || sending ||
                     chatAvailable !== true ||
                     (!draft.trim() && !files.length) ||
                     connection !== "Connected"
@@ -402,7 +405,7 @@ function App({ artifactRenderers }) {
           </div>
         </main>
         {settings && (
-          <Settings onClose={() => setSettings(false)} report={setError} />
+          <Settings readOnly={preview} onClose={() => setSettings(false)} report={setError} />
         )}
       </div>
     </div>

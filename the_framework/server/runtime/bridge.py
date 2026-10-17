@@ -319,11 +319,12 @@ class ApplicationBridge:
         self.websocket = websocket
         outgoing = asyncio.Queue(128)
         self.outgoing = outgoing
-        await websocket.accept(subprotocol=subprotocol or self.subprotocol)
-        sender = asyncio.create_task(self.send(websocket, outgoing))
-        receiver = asyncio.create_task(self.receive(websocket, outgoing))
-        tasks = (sender, receiver)
+        tasks = ()
         try:
+            await websocket.accept(subprotocol=subprotocol or self.subprotocol)
+            sender = asyncio.create_task(self.send(websocket, outgoing))
+            receiver = asyncio.create_task(self.receive(websocket, outgoing))
+            tasks = (sender, receiver)
             try:
                 done, _pending = await asyncio.wait(
                     (sender, receiver),

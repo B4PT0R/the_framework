@@ -1,6 +1,11 @@
 """Agent-facing controls for the application plugin and surface hosts."""
 
-def _bind_application_controls(runtime, app):
+import asyncio
+
+from ..clients.browser_rpc import BrowserRPCClient, browser_socket_path
+
+
+def _bind_application_controls(runtime, app, context):
     """Expose generic plugin and surface hosts to the canonical agent."""
     plugin_host = app.state.application.plugin_host
     surface_service = app.state.application.surface_service
@@ -23,6 +28,15 @@ def _bind_application_controls(runtime, app):
                 **release,
                 "preview": f"{surface.preview_route}/{release.release}/",
             }
+        if method == "preview":
+            origin = context.get('origin')
+            if not origin:
+                raise RuntimeError('opening a preview requires origin in BuildContext')
+            release = surface_service.preview_path(name, payload.get('release')).name
+            path = surface_service.previews.issue(name, release)
+            browser = BrowserRPCClient(browser_socket_path(context.get('machine_root') or context.require('data_root')))
+            await asyncio.to_thread(browser.call, 'open_web', origin.rstrip('/') + path, new_tab=True)
+            return {'surface': name, 'release': release, 'target': 'web', 'role': 'preview'}
         if method == "publish":
             return await surface_service.publish(name, payload.get("release"))
         if method == "rollback":

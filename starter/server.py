@@ -15,7 +15,7 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None, browser_
     return application.build_conversation(
         REFERENCE,
         BuildContext(
-            data_root=data_root, restart=restart,
+            data_root=data_root, origin=origin, restart=restart,
             plugins={"system": {"state_path": Path(data_root) / "system.json"}},
         ),
         security=security, handshake=security.handshake,

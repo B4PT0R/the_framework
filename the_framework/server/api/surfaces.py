@@ -48,6 +48,22 @@ class SurfaceApi:
         }
 
     @endpoint(
+        "post", "/api/v1/surfaces/{name}/preview",
+        request={"type": "object", "properties": {
+            "name": {"type": "string"}, "release": {"type": ["string", "null"]},
+        }, "required": ["name"], "additionalProperties": False},
+        authorization={"scope": "surfaces:preview"}, context="call",
+    )
+    def preview(self, name, call, release=None):
+        """Issue a short-lived link to an authenticated read-only preview."""
+        try:
+            path = self.service.previews.issue(name, release)
+        except LookupError as error:
+            raise HttpError(404, 'surface_release_not_found', 'Release not found') from error
+        origin = self.service.previews.origin or str(call.request.base_url).rstrip('/')
+        return {'url': origin + path, 'role': 'preview'}
+
+    @endpoint(
         "post", "/api/v1/surfaces/{name}/cancel",
         request={
             "type": "object",

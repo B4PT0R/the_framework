@@ -12,11 +12,12 @@ import tempfile
 from pathlib import Path
 
 from fastapi import Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from modict import modict
 
 from ...utils.persistence import MappingStore
+from .previews import PreviewAccess
 
 
 class ClientSurface(modict):
@@ -82,7 +83,7 @@ class SurfaceRelease(modict):
 class SurfaceService:
     """Build surfaces off-loop and atomically select immutable releases."""
 
-    def __init__(self, surfaces, root, *, notify=None, progress=None):
+    def __init__(self, surfaces, root, *, notify=None, progress=None, origin=None):
         surfaces = tuple(surfaces)
         self.surfaces = {surface.name: surface for surface in surfaces}
         if len(self.surfaces) != len(surfaces):
@@ -96,6 +97,7 @@ class SurfaceService:
         self.state = self.store.load()
         self.processes = {}
         self.building = set()
+        self.previews = PreviewAccess(self, origin=origin)
         self._validate_state()
         self.candidates = {name: value["candidate"] for name, value in self.state.items() if value.get("candidate")}
 
@@ -128,7 +130,7 @@ class SurfaceService:
         return self.release_path(surface, release) if release else None
 
     def preview_path(self, surface, release=None):
-        release = release or self.candidates.get(surface)
+        release = release or self.candidates.get(surface) or self.state.get(surface, {}).get("active")
         if release is None:
             raise LookupError(f"surface has no preview candidate: {surface}")
         if not self._release_exists(surface, release):
@@ -420,6 +422,25 @@ class SurfaceApplication:
                 scope, receive, send
             )
             return
+        if self.preview:
+            root = scope.get('root_path', '').rstrip('/')
+            relative = scope.get('path', '')
+            if root and relative.startswith(root):
+                relative = relative[len(root):]
+            if relative.startswith('/_open/'):
+                request = Request(scope, receive)
+                if not self.service.previews.allows_exchange(request):
+                    await JSONResponse({'error': 'untrusted_preview_origin'}, status_code=403)(scope, receive, send)
+                    return
+                try:
+                    cookie, target = self.service.previews.exchange(self.surface, relative[len('/_open/'):])
+                except LookupError:
+                    response = JSONResponse({'error': 'invalid_preview_ticket'}, status_code=401)
+                else:
+                    response = RedirectResponse(target, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
+                    response.set_cookie(self.service.previews.cookie, cookie, httponly=True, samesite='strict', max_age=8 * 3600, secure=request.url.scheme == 'https')
+                await response(scope, receive, send)
+                return
         if self.preview and self.security is not None:
             request = Request(scope, receive)
             principal = self.security.authenticate(request)
@@ -467,6 +488,14 @@ class SurfaceApplication:
                     scope, receive, send
                 )
                 return
+        if self.preview and (not remainder or remainder == 'index.html'):
+            html = await asyncio.to_thread((directory / 'index.html').read_text, encoding='utf-8')
+            marker = '<meta name="framework-client-role" content="preview">'
+            html, inserted = re.subn(r'(<head\b[^>]*>)', lambda match: match[0] + marker, html, count=1, flags=re.IGNORECASE)
+            if not inserted:
+                html = marker + html
+            await HTMLResponse(html, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})(scope, receive, send)
+            return
         await StaticFiles(directory=directory, html=True)(
             routed_scope, receive, send
         )

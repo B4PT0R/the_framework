@@ -21,6 +21,9 @@ class Socket:
             raise RuntimeError("accept failed")
         self.accepted.set()
 
+    async def close(self, code=None):
+        self.closed = code
+
     async def receive(self):
         return await self.incoming.get()
 
@@ -53,14 +56,16 @@ def test_multiple_sockets_release_presence_on_disconnect_and_cancellation():
         await asyncio.sleep(0)
         assert runtime.subscribers and sockets.event_connection_count == 0
         first, second = Socket(), Socket()
-        tasks = [asyncio.create_task(sockets.serve_events(socket, {"subprotocol": "events"}))
-                 for socket in (first, second)]
+        tasks = [asyncio.create_task(sockets.serve_events(socket, {"subprotocol": "events", "client_role": role}))
+                 for socket, role in ((first, "primary"), (second, "preview"))]
         await first.accepted.wait()
         await second.accepted.wait()
         assert sockets.event_connection_count == 2
+        assert sockets.primary_event_connection_count == 1
         await first.incoming.put({"type": "websocket.disconnect"})
         await asyncio.wait_for(tasks[0], 1)
         assert sockets.event_connection_count == 1
+        assert sockets.primary_event_connection_count == 0
         tasks[1].cancel()
         await asyncio.gather(tasks[1], return_exceptions=True)
         assert sockets.event_connection_count == 0
@@ -90,4 +95,15 @@ def test_accept_and_send_failure_do_not_leave_presence():
         assert sockets.event_connection_count == 0
         assert not runtime.subscribers
 
+    asyncio.run(run())
+
+
+def test_preview_cannot_claim_the_application_bridge_even_without_a_principal():
+    async def run():
+        runtime = ApplicationRuntime(SimpleNamespace())
+        sockets = transport(runtime)
+        socket = Socket()
+        await sockets.serve_application(socket, {'subprotocol': 'app', 'client_role': 'preview'})
+        assert socket.closed == 1008
+        assert not runtime.application.connected
     asyncio.run(run())

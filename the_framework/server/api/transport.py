@@ -9,6 +9,8 @@ class CanonicalTransportSockets:
     def __init__(self, runtime, *, event_handshake, application_handshake):
         self.runtime = runtime
         self._event_connections = 0
+        self._primary_socket = None
+        self.primary_event_connection_count = 0
         self.events_socket = WebSocketEndpoint(
             path="/api/v1/events",
             handler=self.serve_events,
@@ -31,18 +33,40 @@ class CanonicalTransportSockets:
         return self._event_connections
 
     async def serve_events(self, socket, connection):
-        await socket.accept(subprotocol=connection["subprotocol"])
-        self._event_connections += 1
+        role = connection.get('client_role', 'primary')
+        if role not in {'primary', 'preview'}:
+            await socket.close(code=1008)
+            return
+        primary = role == 'primary'
+        if primary and self._primary_socket is not None:
+            await socket.close(code=1013)
+            return
+        if primary:
+            self._primary_socket = socket
+        accepted = False
         try:
+            await socket.accept(subprotocol=connection["subprotocol"])
+            accepted = True
+            self._event_connections += 1
+            if primary:
+                self.primary_event_connection_count += 1
             async def send_events():
                 async for output in self.runtime.stream():
                     await socket.send_json(output)
 
             await serve_event_stream_until_disconnect(socket, send_events)
         finally:
-            self._event_connections -= 1
+            if accepted:
+                self._event_connections -= 1
+                if primary:
+                    self.primary_event_connection_count -= 1
+            if self._primary_socket is socket:
+                self._primary_socket = None
 
     async def serve_application(self, socket, connection):
+        if connection.get('client_role', 'primary') != 'primary':
+            await socket.close(code=1008)
+            return
         await self.runtime.application.serve(
             socket, subprotocol=connection["subprotocol"],
         )

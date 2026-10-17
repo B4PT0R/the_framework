@@ -91,6 +91,13 @@ class SystemExtension(AgentExtension):
         return result
 
     @tool
+    async def preview_surface(self, name: str = "main", release: str | None = None):
+        """Open an authenticated read-only preview without replacing the desktop."""
+        return await self.agent.application.call(
+            "surfaces", "preview", {"name": name, "release": release}, timeout_ms=60_000,
+        )
+
+    @tool
     async def publish_surface(self, name: str = "main", release: str | None = None):
         """Publish a verified candidate and refresh connected clients."""
         return await self.agent.application.call(
