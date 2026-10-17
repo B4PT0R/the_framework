@@ -9,7 +9,7 @@ from ..api.transport import CanonicalTransportSockets
 from .application import ServerExtension
 
 
-def application_server_extensions(
+def _conversation_extensions(
     runtime: ApplicationRuntime, *, event_handshake: Callable,
     application_handshake: Callable, agent_api: CanonicalAgentApi | None = None,
     health_api: ApplicationHealthApi | None = None,

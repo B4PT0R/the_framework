@@ -512,16 +512,17 @@ def test_optional_capability_orders_present_provider_without_requiring_installat
     prepared = object()
 
     def provider(context):
-        context.provide("prepared", prepared)
         return ServerExtension(name="provider_runtime", service=prepared)
 
     def consumer(context):
-        observed.append((
-            context.has_capability("example.provider"),
-            context.has_capability("example.provider", min_version=2),
-            context.get("prepared"),
-        ))
-        return ServerExtension(name="consumer_runtime", service=object())
+        def build(provider_runtime=None):
+            observed.append((
+                context.has_capability("example.provider"),
+                context.has_capability("example.provider", min_version=2),
+                provider_runtime,
+            ))
+            return object()
+        return ServerExtension(name="consumer_runtime", service_factory=build)
 
     consumer_plugin = Plugin(
         name="consumer",

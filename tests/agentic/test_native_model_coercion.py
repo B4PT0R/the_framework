@@ -65,27 +65,18 @@ def test_build_context_is_a_frozen_shallow_mapping_of_runtime_objects():
         context.require("missing")
 
 
-def test_build_context_accepts_ordered_exports_without_mutating_inputs():
+def test_build_context_keeps_options_and_contributions_separate_from_inputs():
     initial = object()
-    exported = object()
-    context = BuildContext({"initial": initial})
-    assert context.provide("prepared", exported) is exported
-    assert context.get("prepared") is exported
-    assert context.require("prepared") is exported
-    assert context.require("initial") is initial
-    assert dict(context) == {"initial": initial, "prepared": exported}
-    assert "prepared" in context
-    assert context["prepared"] is exported
-    assert tuple(context.keys()) == ("initial", "prepared")
+    supplied = {"client": initial}
+    context = BuildContext(initial=initial, plugins={"voice": supplied})
+    supplied.clear()
+    assert context.plugin("voice")["client"] is initial
+    assert dict(context) == {"initial": initial}
     with pytest.raises(TypeError):
-        context["prepared"] = object()
-    with pytest.raises(ValueError, match="duplicate build context value"):
-        context.provide("prepared", object())
-    with pytest.raises(ValueError, match="duplicate build context value"):
-        context.provide("initial", object())
-    with pytest.raises(ValueError, match="nonempty string"):
-        context.provide("", object())
-
+        context.plugin("voice")["client"] = object()
+    with pytest.raises(TypeError):
+        context.services["voice"] = object()
+    assert not context.services
     first, second = object(), object()
     context.contribute("feature.policy", first)
     context.contribute("feature.policy", second)

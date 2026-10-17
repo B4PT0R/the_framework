@@ -21,12 +21,13 @@ conceptuelle totale. Ces notes ne constituent pas des demandes de refonte imméd
   pendant un appel purge ou bloque correctement les projections déjà préparées.
   Validation : désactivation/réactivation pendant une réponse ou une délégation,
   sans fuite de contexte ni perte de la conversation canonique.
-- [ ] **Assemblage à contexte mutable — simplification possible.**
+- [x] **Assemblage à contexte mutable — clarifié le 17 octobre.**
   `server/composition/application.py:BuildContext`, `plugins/realtime/server.py`.
-  Les contributions sont déjà déclarées, mais certaines capacités installent des
-  callbacks dans le contexte pendant la construction des services. Documenter les
-  étapes où ce contexte est mutable et tester l'indépendance à l'ordre des plugins.
-  N'ajouter une primitive que si elle remplace plusieurs couplages concrets.
+  Entrées fixes et options par plugin ; `provide` retiré. Les services s'injectent
+  par dépendances et sont consultables en lecture seule après démarrage. Les
+  contributions sont scellées avant les fabriques de services, y compris la
+  coordination des changements de binding pendant la voix. Tests d'ordre des
+  plugins, de cycle de vie et de refus des contributions tardives.
 - [ ] **Sécurité locale et transport — comparaison à mener.**
   `starter/security.py`, `server/api/websockets.py`, `server/clients/surfaces.py`.
   Le starter possède une politique stricte Host/Origin, tandis que le produit a
@@ -36,6 +37,12 @@ conceptuelle totale. Ces notes ne constituent pas des demandes de refonte imméd
 
 ## Priorité : assemblage public et cycle de vie
 
+- [x] **Point d'assemblage conversationnel unique — livré le 17 octobre.**
+  `ApplicationSpec.build_conversation` construit superviseur, runtime, API,
+  santé et transports. Starter et Harness migrés ; projections, politiques
+  d'accès, resets et runtime spécialisé restent applicatifs. Le serveur Harness
+  ne reconstruit plus son superviseur. Tests avec vrais workers : même session
+  et historique après reconstruction, texte seul et voix installée.
 - [ ] **Bootstrap desktop persistant — duplication observée.**
   `starter/desktop.py`, `server/runtime/discovery.py`, `server/clients/browser_rpc.py`.
   Comparer au serveur/navigateur indépendants de The Harness. Protéger la continuité

@@ -95,11 +95,12 @@ class ChatApi:
 
 def build_server_extensions(context):
     root = Path(context.require("data_root"))
-    text_mode_lock = context.get("text_mode_lock")
+    options = context.plugin("chat")
+    text_mode_lock = options.get("text_mode_lock")
     return ServerExtension(
         name="chat",
         service_factory=lambda runtime, realtime=None: ChatApi(
-            runtime, Path(context.get("attachments_root", root / "files")), realtime, text_lock=text_mode_lock,
+            runtime, Path(options.get("attachments_root", root / "files")), realtime, text_lock=text_mode_lock,
         ),
         endpoints="service",
     )

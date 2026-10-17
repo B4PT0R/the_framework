@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from the_framework.server.api.transport import CanonicalTransportSockets
-from the_framework.server.composition.runtime import application_server_extensions
+from the_framework.server.composition.runtime import _conversation_extensions
 from the_framework.server.runtime.application import ApplicationRuntime
 
 
@@ -35,7 +35,7 @@ def transport(runtime):
 
 def test_composition_exposes_transport_as_a_service():
     runtime = ApplicationRuntime(SimpleNamespace())
-    extensions = application_server_extensions(
+    extensions = _conversation_extensions(
         runtime, event_handshake=lambda _: None, application_handshake=lambda _: None,
     )
     sockets = next(extension for extension in extensions if extension.name == "canonical_transport")

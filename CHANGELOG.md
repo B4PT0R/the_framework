@@ -6,6 +6,18 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Add `ApplicationSpec.build_conversation(reference, context, ...)` as the standard
+  assembly path for the primary supervisor, runtime, authenticated API, health
+  and transports. Migrate the starter and Harness; remove the former public
+  `application_server_extensions` helper. Runtime hooks now own supervised restart
+  and surface notifications instead of repeating their wiring in applications.
+- Keep `BuildContext` inputs fixed and group plugin construction options under
+  `plugins`. Remove `provide`; use declared service dependencies and the read-only
+  `context.services` view of running services. Seal contributions before service
+  construction and require a fresh context per build. Realtime declares its
+  binding coordinator during contribution collection rather than mutating inputs
+  while building its service.
+
 - Release the Playwright driver after failed or cancelled persistent-browser
   startup, including cookie initialization failures. Serialize session startup
   and shutdown, and ignore delayed close events from an older context. Repeated

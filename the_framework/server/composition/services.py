@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+from types import MappingProxyType
 
 from .dependencies import dependency_order
 
@@ -59,6 +60,11 @@ class ServiceContext:
 
     def snapshot(self):
         return dict(self._values)
+
+    @property
+    def view(self):
+        """Live, read-only lookup of services that have successfully started."""
+        return MappingProxyType(self._values)
 
 
 class ServiceGraph:

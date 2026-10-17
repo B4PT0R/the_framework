@@ -111,8 +111,7 @@ Voice control disappears when that runtime is absent.
 | `application.py` | Agent identity, plugin composition, persistence and UI surface |
 | `instructions.md` | Main agent's editable instructions |
 | `memory.md` | Private memory curator's instructions |
-| `server.py` | Local worker, security and canonical transport assembly |
-| `chat.py` | Optional prompt and attachment routes, with voice integration when installed |
+| `server.py` | One `build_conversation` call with local security and storage inputs |
 | `security.py` | Exact host/origin checks and private local authentication |
 | `desktop.py` | Parent-owned browser/socket and supervised server replacement |
 | `ui/src/main.jsx` | Chat, composer and connection lifecycle |
@@ -123,10 +122,10 @@ Import a complete framework plugin and add it to `ApplicationSpec.plugins`:
 `SCHEDULER`, `SYSTEM` and `REALTIME` own their agent bindings, server services,
 routes and lifecycle. Their server implementations are deferred so the worker
 can compile the same application declaration without constructing server services.
-`server.py` supplies the data directory, system state file and restart callback.
+`server.py` supplies the data directory, plugin options and restart callback to
+`build_conversation`; the framework constructs the worker and canonical transport.
 The memory declaration shows an explicit specialization of the complete `MEMORY`
-plugin with application-owned curator instructions. The optional `chat` plugin
-keeps the starter's UI-specific attachment behavior in editable application code.
+plugin with application-owned curator instructions. The optional shared `CHAT` plugin owns the prompt and attachment routes.
 
 Custom plugins should expose their complete `Plugin` declaration from their
 package; keep agent and server implementations inside it. Backend contributions

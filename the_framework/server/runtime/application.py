@@ -70,6 +70,7 @@ class ApplicationRuntime:
         application_subprotocol="agent-application",
         activity_labels=None,
         reset_transaction_factory=None,
+        restart=None,
     ):
         self.supervisor = supervisor
         self.fleet_factory = fleet_factory
@@ -82,6 +83,7 @@ class ApplicationRuntime:
             **dict(activity_labels or {}),
         }
         self.reset_transaction_factory = reset_transaction_factory
+        self.restart = restart
         self.subscribers = set()
         self.observers = set()
         self.fleet_result_handlers = set()
@@ -102,6 +104,19 @@ class ApplicationRuntime:
         self.activity_started_at = None
         self.activity_updated_at = None
         self.subscriber_overflows = 0
+
+    async def restart_server(self, intent):
+        if self.restart is None:
+            raise RuntimeError("server restart is not configured")
+        result = self.restart(intent)
+        if inspect.isawaitable(result):
+            await result
+
+    async def surface_notify(self, payload):
+        await self.publish({**payload, "type": "interface_refresh_requested"})
+
+    async def surface_progress(self, payload):
+        await self.publish({**payload, "type": "surface_build_progress"})
 
     def register_observer(self, observer):
         self.observers.add(observer)

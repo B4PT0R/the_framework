@@ -7,7 +7,7 @@ from .service import SchedulerService
 
 
 def build_server_extensions(context):
-    path = context.get("scheduler_state_path")
+    path = context.plugin("scheduler").get("state_path")
     if path is None:
         path = Path(context.require("data_root")) / "scheduler.json"
 

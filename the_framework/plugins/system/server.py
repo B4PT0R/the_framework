@@ -7,12 +7,12 @@ from .service import SystemControlService
 
 
 def build_server_extensions(context):
-    path = context.get("system_state_path")
+    path = context.plugin("system").get("state_path")
     if path is None:
         path = Path(context.require("data_root")) / "system-control.json"
-    restart = context.get("system_restart")
 
     def build(runtime):
+        restart = runtime.restart_server if getattr(runtime, "restart", None) is not None else None
         system = SystemControlService(path, runtime.supervisor.send, restart=restart)
         runtime.application.register("system", system.handle, contextual=True)
         runtime.register_observer(system.observe)

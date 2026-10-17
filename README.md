@@ -88,7 +88,7 @@ from the_framework.plugins.realtime import REALTIME
 
 # In your ApplicationSpec:
 # plugins=(CHAT, MEMORY, REGISTRY, REALTIME)
-# BuildContext supplies data_root and the ordinary canonical runtime.
+# build_conversation assembles the supervised runtime from BuildContext(data_root=...).
 ```
 
 When voice is installed, memory and registry contribute their own live context
@@ -102,6 +102,31 @@ The neutral The Harness application is the canonical, more complete consumer:
 it combines these declarations with a persistent browser, desktop lifecycle,
 application-specific instructions and a user interface. Its needs are evidence
 for useful primitives, not a reason to add application policy to the library.
+
+## Assemble the conversation
+
+The editable starter's server uses one assembly operation:
+
+```python
+from the_framework import BuildContext
+
+app = application.build_conversation(
+    "my_app.application:application",
+    BuildContext(data_root=data_dir),
+    security=security,
+    handshake=security.handshake,
+)
+```
+
+It constructs the primary worker supervisor, runtime, authenticated HTTP API and
+WebSocket transports, and derives storage paths from the data directory. Supply
+your own access policy; the framework never installs an implicit allow-all policy.
+Advanced applications can customize runtime construction, transport handshakes,
+projections and extra server extensions through this same operation.
+Plugin-specific construction options live in `BuildContext(plugins={...})`;
+services are injected into factories and exposed separately in the read-only
+`context.services` view after startup. Inputs stay fixed, and feature contributions
+are sealed before services are constructed.
 
 ## Try a working application
 

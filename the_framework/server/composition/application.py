@@ -8,6 +8,7 @@ from collections.abc import Callable, Mapping
 from contextlib import asynccontextmanager
 from types import MappingProxyType
 from typing import Any, Literal
+from pathlib import Path
 
 from fastapi import FastAPI
 from modict import modict
@@ -64,32 +65,64 @@ def _path_within_mount(path, mount):
 
 
 class BuildContext(modict[str, object]):
-    """Process-local inputs and ordered plugin construction-time exports."""
+    """Fixed inputs, plugin options and a read-only view of running services.
+
+    One context belongs to one build. Contributions are collected while plugin
+    declarations resolve, then sealed before any service factory runs.
+    """
 
     _config = modict.config(frozen=True, auto_convert=False)
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        inputs = dict(*args, **kwargs)
+        if inputs.get("data_root") is not None:
+            root = Path(inputs["data_root"]).expanduser().resolve()
+            inputs["data_root"] = root
+            for name, relative in (("session_path", "session.json"),
+                                   ("plugin_state_path", "plugins.json"),
+                                   ("surface_root", "surfaces")):
+                inputs.setdefault(name, root / relative)
+        options = inputs.pop("plugins", {})
+        if not isinstance(options, Mapping) or any(
+            not isinstance(name, str) or not name or not isinstance(value, Mapping)
+            for name, value in options.items()
+        ):
+            raise TypeError("plugin options must map names to option mappings")
+        super().__init__(inputs)
+        object.__setattr__(self, "_plugin_options", MappingProxyType({
+            name: MappingProxyType(dict(value)) for name, value in options.items()
+        }))
         object.__setattr__(self, "_contributions", {})
         object.__setattr__(self, "_capabilities", MappingProxyType({}))
+        object.__setattr__(self, "_services", ServiceContext())
+        object.__setattr__(self, "_phase", "inputs")
+
+    def plugin(self, name):
+        """Fixed process-local options owned by one plugin."""
+        return self._plugin_options.get(name, MappingProxyType({}))
+
+    @property
+    def services(self):
+        return self._services.view
+
+    def _begin(self, capabilities):
+        if self._phase != "inputs":
+            raise RuntimeError("a BuildContext belongs to one application build")
+        object.__setattr__(self, "_phase", "declarations")
+        object.__setattr__(self, "_capabilities", capabilities)
+
+    def _seal(self):
+        object.__setattr__(self, "_phase", "services")
 
     def has_capability(self, name, min_version=1):
         """Whether the compiled application installs a compatible capability."""
         capability = self._capabilities.get(name)
         return capability is not None and capability.version >= min_version
 
-    def provide(self, name, value):
-        """Expose a prepared value to plugins resolved later in the dependency DAG."""
-        if not isinstance(name, str) or not name:
-            raise ValueError("provided build context name must be a nonempty string")
-        if name in self:
-            raise ValueError(f"duplicate build context value: {name}")
-        # Only provide() may append names; ordinary mapping writes stay frozen.
-        dict.__setitem__(self, name, value)
-        return value
-
     def contribute(self, name, value):
         """Collect a feature contribution independent of plugin resolution order."""
+        if self._phase == "services":
+            raise RuntimeError("contributions are sealed before service construction")
         if not isinstance(name, str) or not name:
             raise ValueError("contribution name must be a nonempty string")
         self._contributions.setdefault(name, []).append(value)
@@ -345,14 +378,89 @@ class ApplicationSpec(modict):
     def build(self, context: BuildContext | None = None):
         return build_application(self, context=context)
 
+    def build_conversation(
+        self, reference: str, context: BuildContext, *,
+        security: SecurityPolicy | None = None,
+        handshake: Callable | None = None,
+        event_handshake: Callable | None = None,
+        application_handshake: Callable | None = None,
+        supervisor: object | None = None,
+        runtime_factory: Callable | None = None,
+        session_projection: str = "full",
+        health_projection: Callable | None = None,
+        reset_handler: Callable | None = None,
+        extensions: tuple[ServerExtension, ...] | Callable = (),
+    ):
+        """Assemble one durable worker, its API, health and authenticated sockets.
+
+        ``reference`` is the importable ``module:application`` used by workers.
+        ``handshake`` authenticates both sockets unless individually overridden.
+        Advanced applications can supply a supervisor or a runtime factory,
+        project health/history, and declare extra extensions from the runtime.
+        ``reset_handler(runtime)`` owns the application's selective reset policy.
+        """
+        from ..runtime.supervisor import WorkerSupervisor
+        from ..api.agent import CanonicalAgentApi
+        from ..api.health import ApplicationHealthApi
+        from .runtime import _conversation_extensions
+
+        module, separator, attribute = reference.partition(":")
+        if not separator or not attribute.isidentifier() or not all(
+            part.isidentifier() for part in module.split(".")
+        ):
+            raise ValueError("conversation reference must use module:application")
+        security = security if security is not None else self.security
+        if security is None:
+            raise ValueError("a conversation requires an explicit security policy")
+        event_handshake = event_handshake or handshake
+        application_handshake = application_handshake or handshake
+        if not callable(event_handshake) or not callable(application_handshake):
+            raise ValueError("a conversation requires authenticated socket handshakes")
+        context.require("data_root")
+        if supervisor is None:
+            supervisor = WorkerSupervisor(
+                context.require("session_path"), application_reference=reference,
+                agent_name=self.primary_agent.name,
+                plugin_state_path=context.require("plugin_state_path"),
+            )
+        else:
+            path = getattr(supervisor, "session_path", None)
+            if path is not None and Path(path).expanduser().resolve() != Path(context.require("session_path")).expanduser().resolve():
+                raise ValueError("supervisor and build context must use the same session")
+            worker_reference = getattr(supervisor, "application_reference", None)
+            if worker_reference is not None and worker_reference != reference:
+                raise ValueError("supervisor and conversation must use the same application reference")
+        runtime = (
+            runtime_factory(supervisor) if runtime_factory is not None
+            else ApplicationRuntime(supervisor, restart=context.get("restart"))
+        )
+        extra = extensions(runtime) if callable(extensions) else extensions
+        definition = type(self)({
+            **self, "security": security,
+            "server_extensions": (
+                *self.server_extensions,
+                *_conversation_extensions(
+                    runtime, event_handshake=event_handshake,
+                    application_handshake=application_handshake,
+                    agent_api=CanonicalAgentApi(
+                        runtime, session_projection=session_projection,
+                        reset_handler=(lambda: reset_handler(runtime)) if reset_handler else None,
+                    ),
+                    health_api=ApplicationHealthApi(health_projection, runtime=runtime),
+                ),
+                *_tuple(extra),
+            ),
+        })
+        return definition.build(context)
+
 
 class ApplicationContext:
     """Single process-local access point for a compiled application."""
 
-    def __init__(self, plan, server_extensions):
+    def __init__(self, plan, server_extensions, *, services):
         self.spec = plan.application
         self.plan = plan
-        self.services = ServiceContext()
+        self.services = services
         self.server_extensions = MappingProxyType(server_extensions)
         self.plugins = plan.plugins
         self.service_graph = None
@@ -655,8 +763,9 @@ def build_application(
         raise TypeError("build_application expects an ApplicationSpec")
     plan = application.compile()
     build_context = context if context is not None else BuildContext()
-    object.__setattr__(build_context, "_capabilities", plan.capabilities)
+    build_context._begin(plan.capabilities)
     plugin_server_extensions = _resolve_plugin_server_extensions(plan, build_context)
+    build_context._seal()
     declarations = {
         extension.name: extension
         for extension in (
@@ -673,7 +782,11 @@ def build_application(
         resolved_extensions[name] = extension
         if extension.service is not None:
             resolved_services[name] = extension.service
-    runtime = ApplicationContext(plan, resolved_extensions)
+    runtime = ApplicationContext(plan, resolved_extensions, services=build_context._services)
+    agent_runtimes = [service for service in resolved_services.values() if isinstance(service, ApplicationRuntime)]
+    if len(agent_runtimes) > 1:
+        raise ValueError("an application may install only one primary agent runtime")
+    agent_runtime = agent_runtimes[0] if agent_runtimes else None
 
     services = []
     for name in startup_order:
@@ -802,8 +915,8 @@ def build_application(
         surface_service = SurfaceService(
             application.surfaces,
             surface_root,
-            notify=build_context.get("surface_notify"),
-            progress=build_context.get("surface_progress"),
+            notify=build_context.get("surface_notify", agent_runtime.surface_notify if agent_runtime else None),
+            progress=build_context.get("surface_progress", agent_runtime.surface_progress if agent_runtime else None),
         )
         runtime.surface_service = surface_service
         for surface in application.surfaces:
@@ -823,14 +936,13 @@ def build_application(
                 ),
                 name=f"surface-preview:{surface.name}",
             )
-    agent_runtimes = [service for service in resolved_services.values() if isinstance(service, ApplicationRuntime)]
-    if len(agent_runtimes) > 1:
-        raise ValueError("an application may install only one primary agent runtime")
-    agent_runtime = agent_runtimes[0] if agent_runtimes else None
+    binding_updates = build_context.contributions("plugins.binding_update")
+    if len(binding_updates) > 1:
+        raise ValueError("only one plugin binding coordinator may be installed")
     plugin_host = PluginHost(
         plan, service_graph=graph, service_owners=MappingProxyType(plugin_owners),
         state_path=build_context.get("plugin_state_path"),
-        binding_update=build_context.get("plugin_binding_update", agent_runtime.set_plugin_binding if agent_runtime else None),
+        binding_update=build_context.get("plugin_binding_update", binding_updates[0] if binding_updates else agent_runtime.set_plugin_binding if agent_runtime else None),
         binding_snapshot=build_context.get("plugin_binding_snapshot", agent_runtime.plugin_bindings if agent_runtime else None),
     )
     runtime.plugin_host = plugin_host

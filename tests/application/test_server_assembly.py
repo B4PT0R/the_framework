@@ -1,11 +1,10 @@
 from fastapi.testclient import TestClient
 
-from the_framework import ApplicationSpec, AgentSpec
-from the_framework.server import application_server_extensions
+from the_framework import ApplicationSpec, AgentSpec, BuildContext
 from the_framework.server.api.endpoints import Principal
 
 
-def test_standard_assembly_keeps_authentication_and_includes_runtime_health():
+def test_standard_assembly_keeps_authentication_and_includes_runtime_health(tmp_path):
     class Runtime:
         def health(self):
             return {"status": "ok", "worker": {"running": True}}
@@ -23,12 +22,13 @@ def test_standard_assembly_keeps_authentication_and_includes_runtime_health():
     application = ApplicationSpec(
         name="Example", version="1", security=Security(),
         primary_agent=AgentSpec(name="primary", session_mode="durable"),
-        server_extensions=application_server_extensions(
-            Runtime(), event_handshake=lambda socket: None,
-            application_handshake=lambda socket: None,
-        ),
     )
-    with TestClient(application.build()) as client:
+    app = application.build_conversation(
+        "example:application", BuildContext(data_root=tmp_path),
+        supervisor=object(), runtime_factory=lambda supervisor: Runtime(),
+        handshake=lambda socket: None,
+    )
+    with TestClient(app) as client:
         assert client.get("/api/v1/config").status_code == 401
         client.headers["authorization"] = "Bearer test"
         health = client.get("/api/v1/health").json()

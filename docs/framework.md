@@ -179,8 +179,10 @@ and registers the agent-facing plugin and installed surface controls. Supply
 `ui_root` in `BuildContext` to bootstrap a surface's initial artifact. There is
 no separate post-build control-registration call.
 
-An application may override `plugin_binding_update` for its own modality or
-policy barriers. The callback accepts `(name, enabled, *, call=None)` and should
+A plugin can declare a `plugins.binding_update` contribution for a modality or
+policy barrier; at most one such coordinator may be installed. Its callback can
+look up its running service through `context.services`. An application can also
+supply a fixed `plugin_binding_update` construction input as an explicit override. The callback accepts `(name, enabled, *, call=None)` and should
 invoke `runtime.set_plugin_binding(name, enabled, call=call)`. The optional
 `ApplicationCall` identifies a tool that is suspended awaiting this operation.
 Ordinary HTTP changes have no originating call.
@@ -192,25 +194,50 @@ binding requests whose tool call is no longer waiting fail instead of becoming
 late queued mutations. The worker remains the owner of activation and durable
 session writes, and confirms application before the server persists its binding.
 
-### Standard server assembly
+### Standard conversation assembly
 
-`application_server_extensions` from `the_framework.server` returns ordinary
-`ServerExtension` declarations for the runtime, canonical agent HTTP API, health
-and WebSocket transports. Authentication stays explicit:
+`ApplicationSpec.build_conversation(reference, context, ...)` assembles the
+supervised primary worker, runtime, agent HTTP API, health endpoint and both
+WebSocket transports. The reference is the importable `module:application`
+resolved by workers. Authentication stays explicit:
 
 ```python
-application = application.with_server_extensions(
-    *application_server_extensions(
-        runtime,
-        event_handshake=security.handshake,
-        application_handshake=security.handshake,
-    ),
+from the_framework import BuildContext
+
+app = application.build_conversation(
+    "my_app.application:application",
+    BuildContext(data_root=data_dir),
+    security=security,
+    handshake=security.handshake,
 )
 ```
 
-Pass `agent_api` or `health_api` to customize projections and reset policy.
-Each component can still be assembled separately. The starter uses this helper
-with its own local security and display projection.
+The default runtime derives `session.json`, `plugins.json` and `surfaces/` from
+`data_root`. `handshake` applies to both sockets; `event_handshake` and
+`application_handshake` independently override it when their wire protocols differ.
+The declared primary agent name is passed to the supervised worker automatically.
+The framework owns construction, ordering and cleanup; it does not start inference
+or perform network authentication during declaration/build.
+
+Advanced applications can pass `runtime_factory(supervisor)` to specialize the
+runtime, or inject a supervisor for another worker executable. An injected
+supervisor must refer to the same session and, when declared, application reference.
+`session_projection` selects history presentation, `health_projection(payload)`
+selects diagnostics, and `reset_handler(runtime)` owns selective reset policy.
+`extensions(runtime)` returns application-owned server declarations, such as reset
+endpoints and access middleware. The starter and Harness use this same path.
+
+Set the fixed `restart` input on `BuildContext` for the default runtime's supervised
+restart callback. Runtime subclasses may specialize restart and UI notifications
+through `restart_server`, `surface_notify` and `surface_progress`. Managed surfaces
+use those methods automatically; there is no need to copy publish callbacks into
+construction inputs.
+
+`ApplicationSpec.build(context)` remains the low-level server composition operation
+for applications that explicitly assemble their own services or do not need a
+conversation runtime. The former public `application_server_extensions` helper
+has been removed; ordinary conversation applications should migrate to
+`build_conversation` rather than recreate its runtime/API/transport wiring.
 
 Server services may call `await runtime.update_config(updates, id=command_id)`
 and `await runtime.apply_event(name, payload, id=event_id)`. Both wait for worker
@@ -413,10 +440,11 @@ server services, lifecycle and capabilities where applicable. Importing or
 compiling these declarations does not import their server implementations.
 Scheduler and system services require the application's `runtime` service;
 `data_root` in `BuildContext` supplies their default storage directory. Optional
-`scheduler_state_path` and `system_state_path` override the files. System restart
-execution is an application-owned `system_restart` callback in that context.
+plugin options `scheduler.state_path` and `system.state_path` override the files
+through `BuildContext(plugins={"system": {"state_path": path}})`. System restart
+uses the runtime's application-owned `restart_server` operation when configured.
 The neutral realtime plugin exposes call creation/readiness/stop endpoints and
-its controller, with an optional `realtime_client_factory` construction input.
+its controller, with an optional `realtime.client_factory` plugin option.
 The browser defaults to the agent session directory, where a browser RPC host
 must be running; applications with another browser host specialize its binding.
 `BrowserService.open_application_ui(url)` opens the application's chosen route;
@@ -504,18 +532,29 @@ routes or behavior differ according to an optional integration; ordinary
 optional service injection uses `ServerExtension.optional_services` directly.
 A missing provider returns `False`; a present but incompatible provider fails
 compilation before the factory runs.
-The runtime factory may also expose a prepared object to later factories with
-`context.provide("feature.name", value)`; other factories read it with
-`context.require(...)` or `context.get(...)`. Names cannot overwrite initial
-context inputs or another export. Exports become ordinary entries in the same
-read-only mapping: indexing, membership, iteration and `get()` all see them.
+`BuildContext` is a single-build object with three distinct responsibilities:
+
+- its mapping contains fixed application inputs; it cannot acquire new keys
+  during construction;
+- `context.plugin(name)` returns an immutable shallow snapshot of that plugin's
+  process-local options, supplied with `BuildContext(plugins={name: {...}})`;
+- `context.services` is a read-only, live view of successfully started services.
+  Services appear after startup and disappear during shutdown or rollback.
+
+Declare service dependencies on `ServerExtension` (or infer them from its
+factory's named parameters). Use those injected objects during construction.
+Use `context.services` in deferred callbacks that need a service during operation,
+including authentication. It does not expose partially constructed services.
+`context.provide` has been removed: services no longer overwrite or extend the
+construction inputs. Create a fresh context for each application build.
 
 Some integrations are contributions to an owner's policy rather than a service
 dependency. A runtime factory can call `context.contribute("feature.policy",
 contribution)` whether it runs before or after the owner factory. The owner
 reads `context.contributions("feature.policy")` in its service factory, after
-all plugin runtime factories have declared their contributions. Contribution
-names and values are contracts defined by the owning feature; the framework
+all plugin runtime factories have declared their contributions. Contributions are
+sealed before service construction: contributing from a service factory or after
+build raises an error. Contribution names and values are contracts defined by the owning feature; the framework
 transports them without interpreting them. These build-time values are
 process-local, not agent-session state or a hot runtime registry.
 
@@ -796,7 +835,7 @@ The public `the_framework.server` package exports reusable pieces for common age
   interruption and application-defined atomic reset;
 - `ApplicationHealthApi` for aggregate and per-service lifecycle health;
 - `CanonicalTransportSockets` for ordered agent events and the application
-  capability bridge. `application_server_extensions()` exposes it as the
+  capability bridge. `build_conversation()` exposes it as the
   `canonical_transport` service. Its `event_connection_count` counts accepted
   canonical event sockets, separately from internal stream consumers, the
   application bridge and paired remote connections. Connectivity does not imply
@@ -857,7 +896,8 @@ The separate The Harness application uses the same `ApplicationSpec` and
 `Plugin` API as the starter. Its declaration supplies one primary agent,
 product plugins, their versioned dependencies and a multi-device client
 surface. The server entrypoint supplies process-local inputs through
-`BuildContext` and the few extensions intrinsic to the canonical runtime.
+`BuildContext` and calls `build_conversation`, which owns the canonical runtime
+assembly.
 Each installed plugin constructs its own services and routes through the shared
 dependency graph: for example, the Realtime plugin owns its controller-facing
 APIs and shared call state, while paired-client transport and media services
@@ -892,8 +932,8 @@ Import `CHAT` from `the_framework.plugins.chat` to install
 Both accept a client-generated command `id`; attachments use multipart form data
 with `files` and an optional `prompt`. The plugin coordinates with the installed
 Realtime API's lock, so attachment acceptance and voice startup cannot race.
-`BuildContext.data_root` owns storage; `attachments_root` optionally selects a
-separate attachment directory. No voice plugin is required for text-only apps.
+`BuildContext.data_root` owns storage; the `chat.attachments_root` plugin option
+selects a separate attachment directory when needed. No voice plugin is required for text-only apps.
 
 `CHAT` exports `conversation.ingress` version 1. Other client transports declare
 that capability requirement and inject the `chat` service into their factory,

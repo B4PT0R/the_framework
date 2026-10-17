@@ -95,7 +95,7 @@ def test_binding_changes_do_not_stop_runtime_and_persist(tmp_path):
         ]
         assert events == ["start", "stop"]
 
-        restored = declaration(Service([])).build(context)
+        restored = declaration(Service([])).build(BuildContext(dict(context)))
         status = restored.state.application.plugin_host.status("example")
         assert status.running is False
         assert status.binding_enabled is True
@@ -168,7 +168,7 @@ def test_concurrent_binding_changes_are_serialized_and_persisted(tmp_path):
             assert host.status("example").binding_enabled is True
 
         assert updates == [("example", False), ("example", True)]
-        restored = declaration(Service([])).build(context)
+        restored = declaration(Service([])).build(BuildContext(dict(context)))
         assert restored.state.application.plugin_host.status("example").binding_enabled is True
 
     asyncio.run(scenario())
@@ -410,7 +410,7 @@ def test_binding_disable_does_not_reenable_after_restart(tmp_path):
         async with app.router.lifespan_context(app):
             await app.state.application.plugin_host.set_binding("example", False)
 
-        restored = declaration(Service([])).build(context)
+        restored = declaration(Service([])).build(BuildContext(dict(context)))
         status = restored.state.application.plugin_host.status("example")
         assert status.running is False
         assert status.binding_enabled is False

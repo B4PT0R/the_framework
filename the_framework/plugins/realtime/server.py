@@ -7,7 +7,12 @@ from .context import CONTEXT_FACTORY
 
 
 def build_server_extensions(context):
-    client_factory = context.get("realtime_client_factory")
+    client_factory = context.plugin("realtime").get("client_factory")
+
+    async def update_binding(name, enabled, *, call=None):
+        return await context.services["realtime"].update_plugin_binding(name, enabled, call=call)
+
+    context.contribute("plugins.binding_update", update_binding)
 
     def build(runtime):
         controller = RealtimeController(
@@ -15,8 +20,6 @@ def build_server_extensions(context):
             context_factories=context.contributions(CONTEXT_FACTORY),
         )
         api = RealtimeApi(runtime, controller)
-        if context.get("plugin_binding_update") is None:
-            context.provide("plugin_binding_update", api.update_plugin_binding)
         runtime.register_reset_hooks(suspend=api.stop)
         return api
 

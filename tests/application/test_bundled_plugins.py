@@ -45,8 +45,10 @@ def test_complete_stateful_plugins_install_handlers_and_reset_hooks(tmp_path):
         supervisor=SimpleNamespace(send=lambda command: None),
     )
     context = BuildContext(
-        scheduler_state_path=tmp_path / "custom-clock.json",
-        system_state_path=tmp_path / "custom-control.json",
+        plugins={
+            "scheduler": {"state_path": tmp_path / "custom-clock.json"},
+            "system": {"state_path": tmp_path / "custom-control.json"},
+        },
     )
     scheduler = SCHEDULER.build_server_extensions(context)[0].service_factory(runtime)
     system = SYSTEM.build_server_extensions(context)[0].service_factory(runtime)
