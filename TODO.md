@@ -25,7 +25,12 @@ conceptuelle totale. Ces notes ne constituent pas des demandes de refonte imméd
   projections de session, à la compaction et aux clients starter/Harness.
   Le stockage durable des fichiers référencés reste nécessaire : réutiliser les
   mécanismes de fichiers, éviter les chemins temporaires et URLs éphémères.
-  Distinguer image affichée (`Artifact`) et image fournie à la vision (`Image`).
+  Contrat explicite : `Image` fournit une entrée vision à l'agent et ne demande
+  aucun affichage dans le chat. Montrer une image à l'utilisateur exige un
+  `Artifact(kind="image", ...)`. La projection UI doit exclure les `Image`
+  bruts, y compris captures d'inspection et résultats d'outils de vision.
+  Un même fichier peut être référencé par les deux items si l'agent veut à la
+  fois le voir et le montrer ; ces intentions restent indépendantes.
   Widgets : description sérialisable et renderer applicatif ; reprise historique
   à partir de l'item, avec fallback lisible si son kind n'est pas supporté.
   Vérifier ordre, absence de doublons, reload/reconnexion/restart et compaction.
