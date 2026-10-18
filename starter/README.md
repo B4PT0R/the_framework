@@ -129,6 +129,11 @@ Voice control disappears when that runtime is absent.
 | `ui/src/settings.jsx` | Model, plugin activation and editable configuration |
 | `ui/src/session.js` | Display projection of canonical items and streaming events |
 
+`application` is the global owner of this server. `build()` returns its ASGI
+adapter; the lifespan starts/stops the services and reserves `Application.current()`.
+The object stays inert when imported by a worker. Additional sessions share that
+application and keep their own `SessionRuntime`; they do not construct more apps.
+
 Import a complete framework plugin and add it to `Application.plugins`:
 `SCHEDULER`, `SYSTEM` and `REALTIME` own their agent bindings, server services,
 routes and lifecycle. Their server implementations are deferred so the worker

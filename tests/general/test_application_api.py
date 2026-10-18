@@ -36,10 +36,10 @@ def test_service_only_application_starts_and_stops_resources_in_lifespan():
     assert events == []
     server = definition.build()
     host = server.state.application
-    assert host.definition is definition
+    assert host is definition
     assert host.primary_session is None
     assert not host.services.view and events == []
-    resource = host.server_extensions['resource'].service
+    resource = host.extensions['resource'].service
     assert all(route.path not in ('/api/v1/agent/prompt', '/api/v1/sessions') for route in server.routes)
     with TestClient(server):
         assert host.service('resource') is resource
@@ -53,7 +53,7 @@ def test_agent_application_constructs_its_session_without_starting_the_worker(tm
     server = application.build('tests.fixtures.multi_session_app:application', context,
                                security=Security(), handshake=refuse_socket)
     host = server.state.application
-    assert host.definition is application
+    assert host is application
     assert isinstance(host.primary_session, SessionRuntime)
     assert host.primary_session.bridge is not None
     assert not host.primary_session.supervisor.running

@@ -7,7 +7,7 @@ from ..clients.browser_rpc import BrowserRPCClient, browser_socket_path
 
 def _bind_application_controls(runtime, app, context):
     """Expose generic plugin and surface hosts to the canonical agent."""
-    plugin_host = app.state.application.plugin_host
+    plugin_host = (app.state.session or app.state.application).plugin_host
     surface_service = app.state.application.surface_service
     async def handle_plugins(method, payload, *, call):
         if method == "list":

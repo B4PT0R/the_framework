@@ -20,7 +20,8 @@ class ApplicationHealthApi:
     )
     async def health(self, call):
         """Return aggregate and per-service lifecycle health."""
-        services = await call.application.service_graph.health()
+        graph = getattr(self.runtime, "service_graph", None) or call.application.service_graph
+        services = await graph.health()
         degraded = any(
             item["critical"] and item["status"] != "running"
             for item in services.values()

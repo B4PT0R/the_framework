@@ -163,7 +163,12 @@ def test_service_scopes_share_only_application_resources_and_fan_out_surface_eve
         host = app.state.application
         async with app.router.lifespan_context(app):
             child = await host.open_session()
-            child_app = host.session_apps[child.ready.session_id][0].state.application
+            child_app = host.session_apps[child.ready.session_id][0].state.session
+            assert Application.current() is spec
+            assert child.application is spec
+            assert child.app.state.application is spec
+            assert child.app.state.session is child
+            assert child.context.application is spec
             assert child_app.service("shared") is shared
             assert child_app.service("private") is not host.service("private")
             assert child_app.service("realtime").controller is not host.service("realtime").controller

@@ -58,9 +58,18 @@ processus serveur, l'application étant essentiellement un serveur unique. Cela
 remplace le choix initial de déclaration réutilisable construisant plusieurs hôtes
 et l'avis précédent de ne pas introduire de singleton.
 
-- [ ] Faire porter configuration et ressources d'application par ce singleton ;
-  réexaminer la fusion d'ApplicationHost dans Application et l'allègement de
-  BuildContext avec les déclarations de plugins. Cette direction reste à implémenter.
+- [x] Configuration et ressources réunies dans Application ; ApplicationHost et
+  les copies d'Application par session supprimés. Application.current() expose
+  uniquement l'application en fonctionnement, sous contrôle du lifespan (y compris
+  échec, annulation et démarrages concurrents). BuildContext.application référence
+  ce même propriétaire ; SessionRuntime garde services et ressources de session.
+  Les déclarations server_extensions restent distinctes des instances extensions,
+  et access_policy porte la politique effective de construction.
+- Validation : 699 tests Framework réussis, 3 skips ; 157 Harness. Starter/wheel,
+  isolation des sessions et coordination texte/voix couverts. Installation relancée
+  sans changer le processus navigateur ni la conversation canonique ; chat reconnecté,
+  historique et contrôles retrouvés, aperçu authentifié ouvert puis fermé.
+  application.connected mesure le bridge de capacités, pas la connexion du chat.
 - Conserver un import inerte pour les workers, un démarrage/arrêt explicite et la
   reprise après restart. Le singleton du serveur n'est pas une mémoire Python
   partagée entre processus ; un import worker ne crée pas un autre serveur actif.
@@ -96,7 +105,8 @@ et l'avis précédent de ne pas introduire de singleton.
   Installation redémarrée : JSON de session strictement identique, même PID du
   navigateur, catalogue de plugins et aperçu authentifié fonctionnels.
 
-La prochaine tranche doit intégrer cette cible singleton avec Plugin / AgentExtension / ServerExtension / BuildContext.
+La prochaine tranche porte sur Plugin / AgentExtension / ServerExtension et
+l’allègement des options et de l’injection dans BuildContext, sur ce propriétaire unique.
 Ne pas confondre cette première clarification des propriétaires avec la refonte
 encore à faire des contributions, des options et de l'injection de construction.
 

@@ -11,25 +11,25 @@ file records the constraints to preserve when changing the framework.
   features outside `the_framework`. Dependencies point from applications to the
   framework, never the reverse. The starter must depend on `the_framework`, not
   on any particular application.
-- Current implementation: `Application` is an immutable definition; `build()` constructs the application
-  ASGI server, whose lifespan owns startup/shutdown. It integrates conversation
-  when a primary agent is declared; a service-only app omits that agent. There is
-  no second public conversation builder. `app.state.application` is its
-  `ApplicationHost`, with `definition`, effective `security`, shared services and
-  `primary_session`. `SessionRuntime` owns one conversation's worker/fleet/events;
-  `Session` remains canonical data. The agent/server capability channel is `bridge`,
-  not another object named application. Advanced `session_factory` and
-  `session_extensions` run for every session and must not reuse a live controller.
-- Target architecture, explicitly chosen by Baptiste: a process-local global
-  Application singleton for the unique application server. This supersedes the
-  reusable-definition/multiple-host design goal and the earlier advice against a
-  singleton. Let Application own configuration and live application resources;
-  reconsider merging the internal ApplicationHost rather than maintaining separate
-  objects only to support multiple builds. This target is not implemented yet.
-  Preserve explicit startup/shutdown, supervised restart and worker imports that
-  do not launch a server. Worker processes do not share the server's Python object.
-  Only application ownership is global: concurrent session/agent context remains
-  explicit, with no global mutable current-session pointer.
+- `Application` is the global application object and server resource owner.
+  `build()` returns its ASGI adapter, with `state.application` pointing to that
+  same object. The lifespan reserves `Application.current()` before service
+  startup and releases it on shutdown, startup failure or cancellation. Exactly
+  one application may run in the process, including across server threads; a
+  running application cannot rebuild itself. Construction/compile/imports remain
+  inert, including in worker subprocesses. ApplicationHost and child Application
+  clones are gone. `context.application` provides the owner during construction;
+  `Application.current()` is available only during the live lifecycle.
+- Application configuration stays in declared fields; runtime metadata is separate.
+  `extensions` contains resolved declarations; `access_policy` is the effective
+  server policy. `SessionRuntime` owns the worker/fleet/events, scoped services
+  and ASGI routes for one conversation. `Session` stays canonical data. All
+  sessions point to the same Application through `runtime.application` and
+  `runtime.context.application`; routes expose `state.session` explicitly.
+  Never add a global current-session pointer. `agent.bridge`/`runtime.bridge`
+  remain the capability channels. Advanced `session_factory`/`session_extensions`
+  run per session and must not reuse a live controller. Application services
+  remain shared, session services/bindings/health remain isolated.
 - An application with a default agent may host independent concurrent sessions. Each session has exactly one worker/history writer and owns its durable
   configuration, extension state and plugin bindings. Private specialists are agents
   with their own session; they never write into the caller history. Results return

@@ -58,70 +58,89 @@ or `agent_plugins` import aliases. The wheel isolation test extracts only the
 `the_framework` package, blocks product imports, and constructs the general
 plugins using their packaged Markdown resources.
 
-`Application` is the root definition. It declares services, plugins,
-client surfaces and optionally a primary `AgentSpec` with additional named agents.
-Constructing the definition or calling `compile()` does not construct services,
-launch workers, open a browser or start a server. Workers compile the same
-importable definition without server credentials or server-only resources.
+`Application` is the application's global object. It carries both its declared
+configuration and its server-owned resources: service graph, plugin host, client
+surfaces, primary conversation and additional session lifespans. The separate
+ApplicationHost layer has been removed. Declare `application = Application(...)`
+in an importable module and build its server through `application.build(...)`.
+The ASGI server's `state.application` is that same object.
 
-`application.build(...)` is the public assembly operation. It returns the application
-FastAPI/ASGI server; it does not run Uvicorn or enter the server lifespan. With a
-primary agent, it assembles the conversation host, authenticated text/attachment
-routes, voice coordination when installed, and independent session hosting.
-Without a primary agent, it assembles only declared services and client surfaces.
-This is a service-only application, not an implicit fallback when an agent reference
-is missing. An agent application must supply its importable reference and data root.
+Constructing or compiling Application does not construct services, launch workers,
+open a browser or start a server. Worker processes import and compile this module
+without activating an application server. Python globals are process-local; the
+server's live resources are not shared with those worker processes.
 
-### Definitions, owners and lifetime
+`build(...)` constructs the ASGI server and resolves service factories. With a
+primary agent it installs conversation, authenticated text/attachment routes,
+voice coordination when installed, and independent session hosting. Without an
+agent it installs only declared services and surfaces. An agent application must
+provide its importable reference, storage inputs and authentication; omission does
+not silently build a service-only server. Building does not run Uvicorn or enter
+the ASGI lifespan.
 
-| Object | What it represents | What it owns |
-| --- | --- | --- |
-| `Application` | Immutable application definition | Agent/plugin/service/surface declarations and composition validation. No live workers. |
-| `ApplicationHost` (`app.state.application`) | One constructed server instance | Service graph, plugin host, shared surfaces, primary session and additional session lifespans. It is created by `build()`, not normally constructed by application code. |
-| `SessionRuntime` | One live conversation on the server side | Its worker supervisor, specialist fleet, event subscribers, command correlation and capability bridge. Each concurrent session gets a separate instance. |
-| `Session` | The worker's canonical conversation data | History, configuration, extension state and plugin bindings; memory-backed or atomically persisted according to its policy. It is not the server-side session controller. |
-| `BuildContext` | Inputs for one server build | Paths, process inputs, plugin options and construction contributions; its read-only service view fills during startup. Create a new context for each build. |
+### Application and session lifetime
 
-`compile()` returns the validated, process-neutral `ApplicationPlan`. It is a
-recipe, not another resource owner. The host keeps its compiled assembly in
-`host.plan`, its effective access policy in `host.security`, and the
-source definition through `host.definition`. `host.server_extensions` contains resolved
-construction declarations; `host.service(name)` returns a successfully started
-service. `host.primary_session` is the primary `SessionRuntime`.
-`await host.open_session(...)`, `host.list_sessions()` and
-`await host.close_session(id)` manage additional independent sessions.
+| Object | What it owns |
+| --- | --- |
+| `Application` | The unique running server's configuration, services, surfaces, plugin host and session management. |
+| `SessionRuntime` | One conversation's supervisor, specialist fleet, commands, event subscribers, capability bridge and session-scoped services/routes. Every concurrent session has its own controller, linked to the same Application. |
+| `Session` | Canonical history, configuration, extension state and plugin bindings, in memory or atomically persisted by its worker. |
+| `BuildContext` | Fixed construction inputs and plugin options for the application or one session; its read-only service view fills during startup. `context.application` points to the owning Application. |
 
-The implementation above currently separates the definition from ApplicationHost.
-The agreed next design is a process-local global `Application` singleton owning
-the unique server's configuration and runtime resources. Merging ApplicationHost
-into that object is under review; singleton ownership is not implemented yet.
-This supersedes the earlier emphasis on reusable definitions/multiple hosts.
+The ASGI lifespan reserves the process-global application before starting services.
+`Application.current()` returns it during service startup, request handling and
+shutdown. A second active application is rejected without replacing the first.
+The reservation is released after shutdown, including startup failure or
+cancellation. A running Application cannot be rebuilt in place; supervised server
+restart reconstructs resources and resumes the canonical sessions.
 
-Startup and shutdown remain explicit; importing the definition in a worker must
-not launch a server. Worker processes do not share the server's Python singleton.
-Multiple concurrent sessions and clients remain supported, with explicit session
-context and no global mutable current-session pointer. Supervised restart must
-continue to reconstruct application resources and resume canonical sessions.
+Outside that lifecycle, `Application.current()` raises `RuntimeError`. During
+service construction use the explicit `context.application` instead:
 
-Use `service_factory=...` for deferred construction and dependency injection.
-An object supplied directly as `service=...` is used as supplied, without cloning.
-Application-scoped services are shared across this application's sessions;
-session-scoped services are constructed for each session. Distinct concurrent
-workers must use distinct session storage paths.
+```python
+# A plugin factory called by build():
+def services(context):
+    application = context.application
+    # Read context inputs/options here; services have not started yet.
 
-`build()` validates composition and invokes synchronous service factories. The
-ASGI lifespan starts services in dependency order, launches workers and starts
-accepting new sessions. Shutdown first closes hosted sessions, then services in
-reverse order. Building at module import does not enter that lifespan; user
-factories should defer work requiring cleanup to their lifecycle methods.
-The desktop process owner separately binds/listens and runs this ASGI server;
-the persistent browser remains independent of server/session replacement.
+# Inside a running service or request handler:
+application = Application.current()
+```
 
-An agent's `agent.bridge.call(...)` sends a capability request to its server-side
-`session.bridge`. That bridge is a communication channel, not the application's
-definition or host. An HTTP handler's injected `EndpointContext.application` still
-refers to the live `ApplicationHost`. Wire messages and persisted payloads keep
-their current schemas.
+`application.context` holds the root build inputs; `application.plan` holds the
+compiled assembly. `application.security` is the optional declared access policy;
+`application.access_policy` is the effective policy selected during build.
+Declaration fields such as `plugins` and `server_extensions` keep their input
+shape. `application.extensions` is the read-only map of resolved server declarations.
+`application.service(name)` reads the root service registry, including the primary
+session's services. Additional sessions must use their own `session.service(name)`.
+`application.primary_session` names the primary controller explicitly.
+
+`await application.open_session(...)`, `application.list_sessions()` and
+`await application.close_session(id)` manage conversations. Creating one assembles
+its controller and scoped ASGI routes, not another Application or a cloned root
+definition. Shared application services are reused; session services, plugin
+bindings and health remain scoped to that conversation. `session.application` and
+`session.context.application` refer to the global Application. Its ASGI adapter
+exposes `state.application` as the global object and `state.session` as its own
+controller; request handlers can select this explicit session through
+`request.app.state.session`. There is no global mutable current-session pointer.
+
+`compile()` produces a validated `ApplicationPlan` without running factories.
+Configuration fields remain in the mapping; live resources use metadata attributes
+outside that mapping. Worker compilation therefore cannot capture running services
+from the server's Python object. Wire payload models and their schemas are unchanged.
+
+`service_factory=...` provides deferred construction and dependency injection.
+Objects supplied directly as `service=...` are used as provided, without cloning.
+Application-scoped services are shared across sessions; concurrent workers use
+distinct session storage paths. Shutdown closes hosted sessions before stopping
+root services in reverse dependency order. The desktop process owner binds/listens
+and runs ASGI separately; its persistent browser survives server replacement.
+
+`agent.bridge.call(...)` sends a capability request to its server-side
+`session.bridge`. An HTTP handler's `EndpointContext.application` now refers to
+the global Application itself. No transport or persistence migration is required.
 
 Application code supplies identity, plugins, domain services, policies and UI
 surfaces. The core owns process supervision, ordered commands, lifecycle,

@@ -26,6 +26,7 @@ from ...agent.runtime.protocol import (
 )
 from the_framework.utils.ids import timestamp_id
 
+from ..composition.services import ServiceContext
 from .bridge import ApplicationBridge
 from .fleet import FleetSupervisor
 from .supervisor import WorkerExited, WorkerTransportError
@@ -74,6 +75,14 @@ class SessionRuntime:
         restart=None,
     ):
         self.supervisor = supervisor
+        self.application = None
+        self.context = None
+        self.services = ServiceContext()
+        self.extensions = {}
+        self.service_graph = None
+        self.plugin_host = None
+        self.surface_service = None
+        self.app = None
         self.fleet_factory = fleet_factory
         self.bridge = ApplicationBridge(
             supervisor,
@@ -106,6 +115,10 @@ class SessionRuntime:
         self.activity_started_at = None
         self.activity_updated_at = None
         self.subscriber_overflows = 0
+
+    def service(self, name):
+        """Resolve a running service in this session's scope."""
+        return self.services.require(name)
 
     async def restart_server(self, intent):
         if self.restart is None:

@@ -24,7 +24,7 @@ from starter import desktop
 from starter.server import create_app
 with TemporaryDirectory() as root:
     app = create_app(Path(root), token='isolated-test', origin='http://localhost')
-    assert app.state.application.server_extensions['runtime'].service is not None
+    assert app.state.application.extensions['runtime'].service is not None
 """], capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stderr
 
@@ -58,8 +58,8 @@ def test_starter_assembles_without_voice_plugin(tmp_path, monkeypatch):
     app = server.create_app(
         tmp_path, token="test", origin="http://testserver", runtime=runtime,
     )
-    assert "realtime" not in app.state.application.server_extensions
-    assert "chat" in app.state.application.server_extensions
+    assert "realtime" not in app.state.application.extensions
+    assert "chat" in app.state.application.extensions
     with TestClient(app) as client:
         client.headers["authorization"] = "Bearer test"
         prompt = client.post(
@@ -83,7 +83,7 @@ def test_starter_host_provides_chat_outside_the_plugin_catalogue(tmp_path):
     runtime = FakeRuntime()
     app = create_app(tmp_path, token="test", origin="http://testserver", runtime=runtime)
     assert "chat" not in application.compile().plugins
-    assert "chat" in app.state.application.server_extensions
+    assert "chat" in app.state.application.extensions
     with TestClient(app) as client:
         client.headers["authorization"] = "Bearer test"
         assert "chat" not in {

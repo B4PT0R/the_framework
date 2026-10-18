@@ -112,6 +112,12 @@ for useful primitives, not a reason to add application policy to the library.
 
 ## Assemble the conversation
 
+Declare one global `Application` in your application module. It owns the running
+server and its sessions; `server.state.application` is this same object. Its ASGI
+lifespan activates `Application.current()` and releases it on shutdown. Importing
+or compiling the object in a worker starts no server. Each concurrent conversation
+keeps an explicit `SessionRuntime` and its own scoped services.
+
 The editable starter's server uses one assembly operation:
 
 ```python

@@ -104,7 +104,7 @@ def test_contributions_are_collected_before_factories_in_any_plugin_order(tmp_pa
         app = declaration(*plugins).build(
             "example:application", context, handshake=lambda socket: None,
         )
-        api = app.state.application.server_extensions["realtime"].service
+        api = app.state.application.extensions["realtime"].service
         assert len(api.controller.contexts) == 1
         assert isinstance(api.controller.contexts[0], LiveContext)
         with pytest.raises(RuntimeError, match="sealed"):
