@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from the_framework.server.composition.application import _assemble_server
 from the_framework import (
     Application,
     AgentSpec,
@@ -75,7 +76,7 @@ def test_binding_changes_do_not_stop_runtime_and_persist(tmp_path):
         context = BuildContext({
             "plugin_binding_update": update_binding,
         })
-        app = declaration(Service(events))._build_server(context)
+        app = _assemble_server(declaration(Service(events)), context=context)
         async with app.router.lifespan_context(app):
             host = app.state.application.plugin_host
             async with AsyncClient(
@@ -94,7 +95,7 @@ def test_binding_changes_do_not_stop_runtime_and_persist(tmp_path):
         ]
         assert events == ["start", "stop"]
 
-        restored = declaration(Service([]))._build_server(BuildContext(dict(context)))
+        restored = _assemble_server(declaration(Service([])), context=BuildContext(dict(context)))
         status = restored.state.application.plugin_host.status("example")
         assert status.running is False
         assert status.binding_enabled is True
@@ -105,7 +106,7 @@ def test_binding_changes_do_not_stop_runtime_and_persist(tmp_path):
 def test_binding_status_reads_the_worker_on_every_start(tmp_path):
     async def scenario():
         for enabled in (False, True):
-            app = declaration(Service([]))._build_server(BuildContext({
+            app = _assemble_server(declaration(Service([])), context=BuildContext({
                 "plugin_binding_snapshot": lambda: {"example": enabled},
             }))
             async with app.router.lifespan_context(app):
@@ -115,7 +116,7 @@ def test_binding_status_reads_the_worker_on_every_start(tmp_path):
 
 def test_required_binding_rejects_an_inconsistent_worker_snapshot():
     async def scenario():
-        app = declaration(Service([]), agent_binding_required=True)._build_server(BuildContext({
+        app = _assemble_server(declaration(Service([]), agent_binding_required=True), context=BuildContext({
             "plugin_binding_snapshot": lambda: {"example": False},
         }))
         with pytest.raises(RuntimeError, match="required plugin binding is disabled"):
@@ -139,7 +140,7 @@ def test_concurrent_binding_changes_are_serialized_and_persisted(tmp_path):
         context = BuildContext({
             "plugin_binding_update": update_binding,
         })
-        app = declaration(Service([]))._build_server(context)
+        app = _assemble_server(declaration(Service([])), context=context)
         async with app.router.lifespan_context(app):
             host = app.state.application.plugin_host
             disable = asyncio.create_task(host.set_binding("example", False))
@@ -151,7 +152,7 @@ def test_concurrent_binding_changes_are_serialized_and_persisted(tmp_path):
             assert host.status("example").binding_enabled is True
 
         assert updates == [("example", False), ("example", True)]
-        restored = declaration(Service([]))._build_server(BuildContext(dict(context)))
+        restored = _assemble_server(declaration(Service([])), context=BuildContext(dict(context)))
         assert restored.state.application.plugin_host.status("example").binding_enabled is True
 
     asyncio.run(scenario())
@@ -191,7 +192,7 @@ def test_plugin_owns_multiple_ordered_server_components_and_static_routes():
             plugins=(Plugin(name="feature", configure=runtime),),
         )
         spec.compile()
-        app = spec._build_server()
+        app = _assemble_server(spec)
         assert tuple(app.state.application.extensions) == ("feature_store", "feature_api")
         assert app.state.application.plugin_host.status("feature").binding_enabled is False
         assert app.state.application.plugin_host.status("feature").binding_available is False
@@ -227,7 +228,7 @@ def test_plugin_runtime_installs_mount_middleware_and_openapi_on_main_app():
     def core_value():
         return {"core": True}
 
-    app = Application(
+    app = _assemble_server(Application(
         name="Vertical surface", version="1",
         agents=(AgentSpec(name="primary"),),
         plugins=(Plugin(
@@ -239,7 +240,7 @@ def test_plugin_runtime_installs_mount_middleware_and_openapi_on_main_app():
             ),
         ),),
         server_extensions=(ServerExtension(name="core_api", endpoints=(core_value,)),),
-    )._build_server()
+    ))
 
     async def scenario():
         async with AsyncClient(
@@ -274,7 +275,7 @@ def test_plugin_mount_collision_is_rejected_before_start():
         server_extensions=(ServerExtension(name="api", endpoints=(Api(),)),),
     )
     with pytest.raises(ValueError, match="shadowed by a mount"):
-        declaration._build_server()
+        _assemble_server(declaration)
 
     nested = Application({**declaration,
         "server_extensions": (ServerExtension(
@@ -282,14 +283,14 @@ def test_plugin_mount_collision_is_rejected_before_start():
         ),),
     })
     with pytest.raises(ValueError, match="overlapping application mount"):
-        nested._build_server()
+        _assemble_server(nested)
 
 
 def test_application_service_can_depend_on_plugin_owned_service():
     events = []
     provider = Service(events)
     dependent = Service(events)
-    app = Application(
+    app = _assemble_server(Application(
         name="Cross-boundary lifecycle",
         version="1",
         agents=(AgentSpec(name="primary"),),
@@ -303,7 +304,7 @@ def test_application_service_can_depend_on_plugin_owned_service():
                 dependent if provider_service is provider else None
             ),
         ),),
-    )._build_server()
+    ))
 
     async def scenario():
         async with app.router.lifespan_context(app):
@@ -329,7 +330,7 @@ def test_capability_dependency_orders_plugin_services_without_extension_edge():
         def stop(self):
             events.append(f"stop:{self.name}")
 
-    app = Application(
+    app = _assemble_server(Application(
         name="Capability startup order",
         version="1",
         agents=(AgentSpec(name="primary"),),
@@ -345,7 +346,7 @@ def test_capability_dependency_orders_plugin_services_without_extension_edge():
                 server_extensions=ServerExtension(name="provider_service", service=NamedService("provider")),
             ),
         ),
-    )._build_server()
+    ))
 
     async def scenario():
         async with app.router.lifespan_context(app):
@@ -374,7 +375,7 @@ def test_grouped_plugin_start_failure_rolls_back_earlier_services():
             ),
         )
         spec = Application({**base, "plugins": (plugin,)})
-        failing = spec._build_server()
+        failing = _assemble_server(spec)
         with pytest.raises(RuntimeError, match="failed"):
             async with failing.router.lifespan_context(failing):
                 pass
@@ -389,7 +390,7 @@ def test_binding_disable_does_not_reenable_after_restart(tmp_path):
     path = tmp_path / "session.json"
     async def scenario():
         for iteration in range(2):
-            app = declaration(Service([]))._build_server(BuildContext({
+            app = _assemble_server(declaration(Service([])), context=BuildContext({
                 "plugin_binding_snapshot": lambda: Session.open(path).plugins,
                 "plugin_binding_update": lambda name, enabled, **_: Session.open(path).set_plugin(name, enabled),
             }))
@@ -403,9 +404,9 @@ def test_binding_disable_does_not_reenable_after_restart(tmp_path):
 
 def test_required_binding_is_protected():
     async def scenario():
-        app = declaration(
+        app = _assemble_server(declaration(
             Service([]), agent_binding_required=True
-        )._build_server()
+        ))
         async with app.router.lifespan_context(app):
             host = app.state.application.plugin_host
             with pytest.raises(RuntimeError, match="binding is required"):
@@ -418,7 +419,7 @@ def test_failed_worker_binding_commit_preserves_host_status():
     async def scenario():
         async def update_binding(name, enabled, *, call=None):
             raise OSError("disk full")
-        app = declaration(Service([]))._build_server(BuildContext({"plugin_binding_update": update_binding}))
+        app = _assemble_server(declaration(Service([])), context=BuildContext({"plugin_binding_update": update_binding}))
         async with app.router.lifespan_context(app):
             host = app.state.application.plugin_host
             with pytest.raises(OSError, match="disk full"):
@@ -429,7 +430,7 @@ def test_failed_worker_binding_commit_preserves_host_status():
 
 def test_plugin_route_collision_fails_before_start():
     with pytest.raises(ValueError, match="duplicate application endpoint"):
-        Application(
+        _assemble_server(Application(
             name="Collision",
             version="1",
             agents=(AgentSpec(
@@ -440,14 +441,14 @@ def test_plugin_route_collision_fails_before_start():
                 server_extensions=ServerExtension(name="plugin_api", endpoints=(Api(),)),
             ),),
             server_extensions=(ServerExtension(name="core_api", endpoints=(Api(),)),),
-        )._build_server()
+        ))
 
 
 def test_failed_plugin_start_rolls_back_started_runtimes():
     async def scenario():
         first = []
         second = []
-        app = Application(
+        app = _assemble_server(Application(
             name="Rollback",
             version="1",
             agents=(AgentSpec(
@@ -465,7 +466,7 @@ def test_failed_plugin_start_rolls_back_started_runtimes():
                     ),
                 ),
             ),
-        )._build_server()
+        ))
         with pytest.raises(RuntimeError, match="failed"):
             async with app.router.lifespan_context(app):
                 pass
@@ -484,7 +485,7 @@ def test_plugin_service_factory_receives_application_dependency_and_starts():
         received.append(dependency)
         return Service(events)
 
-    app = Application(
+    app = _assemble_server(Application(
         name="Factory",
         version="1",
         agents=(AgentSpec(name="primary"),),
@@ -497,7 +498,7 @@ def test_plugin_service_factory_receives_application_dependency_and_starts():
                 requires_services=("dependency",),
             ),
         ),),
-    )._build_server()
+    ))
 
     from fastapi.testclient import TestClient
     with TestClient(app):
@@ -516,7 +517,7 @@ def test_plugin_service_factory_can_depend_on_another_plugin_capability():
         received.append(provider_runtime)
         return Service(events)
 
-    app = Application(
+    app = _assemble_server(Application(
         name="Chained factories", version="1",
         agents=(AgentSpec(name="primary"),),
         plugins=(
@@ -532,7 +533,7 @@ def test_plugin_service_factory_can_depend_on_another_plugin_capability():
                 server_extensions=ServerExtension(name="provider_runtime", service=provider),
             ),
         ),
-    )._build_server()
+    ))
 
     from fastapi.testclient import TestClient
     with TestClient(app):
@@ -557,14 +558,14 @@ def test_cross_plugin_service_edge_requires_a_public_capability():
         plugins=(consumer, provider),
     )
     with pytest.raises(ValueError, match="without a versioned capability requirement"):
-        spec._build_server()
+        _assemble_server(spec)
 
     optional = Plugin({
         **consumer,
         "optional_capabilities": (CapabilityRequirement(name="provider.api"),),
     })
     spec = Application({**spec, "plugins": (optional, provider)})
-    assert tuple(spec._build_server().state.application.extensions) == (
+    assert tuple(_assemble_server(spec).state.application.extensions) == (
         "provider_runtime", "consumer_runtime",
     )
 
@@ -585,7 +586,7 @@ def test_declared_plugin_requires_declared_capability_provider():
         ),
     )
     with pytest.raises(ValueError, match="requires unavailable capability"):
-        declaration._build_server()
+        _assemble_server(declaration)
 
 
 
@@ -601,7 +602,7 @@ def test_authenticated_plugin_api_controls_only_binding():
             plugins=application.plugins,
             security=Security(),
         )
-        app = application._build_server()
+        app = _assemble_server(application)
         async with app.router.lifespan_context(app):
             async with AsyncClient(
                 transport=ASGITransport(app=app), base_url="http://test",
@@ -649,7 +650,7 @@ def test_factory_service_exposes_its_decorated_routes_without_endpoint_copy():
             ),
         ),),
     )
-    app = definition._build_server()
+    app = _assemble_server(definition)
     extension = app.state.application.extensions["feature_runtime"]
     service = extension.service
     assert isinstance(service, FeatureService)
@@ -670,14 +671,14 @@ def test_factory_service_exposes_its_decorated_routes_without_endpoint_copy():
 
 
 def test_prebuilt_plugin_service_exposes_decorated_routes_without_endpoint_copy():
-    app = Application(
+    app = _assemble_server(Application(
         name="Prebuilt routes", version="1",
         agents=(AgentSpec(name="primary"),),
         plugins=(Plugin(
             name="feature",
             server_extensions=ServerExtension(name="feature_runtime", service=Api()),
         ),),
-    )._build_server()
+    ))
 
     async def scenario():
         async with AsyncClient(
@@ -691,14 +692,14 @@ def test_prebuilt_plugin_service_exposes_decorated_routes_without_endpoint_copy(
 
 
 def test_service_routes_can_be_explicitly_hidden():
-    app = Application(
+    app = _assemble_server(Application(
         name="Private service", version="1",
         agents=(AgentSpec(name="primary"),),
         plugins=(Plugin(
             name="feature",
             server_extensions=ServerExtension(name="feature_runtime", service=Api(), endpoints=()),
         ),),
-    )._build_server()
+    ))
 
     async def scenario():
         async with AsyncClient(
@@ -711,7 +712,7 @@ def test_service_routes_can_be_explicitly_hidden():
 def test_plugin_status_uses_actual_service_lifecycle_and_keeps_failed_routes_installed():
     async def run():
         events = []
-        app = Application(
+        app = _assemble_server(Application(
             name="Runtime diagnostics", version="1", security=Security(),
             agents=(AgentSpec(name="primary"),),
             plugins=(
@@ -726,7 +727,7 @@ def test_plugin_status_uses_actual_service_lifecycle_and_keeps_failed_routes_ins
                     name="routes", endpoints=(),
                 )),
             ),
-        )._build_server()
+        ))
         host = app.state.application.plugin_host
         assert not host.status("healthy").running
         async with app.router.lifespan_context(app):
@@ -750,7 +751,7 @@ def test_plugin_status_uses_actual_service_lifecycle_and_keeps_failed_routes_ins
 
 def test_plugin_status_requires_all_of_its_services_and_ignores_other_owners():
     async def run():
-        app = Application(
+        app = _assemble_server(Application(
             name="Composite diagnostics", version="1",
             agents=(AgentSpec(name="primary"),),
             plugins=(
@@ -763,7 +764,7 @@ def test_plugin_status_requires_all_of_its_services_and_ignores_other_owners():
                 )),
                 Plugin(name="agent_only", agent_extension=object),
             ),
-        )._build_server()
+        ))
         async with app.router.lifespan_context(app):
             host = app.state.application.plugin_host
             assert not host.status("partial").running

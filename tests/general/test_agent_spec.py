@@ -38,26 +38,26 @@ def test_backend_client_is_lazy_noninteractive_and_retryable(monkeypatch):
     assert calls == [False, False]
 
 
-def test_specialist_spec_roundtrip_preserves_execution_configuration():
+def test_profile_import_preserves_recipe_without_invocation_policy():
     spec = AgentSpec(
         name="observer", configuration={"model": "model", "reasoning": {"effort": "low"},
                                          "example": {"enabled": True}},
         extensions=("the_framework.plugins.registry:RegistryExtension",),
-        idle_timeout_seconds=30, completion_tool="done", completion_retry_limit=2,
     )
-    restored = AgentSpec.from_profile(json.loads(json.dumps(spec.fleet_profile())))
+    trigger = AgentTrigger(spec=spec, idle_timeout_seconds=30, completion_tool="done", completion_retry_limit=2)
+    restored = AgentSpec.from_profile(json.loads(json.dumps(trigger.profile())))
     assert restored.configuration == spec.configuration
     assert restored.extensions == spec.extensions
-    assert restored.completion_tool == "done"
-    assert restored.completion_retry_limit == 2
-    assert restored.idle_timeout_seconds == 30
+    assert "completion_tool" not in restored
+    assert trigger.profile().completion_retry_limit == 2
+    assert trigger.profile().idle_timeout_seconds == 30
 
 
 def test_plain_role_instructions_use_the_same_instruction_model():
     spec = AgentSpec(name="observer", instructions="Describe the evidence.")
     assert len(spec.instructions) == 1
     assert isinstance(spec.instructions[0], Instruction)
-    assert spec.fleet_profile().instructions == "Describe the evidence."
+    assert AgentTrigger(spec=spec).profile().instructions == "Describe the evidence."
 
 
 def test_trigger_keeps_selection_separate_from_shared_agent_spec():
@@ -95,7 +95,7 @@ def test_agent_resources_factory_is_resolved_once_at_construction(tmp_path):
     assert calls == []
     path = tmp_path / "session.json"
     agent = spec.build_agent(Session.open(path))
-    assert calls == [path]
+    assert calls == [path.parent]
     assert agent.client is client
     assert agent.configs.model == "resource-model"
     agent.update_config({"model": "updated"})
@@ -133,8 +133,8 @@ def test_agent_resources_reject_unknown_fields_and_do_not_share_defaults():
 @pytest.mark.parametrize("durable", [False, True])
 @pytest.mark.parametrize("retain_history", [False, True])
 def test_trigger_owns_specialist_session_policy_without_changing_recipe(durable, retain_history):
-    spec = AgentSpec(name="specialist", queue=QueuePolicy.latest(limit=2, backlog_limit=4))
-    @agent_trigger(spec, durable=durable, retain_history=retain_history)
+    spec = AgentSpec(name="specialist")
+    @agent_trigger(spec, durable=durable, retain_history=retain_history, queue=QueuePolicy.latest(limit=2, backlog_limit=4))
     def result(value):
         return value
     trigger = AgentTrigger.from_function(result)
@@ -142,7 +142,7 @@ def test_trigger_owns_specialist_session_policy_without_changing_recipe(durable,
     restored = AgentSpec.from_profile(json.loads(json.dumps(profile)))
     assert profile.durable == durable
     assert profile.retain_history == retain_history
-    assert restored.queue == spec.queue
+    assert "queue" not in restored
     assert "retain_history" not in spec and "durable" not in restored
 
 
@@ -151,7 +151,7 @@ def test_current_extension_reference_round_trips_without_changing_session_bindin
     path = tmp_path / "session.json"
     session = Session.open(path)
     session.set_plugin("registry", False)
-    profile = AgentSpec(name="primary",  extensions=(reference,)).fleet_profile()
+    profile = AgentTrigger(spec=AgentSpec(name="primary",  extensions=(reference,))).profile()
     restored = AgentSpec.from_profile(json.loads(json.dumps(profile)))
     agent = restored.build_agent(Session.open(path), resources=AgentResources(client=object()))
     assert agent.session.id == session.id
@@ -160,27 +160,26 @@ def test_current_extension_reference_round_trips_without_changing_session_bindin
     assert profile.plugins == [reference]
 
 
-def test_declared_policies_override_the_source_profile():
-    initial = AgentSpec(name="specialist").fleet_profile()
-    spec = AgentSpec({
-        **AgentSpec.from_profile(initial),
-        "queue": QueuePolicy.latest(limit=2, backlog_limit=3),
-    })
-    restored = AgentSpec.from_profile(spec.fleet_profile())
-    assert restored.queue == spec.queue
+def test_invocation_policy_is_independent_of_the_imported_recipe():
+    spec = AgentSpec(name="specialist")
+    trigger = AgentTrigger(spec=spec, queue=QueuePolicy.latest(limit=2, backlog_limit=3))
+    restored = AgentSpec.from_profile(trigger.profile())
+    assert "queue" not in restored
+    assert AgentTrigger(spec=restored).queue == QueuePolicy()
+    assert trigger.profile().queue_policy == "latest"
 
 
 def test_profile_instructions_have_one_owner_and_do_not_accumulate():
     original = AgentSpec(name="specialist", instructions=(
         Instruction(name="role", content="Original role"),
     ))
-    imported = AgentSpec.from_profile(original.fleet_profile())
+    imported = AgentSpec.from_profile(AgentTrigger(spec=original).profile())
     updated = AgentSpec({
         **imported,
         "instructions": (Instruction(name="role", content="Revised role"),),
     })
     for _ in range(3):
-        profile = updated.fleet_profile()
+        profile = AgentTrigger(spec=updated).profile()
         assert profile.instructions == "Revised role"
         updated = AgentSpec.from_profile(profile)
         assert len(updated.instructions) == 1
@@ -443,3 +442,24 @@ def test_session_can_persist_settings_without_retaining_context_between_tasks(tm
     assert resumed.configuration == session.configuration
     assert resumed.retain_history is False
     assert json.loads(session.path.read_text())["retain_history"] is False
+
+
+def test_memory_session_resources_receive_a_workspace_without_a_storage_file(tmp_path):
+    calls = []
+    def resources(root):
+        calls.append(root)
+        return AgentResources(client=object())
+    session = Session()
+    agent = AgentSpec(name="temporary", resources=resources).build_agent(session, session_root=tmp_path)
+    assert agent.session is session and session.path is None
+    assert agent.session_root == tmp_path
+    assert calls == [tmp_path]
+    assert not (tmp_path / "session.json").exists()
+
+
+def test_completion_contract_can_require_a_tool_without_retries():
+    trigger = AgentTrigger(spec=AgentSpec(name="worker"), completion_tool="done")
+    assert trigger.profile().completion_tool == "done"
+    assert trigger.profile().completion_retry_limit == 0
+    with pytest.raises(ValueError, match="completion tool"):
+        AgentTrigger(spec=trigger.spec, completion_retry_limit=1)

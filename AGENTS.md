@@ -57,11 +57,15 @@ file records the constraints to preserve when changing the framework.
 
 ## Agent construction and specialist catalogue
 
-AgentSpec owns declarations; AgentTrigger owns task selection and result handling.
+AgentSpec owns reusable agent construction; AgentTrigger owns selection, task
+queue, idle lifetime, completion/retry requirements and result handling. Compile
+WorkerProfile only through AgentTrigger.profile(); recipe imports discard these
+invocation policies. A completion tool with zero retries permits one attempt.
 WorkerProfile/AgentTask/AgentResult remain wire payloads, not declarations to redesign.
 Construction priority is declaration < resource defaults < resolved launch profile
 < saved Session configuration; preserve executable resources/factories/initializers.
-AgentSpec does not retain compiled profiles. Compilation retains private declarations;
+AgentSpec does not retain compiled profiles. Compilation retains private invocation declarations;
+Plugin.specialists accepts AgentTrigger (a bare AgentSpec uses default policy);
 the worker resolves one catalogue after extension load, including configured inactive
 triggers and explicit specialists without handlers, then emits its wire profiles.
 Use submit for nonblocking work and dispatch internally for results. Do not restore
@@ -87,6 +91,8 @@ Declare Plugin.server_extensions explicitly and use Plugin.configure(context) on
 for declaration-time contributions or dynamic groups. Bare plugin services and the
 overloaded server_extension field are gone. Prefer a direct ServerExtension service
 factory over nested plugin/service builders.
+Agent resource factories receive the workspace directory (Path or None), never
+a fabricated storage file path.
 Factories request `context` for BuildContext inputs and name services in their other
 parameters. Use `module:factory` references for server-only imports; resolve them
 before dependency ordering, never during worker compilation. Decorated HTTP methods
@@ -162,3 +168,13 @@ worker tasks. Saved policy wins over launch defaults. Triggers/WorkerProfile use
 only durable and retain_history booleans; no three-mode vocabulary or aliases.
 WorkerReady announces effective retention so fleet retries follow saved behavior.
 Task queue journaling remains independent of session persistence.
+
+The internal assembler receives its session explicitly. Do not infer a runtime
+from installed services or restore a parallel _build_server entrypoint. Application
+construction and route/surface installation have distinct internal phases; keep
+shared ownership/lifecycle in ServiceGraph and avoid new manager abstractions.
+
+Explicit private invocations augment class-discovered triggers; a caller need not
+repeat those triggers to add a helper. Worker catalogues contain only invocations,
+with configured instance triggers taking precedence. Named requests bypass ambient
+observation filters and route only to their target specialist.

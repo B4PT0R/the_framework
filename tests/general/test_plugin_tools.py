@@ -1,4 +1,4 @@
-from the_framework.agent.spec import AgentSpec, QueuePolicy
+from the_framework.agent import AgentSpec, QueuePolicy
 from the_framework.agent.extensions.instructions import Instruction
 import asyncio
 import json
@@ -176,8 +176,8 @@ class MemoryCurator(AgentExtension):
             name="jiminy",
             instructions="Curate durable relational memory.",
             configuration={"model": "gpt-5.6-luna"},
-            queue=QueuePolicy(mode="latest", limit=4),
         ),
+        queue=QueuePolicy(mode="latest", limit=4),
         observes=["agent.response_item.added"],
     )
     def jiminy(self, result):

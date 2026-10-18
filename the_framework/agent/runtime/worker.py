@@ -550,7 +550,7 @@ class Worker:
         # Resolve one declaration catalogue after all extensions have loaded.
         # Configured triggers replace their static declarations, including when
         # their binding is disabled (the fleet controls execution separately).
-        declarations = {spec.name: spec for spec in self.specialists}
+        declarations = {invocation.name: invocation for invocation in self.specialists}
         triggers = list(self.agent.agents.values()) if hasattr(self.agent, "agents") else []
         for extension in getattr(self.agent, "extensions", ()):
             triggers.extend(extension.contributions("agents"))
@@ -560,10 +560,7 @@ class Worker:
                 raise ValueError(f"duplicate agent trigger: {trigger.name}")
             seen.add(trigger.name)
             declarations[trigger.name] = trigger
-        specialists = [
-            value.profile() if name in seen else value.fleet_profile()
-            for name, value in declarations.items()
-        ]
+        specialists = [invocation.profile() for invocation in declarations.values()]
         await self.send(WorkerReady(
             session_id=self.agent.id,
             retain_history=self.agent.session.retain_history,

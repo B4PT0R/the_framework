@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 from the_framework.agent import Agent as RuntimeAgent
 from the_framework.agent.runtime.bridge import ApplicationClient
-from the_framework.agent.extensions.specialists import AgentTriggers, agent_trigger
+from the_framework.agent.extensions.specialists import AgentTrigger, AgentTriggers, QueuePolicy, agent_trigger
 from the_framework.agent.runtime.event_loop import EventLoop
 from the_framework.agent.models.events import Event
 from the_framework.agent.extensions.hooks import Hooks
@@ -973,7 +973,8 @@ def test_ready_catalogue_uses_configured_inactive_triggers_and_bare_declarations
 
     plan = Application(name="Catalogue", version="1", agents=(AgentSpec(name="main"),), plugins=(
         Plugin(name="feature", agent_extension=Feature, agent_binding_enabled=False,
-            specialists=(AgentSpec(name="observer"), AgentSpec(name="bare"))),
+            specialists=(AgentTrigger(spec=AgentSpec(name="bare"),
+                queue=QueuePolicy.latest(limit=2), idle_timeout_seconds=7, completion_tool="done"))),
     )).compile()
     agent = plan.agents["main"].build_agent()
     assert not agent.extension("feature").activated
@@ -989,6 +990,9 @@ def test_ready_catalogue_uses_configured_inactive_triggers_and_bare_declarations
         assert {value.name for value in ready.specialists} == {"feature.observer", "feature.bare"}
         assert len(ready.specialists) == 2
         observer = next(value for value in ready.specialists if value.name == "feature.observer")
+        bare = next(value for value in ready.specialists if value.name == "feature.bare")
+        assert bare.queue_policy == "latest" and bare.queue_limit == 2
+        assert bare.idle_timeout_seconds == 7 and bare.completion_tool == "done"
         assert observer.model == "configured-after-load"
         assert observer.instructions == "Configured role"
         assert observer.observes == ["agent.response_item.added"]

@@ -585,7 +585,7 @@ whereas a server extension is a declaration describing a service and its surface
 | `Plugin.agent_extension` | Agent extension class, factory or import reference |
 | `Plugin.server_extensions` | Explicit `ServerExtension` declarations; a single declaration is normalized to a tuple |
 | `Plugin.configure` | Advanced `configure(context)` hook collecting contributions and optionally returning additional `ServerExtension` declarations; an import reference defers server imports |
-| `Plugin.specialists` | Private `AgentSpec` declarations |
+| `Plugin.specialists` | Private `AgentTrigger` invocations; bare `AgentSpec` uses the default policy |
 | `Plugin.provides_capabilities` | Versioned contracts exported by this feature |
 | `Plugin.requires_capabilities` / `optional_capabilities` | Required or optional versioned contracts from other plugins |
 | `Plugin.agent_binding_enabled` / `agent_binding_required` | Initial and mandatory binding to each public agent; server installation remains fixed |
@@ -909,8 +909,10 @@ session negotiation remains an internal transport concern.
 inputs needed to construct it: an inference client and initial configuration/state
 defaults. The session owns subsequent changes and overrides these defaults on resume. It is not another plugin or application
 composition layer. Put static defaults directly in `AgentSpec.configuration`.
-Use a `resources(session_path)` factory only for process-local inputs such as
-loading environment settings or creating an inference client. The generic worker
+Use a `resources(session_root)` factory only for process-local inputs such as
+loading environment settings or creating an inference client. The argument is the
+workspace directory (or None), independent of whether session history is stored
+on disk. A memory-backed session never supplies a fabricated session file path. The generic worker
 owns construction. Use explicit resources when constructing an agent directly.
 
 ```python
@@ -962,9 +964,10 @@ namespaced specialist from `module:application`.
 `@agent_trigger(spec, observes=..., item_kinds=..., conversation_roles=...,
 input_item_field=..., durable=False, retain_history=False)` binds an `AgentSpec` to a result handler. The decorator
 selects what to observe and the lifetime of the session it launches. Model/plugin settings live in the spec's
-`configuration`, alongside its instructions, plugins, queue policy and
-completion settings. There is no second set of model or queue parameters on the
-decorator. The spec's name identifies the specialist; a handler docstring fills
+`configuration`, alongside its instructions and plugins. The trigger owns `queue`,
+`idle_timeout_seconds`, `completion_tool` and `completion_retry_limit`: these are
+invocation and result-delivery policies, not agent construction settings. A completion
+tool can be required without retries; a zero retry limit means one attempt. The spec's name identifies the specialist; a handler docstring fills
 its description when the spec uses the default description.
 
 For a single role, `instructions="Describe the evidence."` normalizes to one
@@ -987,14 +990,21 @@ After extension loading, the worker forms one declaration catalogue: each loaded
 trigger supplies its configured spec and selection, replacing the corresponding
 static declaration; explicit specialists without a trigger remain available.
 The catalogue includes inactive bindings so the fleet can suspend or re-enable
-execution without losing the configured declaration. Only then are WorkerProfile
-payloads produced for WorkerReady. Worker constructors no longer merge two sets
+execution without losing the configured declaration. Only then does `AgentTrigger.profile()` produce WorkerProfile
+payloads for WorkerReady. Private specialists without handlers may use AgentTrigger directly in
+Plugin.specialists to choose invocation policies; a bare AgentSpec is the shorthand
+for defaults. Explicit declarations add to discovered class triggers, so adding a
+private helper does not require redeclaring every decorated specialist. Named task
+requests always route to their target; observes filters ambient events only.
+Compilation retains those invocations, including for direct private
+worker launches. AgentSpec does not compile fleet profiles. Worker constructors no longer merge two sets
 of already serialized profiles.
 
 The serialized specialist profile carries `durable` and `retain_history` defaults
 for creating a session. WorkerReady reports the session's effective retain_history
 value, so fleet completion retries follow saved behavior even when trigger defaults
-have changed. The trigger owns these defaults; AgentSpec owns the queue policy.
+have changed. The trigger owns these defaults and its queue/completion/idle policies; AgentSpec
+contains only the reusable agent recipe.
 Reconstructing a recipe from a profile does not attach hosting or history policy to it.
 Task journaling (`durable_tasks`) remains independent of conversation persistence.
 
@@ -1252,7 +1262,7 @@ remain explicit session-runtime overrides.
 The default generic worker persists history, configuration, plugin state and
 bindings in its canonical session. Static defaults belong in
 `AgentSpec.configuration`; optionally declare a
-`resources(session_path) -> AgentResources` factory for process-local configuration,
+`resources(session_root) -> AgentResources` factory for process-local configuration,
 state and optional inference client. It runs during construction, never during
 compilation. Explicit `build_agent(resources=...)` replaces this factory. Saved
 session values override initial defaults. Updates commit atomically before live

@@ -7,6 +7,7 @@ from itertools import permutations
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from the_framework.server.composition.application import _assemble_server
 from the_framework import Application, AgentSpec, BuildContext, Plugin, ServerExtension
 from the_framework.agent.context.session import Session
 from the_framework.agent.models.responses import Message
@@ -118,7 +119,7 @@ def test_service_factory_cannot_change_contributions(tmp_path):
         return ServerExtension(name="late", service_factory=build)
 
     with pytest.raises(RuntimeError, match="sealed before service construction"):
-        declaration(Plugin(name="late", configure=declare))._build_server(BuildContext())
+        _assemble_server(declaration(Plugin(name="late", configure=declare)), context=BuildContext())
 
 
 def test_services_have_one_lifecycle_owner_and_context_cannot_be_reused(tmp_path):
@@ -135,9 +136,9 @@ def test_services_have_one_lifecycle_owner_and_context_cannot_be_reused(tmp_path
     async def run():
         service = Service()
         context = BuildContext(data_root=tmp_path)
-        app = declaration(Plugin(name="feature", server_extensions=ServerExtension(name="feature", service=service)))._build_server(context)
+        app = _assemble_server(declaration(Plugin(name="feature", server_extensions=ServerExtension(name="feature", service=service))), context=context)
         with pytest.raises(RuntimeError, match="one application build"):
-            declaration()._build_server(context)
+            _assemble_server(declaration(), context=context)
         assert "feature" not in context.services
         async with app.router.lifespan_context(app):
             assert context.services["feature"] is service

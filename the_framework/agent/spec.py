@@ -6,7 +6,6 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from importlib import import_module
 from types import MappingProxyType
-from typing import Literal
 
 from modict import modict
 
@@ -25,28 +24,6 @@ def _tuple(value):
     return (value,)
 
 
-class QueuePolicy(modict):
-    _config = modict.config(frozen=True, strict=True, extra="forbid", enforce_json=True)
-    mode: Literal["fifo", "latest"] = "fifo"
-    limit: int = 8
-    durable: bool = True
-    backlog_limit: int = 512
-
-    @modict.model_validator(mode="after")
-    def validate_limits(self):
-        if self.limit <= 0 or self.backlog_limit < self.limit:
-            raise ValueError("invalid agent queue limits")
-
-    @classmethod
-    def fifo(cls, *, limit=8, durable=True, backlog_limit=512):
-        return cls(mode="fifo", limit=limit, durable=durable, backlog_limit=backlog_limit)
-
-    @classmethod
-    def latest(cls, *, limit=1, durable=False, backlog_limit=None):
-        return cls(mode="latest", limit=limit, durable=durable,
-                   backlog_limit=limit if backlog_limit is None else backlog_limit)
-
-
 class AgentResources(modict):
     """Process-local client and initial defaults; resumable values live in the session."""
 
@@ -57,7 +34,7 @@ class AgentResources(modict):
 
 
 class AgentSpec(modict):
-    """A reusable declaration of agent identity, plugins and worker behavior."""
+    """A reusable recipe for agent identity, behavior and process-local resources."""
 
     _config = modict.config(frozen=True, strict=True, extra="forbid", auto_convert=False)
 
@@ -68,12 +45,8 @@ class AgentSpec(modict):
     initializers: tuple[object, ...] = ()
     command_middleware: tuple[object, ...] = ()
     projections: Mapping[str, object] = modict.factory(dict)
-    resources: Callable[[str | Path | None], AgentResources] | None = None
+    resources: Callable[[Path | None], AgentResources] | None = None
     configuration: Mapping[str, object] = modict.factory(dict)
-    idle_timeout_seconds: float | int | None = None
-    completion_tool: str | None = None
-    completion_retry_limit: int = 0
-    queue: QueuePolicy = modict.factory(QueuePolicy)
 
     @modict.model_validator(mode="after")
     def validate_declaration(self):
@@ -82,10 +55,6 @@ class AgentSpec(modict):
         if not self.description.strip():
             raise ValueError("agent description is required")
         SessionProjections(self.projections)
-        if self.idle_timeout_seconds is not None and self.idle_timeout_seconds <= 0:
-            raise ValueError("idle_timeout_seconds must be positive")
-        if self.completion_retry_limit < 0 or (self.completion_tool and not self.completion_retry_limit):
-            raise ValueError("invalid completion retry limit")
 
     @modict.any_validator(mode="before")
     def normalize_declaration(self, key, value):
@@ -105,52 +74,11 @@ class AgentSpec(modict):
             description=profile.description or f"Private specialist {profile.name}.",
             extensions=tuple(profile.plugins),
             instructions=(Instruction(name="specialist_role", content=profile.instructions),),
-            queue=QueuePolicy(
-                mode=profile.queue_policy,
-                limit=profile.queue_limit,
-                durable=profile.durable_tasks,
-                backlog_limit=profile.backlog_limit,
-            ),
             configuration={**profile.agent_config, **profile.plugin_config, "model": profile.model},
-            idle_timeout_seconds=profile.idle_timeout_seconds,
-            completion_tool=profile.completion_tool,
-            completion_retry_limit=profile.completion_retry_limit,
         )
 
     def with_extensions(self, *plugins):
         return type(self)({**self, "extensions": (*self.extensions, *plugins)})
-
-    def fleet_profile(self, *, identity=None, observes=("agent.task.requested",),
-                      item_kinds=(), conversation_roles=(), input_item_field=None,
-                      durable=False, retain_history=False):
-        """Compile scheduling metadata for the server-owned specialist fleet."""
-        instruction_text = "\n\n".join(
-            value.content if isinstance(value, Instruction) else value["content"]
-            for value in self.instructions
-        ).strip()
-        configuration = dict(self.configuration)
-        model = configuration.pop("model", "gpt-5.6-luna")
-        return WorkerProfile(
-            name=identity or self.name,
-            description=self.description,
-            instructions=instruction_text or self.description,
-            queue_limit=self.queue.limit,
-            queue_policy=self.queue.mode,
-            durable=durable,
-            retain_history=retain_history,
-            durable_tasks=self.queue.durable,
-            backlog_limit=self.queue.backlog_limit,
-            model=model,
-            agent_config=configuration,
-            plugins=[plugin for plugin in self.extensions if isinstance(plugin, str)],
-            idle_timeout_seconds=self.idle_timeout_seconds,
-            completion_tool=self.completion_tool,
-            completion_retry_limit=self.completion_retry_limit,
-            observes=list(observes),
-            item_kinds=list(item_kinds),
-            conversation_roles=list(conversation_roles),
-            input_item_field=input_item_field,
-        )
 
     @staticmethod
     def _resolve_extension(contribution, agent):
@@ -200,16 +128,15 @@ class AgentSpec(modict):
         session = Session() if session is None else session
         if not isinstance(session, Session):
             raise TypeError("build_agent requires a Session, not a storage path")
-        session_path = session.path
-        if session_path is None and session_root is not None:
-            session_path = Path(session_root) / "session.json"
+        root = (Path(session_root).resolve() if session_root is not None
+                else session.path.parent.resolve() if session.path is not None else None)
         resolved = type(self).from_profile(profile) if profile is not None else None
         if resolved is not None and resolved.name != self.name:
             raise ValueError("execution profile belongs to another agent declaration")
         # Explicit resources replace the factory as a whole; there is no hidden
         # merge or fallback between independently supplied construction inputs.
         if resources is None:
-            resources = self.resources(session_path) if self.resources else AgentResources()
+            resources = self.resources(root) if self.resources else AgentResources()
         if not isinstance(resources, AgentResources):
             raise TypeError("agent resources must be AgentResources")
         options = dict(self.configuration)
@@ -222,7 +149,7 @@ class AgentSpec(modict):
             session=session,
             name=self.name,
             application_root=application_root,
-            session_root=Path(session_path).parent if session_path is not None else None,
+            session_root=root,
             description=self.description,
             state=resources.state,
             **options,
@@ -263,4 +190,4 @@ class AgentSpec(modict):
         )
 
 
-__all__ = ["AgentResources", "AgentSpec", "QueuePolicy"]
+__all__ = ["AgentResources", "AgentSpec"]

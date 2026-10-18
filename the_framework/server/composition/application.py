@@ -25,15 +25,13 @@ from ...utils.ids import timestamp_id
 from ...agent.extensions.specialists import AgentTrigger
 
 from ..api.endpoints import EndpointRegistry, SecurityPolicy, endpoint_declarations
-from ..api.plugins import PluginHostApi
 from .plugins import PluginHost
 from .controls import _bind_application_controls
 from ..runtime.session import SessionRuntime
 from .dependencies import dependency_order
 from .services import ServiceContext, ServiceGraph
-from ..api.websockets import WebSocketRegistry
-from ..clients.surfaces import ClientSurface, SurfaceApplication, SurfaceService
-from ..api.surfaces import SurfaceApi
+from .routes import _install_routes, _paths_overlap, _path_within_mount
+from ..clients.surfaces import ClientSurface
 
 
 def _tuple(value):
@@ -51,23 +49,6 @@ def _identifier(value: str, kind: str):
         raise ValueError(
             f"{kind} must contain only letters, numbers, and underscores"
         )
-
-
-def _paths_overlap(left, right):
-    left = left.rstrip("/") or "/"
-    right = right.rstrip("/") or "/"
-    return (
-        left == "/"
-        or right == "/"
-        or left == right
-        or left.startswith(f"{right}/")
-        or right.startswith(f"{left}/")
-    )
-
-
-def _path_within_mount(path, mount):
-    mount = mount.rstrip("/") or "/"
-    return mount == "/" or path == mount or path.startswith(f"{mount}/")
 
 
 class BuildContext(modict[str, object]):
@@ -267,7 +248,7 @@ class Plugin(modict):
     agent_extension: Callable | type | object | None = None
     server_extensions: tuple[ServerExtension, ...] = ()
     configure: Callable[[BuildContext], ServerExtension | tuple[ServerExtension, ...] | None] | str | None = None
-    specialists: tuple[AgentSpec, ...] = ()
+    specialists: tuple[AgentTrigger, ...] = ()
     provides_capabilities: tuple[Capability, ...] = ()
     requires_capabilities: tuple[CapabilityRequirement, ...] = ()
     optional_capabilities: tuple[CapabilityRequirement, ...] = ()
@@ -304,12 +285,22 @@ class Plugin(modict):
 
     @modict.any_validator(mode="before")
     def normalize_sequences(self, key, value):
-        if key == "specialists" and not value and isinstance(self.get("agent_extension"), type):
-            return tuple(
-                AgentTrigger.from_function(member).spec
-                for _, member in inspect.getmembers(self.agent_extension)
-                if getattr(member, "agent_trigger", None) is not None
+        if key == "specialists":
+            invocations = tuple(
+                AgentTrigger(spec=item)
+                if isinstance(item, AgentSpec) else item for item in _tuple(value)
             )
+            if any(not isinstance(item, AgentTrigger) for item in invocations):
+                raise TypeError("specialists must contain AgentSpec or AgentTrigger declarations")
+            if isinstance(self.get("agent_extension"), type):
+                explicit = {item.name for item in invocations}
+                discovered = (
+                    AgentTrigger.from_function(member)
+                    for _, member in inspect.getmembers(self.agent_extension)
+                    if getattr(member, "agent_trigger", None) is not None
+                )
+                invocations += tuple(item for item in discovered if item.name not in explicit)
+            return invocations
         return _tuple(value) if key in {"server_extensions", "specialists", "provides_capabilities", "requires_capabilities", "optional_capabilities"} else value
 
     def build_server_extensions(self, context: BuildContext):
@@ -335,7 +326,7 @@ class ApplicationPlan(modict):
     server_extensions: tuple[ServerExtension, ...]
     surfaces: tuple[ClientSurface, ...]
     agents: Mapping[str, AgentSpec]
-    specialists: tuple[AgentSpec, ...]
+    specialists: tuple[AgentTrigger, ...]
     plugins: Mapping[str, Plugin]
     capabilities: Mapping[str, Capability]
 
@@ -412,9 +403,6 @@ class Application(modict):
         if not self.version.strip():
             raise ValueError("application version is required")
 
-    def with_server_extensions(self, *extensions):
-        return type(self)({**self, "server_extensions": (*self.server_extensions, *extensions)})
-
     @modict.any_validator(mode="before")
     def normalize_sequences(self, key, value):
         if key == "surfaces" and value is None:
@@ -432,9 +420,6 @@ class Application(modict):
 
     def compile(self):
         return _compile_application(self)
-
-    def _build_server(self, context: BuildContext | None = None):
-        return _assemble_server(self, context=context)
 
     def build(
         self, reference: str | None = None, context: BuildContext | None = None, *,
@@ -815,18 +800,14 @@ def _compile_application(application, *, extra_extensions=(), surfaces=None):
         if plugin.name in plugins:
             raise ValueError(f"duplicate plugin: {plugin.name}")
         plugins[plugin.name] = plugin
-        for private_agent in plugin.specialists:
-            if not isinstance(private_agent, AgentSpec):
-                raise TypeError(
-                    f"private agents for plugin {plugin.name} must be AgentSpec instances"
-                )
-            identity = f"{plugin.name}.{private_agent.name}"
+        for invocation in plugin.specialists:
+            identity = f"{plugin.name}.{invocation.name}"
             if identity in {spec.name for spec in application.agents} or identity in private_identities:
                 raise ValueError(f"duplicate private agent identity: {identity}")
             private_identities.add(identity)
-            compiled_agent = AgentSpec({**private_agent, "name": identity})
+            compiled_agent = AgentSpec({**invocation.spec, "name": identity})
             agents[identity] = compiled_agent
-            specialists.append(compiled_agent)
+            specialists.append(AgentTrigger({**invocation, "name": identity, "spec": compiled_agent}))
         for capability in plugin.provides_capabilities:
             if capability.name in capabilities:
                 raise ValueError(f"duplicate plugin capability: {capability.name}")
@@ -1085,9 +1066,9 @@ def _assemble_server(
     """Compile the complete declaration, then build its FastAPI runtime."""
     if not isinstance(application, Application):
         raise TypeError("server assembly expects an Application")
-    if _current_application is application and session is None:
+    is_root = context is None or context.get("session_owner") is None
+    if _current_application is application and is_root:
         raise RuntimeError("cannot rebuild the running application")
-    is_root = session is None
     surfaces = ((application.surfaces or ()) if surfaces is None else surfaces) if is_root else ()
     policy = security if security is not None else application.security
     plan = _compile_application(application, extra_extensions=extra_extensions, surfaces=surfaces)
@@ -1183,11 +1164,6 @@ def _assemble_server(
         application.access_policy = policy
         application.session_root = application.session_builder = application.event_handshake = None
         application.session_lock = asyncio.Lock()
-    if is_root and not application_only and session is None:
-        installed = [service for service in resolved_services.values() if isinstance(service, SessionRuntime)]
-        if len(installed) > 1:
-            raise ValueError("a manually assembled server may install only one session runtime")
-        session = installed[0] if installed else None
     if session is not None:
         session.services = build_context._services
     agent_runtime = session if isinstance(session, SessionRuntime) else None
@@ -1238,116 +1214,7 @@ def _assemble_server(
         (runtime.extensions[name], plugin_owners.get(name, name))
         for name in startup_order if name not in inherited
     )
-    mounts = []
-    middleware_entries = []
-    for extension, _owner in all_extensions:
-        middleware_entries.extend(
-            (middleware, dict(options))
-            for middleware, options in extension.middleware
-        )
-        for path, mounted_app, name in extension.mounts:
-            if not path.startswith("/"):
-                raise ValueError(
-                    f"extension mount path must start with /: {extension.name}"
-                )
-            if any(_paths_overlap(path, existing) for existing, _, _ in mounts):
-                raise ValueError(f"overlapping application mount: {path}")
-            if any(
-                _paths_overlap(path, route)
-                for surface in surfaces
-                for route in (*surface.routes, surface.preview_route)
-            ):
-                raise ValueError(
-                    f"client surface route collides with application mount: {path}"
-                )
-            mounts.append((path, mounted_app, name))
-    mount_prefixes = tuple(path for path, _, _ in mounts)
-    reserved_surfaces = surfaces if is_root else application.plan.surfaces
-    surface_prefixes = tuple(
-        route
-        for surface in reserved_surfaces
-        for route in (*surface.routes, surface.preview_route)
-    )
-    allowed_surface_routes = {
-        route
-        for surface in reserved_surfaces
-        for route in surface.server_routes
-    }
-    registry = EndpointRegistry(
-        app,
-        security=policy,
-        validate_responses=application.validate_responses,
-        application=application,
-        reserved_prefixes=mount_prefixes,
-    )
-    socket_registry = WebSocketRegistry(app, security=policy)
-    for extension, owner in all_extensions:
-        for source in extension.endpoints:
-            for declaration in endpoint_declarations(source):
-                if declaration.path not in allowed_surface_routes and any(
-                    _path_within_mount(declaration.path, prefix)
-                    for prefix in surface_prefixes
-                ):
-                    raise ValueError(
-                        f"application endpoint is shadowed by a mount: {declaration.path}"
-                    )
-                registry.add(declaration, owner=owner)
-        for endpoint in extension.websockets:
-            if any(_path_within_mount(endpoint.path, prefix) for prefix in mount_prefixes):
-                raise ValueError(
-                    f"application WebSocket is shadowed by a mount: {endpoint.path}"
-                )
-            if endpoint.path not in allowed_surface_routes and any(
-                _path_within_mount(endpoint.path, prefix)
-                for prefix in surface_prefixes
-            ):
-                raise ValueError(
-                    f"application WebSocket is shadowed by a mount: {endpoint.path}"
-                )
-            socket_registry.add(endpoint, owner=owner)
-    if plan.plugins and policy is not None and not application_only:
-        for endpoint in endpoint_declarations(PluginHostApi(runtime)):
-            registry.add(endpoint, owner="plugin_host")
-    if surfaces:
-        if policy is None:
-            raise ValueError("client surfaces require a security policy")
-        for endpoint in endpoint_declarations(SurfaceApi(runtime)):
-            registry.add(endpoint, owner="surface_service")
-    registry.install()
-    socket_registry.install()
-    for middleware, options in middleware_entries:
-        app.add_middleware(middleware, **options)
-    for path, mounted_app, name in mounts:
-        app.mount(path, mounted_app, name=name)
-    if surfaces:
-        surface_root = build_context.get("surface_root")
-        if surface_root is None:
-            raise ValueError("client surfaces require surface_root in BuildContext")
-        surface_service = SurfaceService(
-            surfaces,
-            surface_root,
-            origin=build_context.get("origin"),
-            notify=build_context.get("surface_notify", runtime.surface_notify),
-            progress=build_context.get("surface_progress", runtime.surface_progress),
-        )
-        runtime.surface_service = surface_service
-        for surface in surfaces:
-            for route in surface.routes:
-                app.mount(
-                    route,
-                    SurfaceApplication(surface_service, surface.name),
-                    name=f"surface:{surface.name}:{route}",
-                )
-            app.mount(
-                surface.preview_route,
-                SurfaceApplication(
-                    surface_service,
-                    surface.name,
-                    preview=True,
-                    security=policy,
-                ),
-                name=f"surface-preview:{surface.name}",
-            )
+    _install_routes(app, runtime, all_extensions, application_only=application_only)
     binding_updates = build_context.contributions("plugins.binding_update")
     if len(binding_updates) > 1:
         raise ValueError("only one plugin binding coordinator may be installed")

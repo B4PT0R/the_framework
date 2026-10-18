@@ -4,6 +4,7 @@ import subprocess
 import sys
 from types import SimpleNamespace
 
+from the_framework.server.composition.application import _assemble_server
 from the_framework import Application, BuildContext, ServerExtension
 from the_framework.plugins.scheduler import SCHEDULER
 from the_framework.plugins.system import SYSTEM
@@ -92,7 +93,8 @@ def test_realtime_reset_waits_for_worker_barrier_and_clears_call_identity(tmp_pa
         supervisor.send = send
         runtime = SessionRuntime(supervisor, reset_transaction_factory=lambda path: None)
         app = Application(name="Voice reset", version="1", security=Security(), plugins=(REALTIME,),
-            server_extensions=(ServerExtension(name="runtime", service=runtime),)).build()
+            server_extensions=(ServerExtension(name="runtime", service=runtime),))
+        app = _assemble_server(app, session=runtime)
         api = app.state.application.extensions["realtime"].service
         api.call_id = "client-call"
         api.controller.call_id = "voice-call"

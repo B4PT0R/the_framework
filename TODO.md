@@ -826,3 +826,37 @@ Fresh starter prepared twice, rendered in connected Chromium and stopped cleanly
 Installed Harness restarted: same browser/window, canonical history preserved,
 new retain_history field true as intended, text/voice controls and 13 plugins
 available, Jiminy following the saved memory configuration.
+
+
+## API polish for an experimental publication — delivery
+
+- [x] Keep AgentSpec about agent construction; AgentTrigger owns queue, idle
+  shutdown, completion requirements/retries and execution-profile compilation.
+  Removed fleet_profile and recipe orchestration fields without aliases.
+- [x] Resource factories receive workspace directories; memory and Harness
+  environment/timing consumers no longer manufacture session filenames.
+- [x] Remove parallel _build_server and unused extension-copy shortcut. Session
+  ownership is explicit; authenticated route/surface installation has a separate
+  internal phase using existing objects, without another manager layer.
+- [x] Expose Session with root primitives, refresh onboarding/guide, label old
+  audits as historical and keep memory implementation helpers out of facades.
+- [x] Update source-map-js lock to 1.2.2 (GHSA-68fv-2mgg-jv7q); starter audit clean.
+- [x] Review related agentic recipe snapshots: retained as evolving composition
+  feedback; stable session, queue, auth and lifecycle guarantees remain general.
+
+Validation before final packaging: Framework 732 passed / 3 skipped; Harness 157
+passed; starter 28 and Harness 54 JS tests plus both UI builds passed. README
+clock recipe constructed and invoked offline. sdist and wheel build; independent
+starter prepared from the wheel, Chromium connected and clean shutdown verified.
+Final verification: Framework 733 passed / 3 opt-in live tests skipped; last
+native-result/fleet/worker contracts 78 passed after removing obsolete conversions.
+Harness 157 passed. JS starter 28 and Harness 54 passed; both builds passed.
+Starter npm audit is clean after source-map-js 1.2.2. Independent source-distribution
+and wheel built under /tmp/framework-publication-ready. Candidate wheel installed
+in an independent environment with public dependencies; generated starter prepared
+twice, authenticated worker/history and connected Chromium verified, shutdown clean.
+Installed Harness restarted with the same browser/window and unchanged canonical
+conversation, text/voice controls, 13 plugins and Jiminy configuration verified.
+Explicit handlerless invocations and class-discovered triggers share one catalogue;
+named requests route independently of ambient subscriptions. No new public manager,
+compatibility alias or inline migration. No push or publication performed.

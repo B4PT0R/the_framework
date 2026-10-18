@@ -1,5 +1,10 @@
 # Neutral local-agent starter — acceptance audit
 
+> Historical design/audit record. API names, paths and verification counts below
+> describe that iteration; use [the current guide](framework.md), README and
+> CHANGELOG for the supported composition API.
+
+
 This document records an earlier acceptance pass; names and module paths below
 reflect that snapshot. The current composition API is documented in
 [framework.md](framework.md), with migrations in [CHANGELOG.md](../CHANGELOG.md).

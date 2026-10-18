@@ -54,6 +54,4 @@ class WorkerProfile(Base):
             raise ValueError("idle_timeout_seconds must be positive")
         if self.completion_retry_limit < 0:
             raise ValueError("completion_retry_limit must not be negative")
-        if self.completion_tool is not None and self.completion_retry_limit == 0:
-            raise ValueError("completion_retry_limit must be positive with completion_tool")
         return self

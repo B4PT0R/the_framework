@@ -1,4 +1,5 @@
-from the_framework.agent.spec import AgentSpec, QueuePolicy
+from the_framework.agent.spec import AgentSpec
+from the_framework.agent.extensions.specialists import QueuePolicy
 from the_framework.agent.extensions.instructions import Instruction
 import json
 import math
@@ -41,14 +42,6 @@ class MemoryConfig(Config):
     semantic_moment_order: float = 3
     temporal_weight: float = 0.05
     temporal_half_life_days: float = 90
-
-
-def memory_path(session_path):
-    return (
-        Path(session_path).with_name("relational-memory.sqlite3")
-        if session_path is not None
-        else Path(":memory:")
-    )
 
 
 def message_text(message):
@@ -125,7 +118,7 @@ class MemoryExtension(AgentExtension):
             minimum_context_limit,
         )
         self.store = MemoryStore(
-            memory_path(self.agent.session_root / "session.json" if self.agent.session_root else None),
+            (self.agent.session_root / "relational-memory.sqlite3" if self.agent.session_root else Path(":memory:")),
             entry_token_limit=self.config.entry_token_limit,
             max_entries=self.config.max_entries,
             token_budget=self.config.memory_token_budget,
@@ -145,7 +138,7 @@ class MemoryExtension(AgentExtension):
                 "trigger_ratio": self.config.curator_trigger_ratio,
             },
             "memory_curator": {
-                "store_path": str(memory_path(self.agent.session_root / "session.json" if self.agent.session_root else None)),
+                "store_path": str(self.store.path),
                 "entry_token_limit": self.config.entry_token_limit,
                 "entry_maintenance_token_threshold": (
                     self.config.entry_maintenance_token_threshold
@@ -159,11 +152,11 @@ class MemoryExtension(AgentExtension):
                 "embedding_precision": self.config.embedding_precision,
             }
         }
+        declaration.queue = QueuePolicy({**declaration.queue, "limit": self.config.queue_limit})
         declaration.spec = AgentSpec({
             **declaration.spec,
             "configuration": configuration,
             "instructions": (Instruction(name="role", content=self.curator_instructions),),
-            "queue": QueuePolicy({**declaration.spec.queue, "limit": self.config.queue_limit}),
         })
         return self
 
@@ -178,11 +171,9 @@ class MemoryExtension(AgentExtension):
                 "model": "gpt-5.6-terra",
             },
             extensions=["the_framework.plugins.memory.curator:MemoryCuratorExtension"],
-            idle_timeout_seconds=60,
-            completion_tool="complete_curation",
-            completion_retry_limit=4,
-            queue=QueuePolicy(limit=32),
         ),
+        idle_timeout_seconds=60, completion_tool="complete_curation",
+        completion_retry_limit=4, queue=QueuePolicy(limit=32),
         observes=["agent.compaction.end", "agent.task.requested"],
         input_item_field="retired_items",
     )

@@ -17,8 +17,8 @@ different frontend or none at all.
 The PyPI distribution is named `b4pt0r-the-framework`. Python code imports
 `the_framework`, and the template command is `the-framework`. Python 3.12 or
 newer is required. The examples below describe the 0.2 composition API in this
-checkout; until 0.2 is published, run them using the checkout's `uv sync`
-instructions below. The published package may still have the older API.
+checkout. Releases can differ during this experimental phase; use the checkout's
+`uv sync` instructions below to try this exact API.
 
 To install the published package in a virtual environment:
 
@@ -37,7 +37,8 @@ these generated dependencies are not bundled in the wheel.
 | Part | What it does | What your application decides |
 | --- | --- | --- |
 | `Application` | Validates and assembles one application | Name, version, plugins, server services, security and client surfaces |
-| `AgentSpec` | Describes an agent and its session policy | Instructions, model configuration, tools and resources |
+| `AgentSpec` | Describes reusable agent identity and behavior | Instructions, model configuration, tools and resources |
+| `Session` | Keeps canonical conversation, settings, bindings and history policy | In-memory or file-backed storage; history across tasks |
 | `AgentExtension` | Contributes to one agent | Tools, instructions, providers, hooks, configuration and state |
 | `Plugin` | Owns one modular feature, including its agent binding, server runtime and dependencies | Which capabilities exist and when they are exposed |
 | `ServerExtension` / `@endpoint` | Describes advanced server components and validated API routes inside a plugin | Service dependencies, route schemas and authorization |
@@ -131,7 +132,7 @@ app = application.build(
 )
 ```
 
-It constructs the primary worker supervisor, runtime, authenticated HTTP API and
+It constructs the default session worker supervisor, runtime, authenticated HTTP API and
 WebSocket transports, and derives storage paths from the data directory. Supply
 your own access policy; the framework never installs an implicit allow-all policy.
 Advanced applications can customize runtime construction, transport handshakes,
@@ -204,7 +205,44 @@ it holds conversation history, configuration, the file bucket, memory and browse
 profiles. Backend account sign-in and optional capabilities follow the starter
 guide; preparation does not make an inference request or install system packages.
 
-## Build a small application yourself
+## A small agent and a plugin
+
+The generated starter already supplies the authenticated server, desktop lifecycle
+and editable UI. Its `starter/application.py` is where you choose agent recipes
+and installed features. A minimal declaration looks like this:
+
+```python
+from datetime import datetime, timezone
+from the_framework import Application, AgentSpec, AgentExtension, Plugin, tool
+
+
+class Clock(AgentExtension):
+    @tool
+    def now(self):
+        """Return the current time in UTC."""
+        return datetime.now(timezone.utc).isoformat()
+
+
+application = Application(
+    name="My assistant",
+    version="0.1.0",
+    agents=(AgentSpec(name="assistant", instructions="Help the user with their work."),),
+    plugins=(Plugin(name="clock", agent_extension=Clock),),
+)
+```
+
+Start it with `the-framework run --code-dir /path/to/my-agent-code`. One declared
+agent is selected automatically. Its default conversation is persisted, and the
+neighboring `ui/` is the desktop surface; neither choice requires extra wiring.
+The full starter includes browser, shell, memory and voice features that you may
+keep alongside your own plugins.
+
+Use `Session()` or `Session.open(path)` when constructing an agent directly;
+ordinary hosted applications let Application own session construction. See the
+[composition guide](docs/framework.md#agent-construction) for advanced recipes,
+resource factories and specialist invocation policies.
+
+## A service-only application
 
 Save the following as `example.py`. It is a complete HTTP application; the
 repository also includes an [expanded version](https://github.com/B4PT0R/the_framework/blob/main/examples/minimal_agent_app.py)

@@ -2,6 +2,7 @@ import asyncio
 import io
 import json
 
+from the_framework.agent import AgentTrigger
 from the_framework.agent.runtime.protocol import (
     CommandCompleted,
     PromptRequest,
@@ -55,8 +56,8 @@ def test_application_specialist_retains_factories_and_resolved_runtime_profile(t
 
     spec = AgentSpec(name="memory.jiminy", extensions=(lambda agent: MemoryCuratorExtension(agent),))
     path = tmp_path / "durable-memory.sqlite3"
-    profile = AgentSpec({**spec, "instructions": "Application-specific curation role",
-                         "configuration": {"memory_curator": {"store_path": str(path)}}}).fleet_profile()
+    profile = AgentTrigger(spec=AgentSpec({**spec, "instructions": "Application-specific curation role",
+                         "configuration": {"memory_curator": {"store_path": str(path)}}})).profile()
     profile_path = tmp_path / "profile.json"
     profile_path.write_text(json.dumps(profile))
     runner = AgentRunner(profile, tmp_path, asyncio.Queue(), application_reference="test:application")
@@ -106,9 +107,9 @@ def test_resolved_launch_settings_override_defaults_but_not_saved_session(tmp_pa
             session.update_agent(configuration={"model": "saved-model",
                 "memory_curator": {"store_path": str(root / "saved.sqlite3")}})
             previous_id = session.id
-        profile = AgentSpec(name="private",  instructions="Resolved role",
+        profile = AgentTrigger(spec=AgentSpec(name="private",  instructions="Resolved role",
             configuration={"model": "resolved-model",
-                "memory_curator": {"store_path": str(root / "resolved.sqlite3")}}).fleet_profile(durable=True, retain_history=True)
+                "memory_curator": {"store_path": str(root / "resolved.sqlite3")}}) , durable=True, retain_history=True).profile()
         profile_path = root / "profile.json"
         profile_path.write_text(json.dumps(profile))
         monkeypatch.setattr(worker_process, "load_application", lambda _: SimpleNamespace(
@@ -125,7 +126,7 @@ def test_resolved_launch_settings_override_defaults_but_not_saved_session(tmp_pa
         assert agent.extension("memory_curator").store.path == expected
         assert agent.client is client
         assert agent.application_initializer is True
-        assert calls == [session_path]
+        assert calls == [session_path.parent]
         assert "Resolved role" in str(agent.instructions)
         if saved:
             assert agent.session.id == previous_id
@@ -134,7 +135,7 @@ def test_resolved_launch_settings_override_defaults_but_not_saved_session(tmp_pa
 def test_worker_entrypoint_explicit_session_policy_overrides_launch_profile(tmp_path, monkeypatch):
     from the_framework import AgentSpec
     from the_framework.agent.runtime import worker_process
-    profile = AgentSpec(name="private").fleet_profile(durable=True, retain_history=True)
+    profile = AgentTrigger(spec=AgentSpec(name="private") , durable=True, retain_history=True).profile()
     path = tmp_path / "profile.json"
     path.write_text(json.dumps(profile))
     constructed = []
@@ -155,8 +156,7 @@ def test_saved_session_retention_wins_over_worker_launch_defaults(tmp_path, monk
     saved.agent_name = "private"
     saved.save()
     profile_path = tmp_path / "profile.json"
-    profile_path.write_text(json.dumps(AgentSpec(name="private").fleet_profile(
-        durable=True, retain_history=True)))
+    profile_path.write_text(json.dumps(AgentTrigger(spec=AgentSpec(name="private") , durable=True, retain_history=True).profile()))
     constructed = []
     async def capture(worker):
         constructed.append(worker.agent)

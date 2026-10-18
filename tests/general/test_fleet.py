@@ -294,10 +294,10 @@ def test_idle_auxiliary_starts_on_demand_and_releases_its_process(tmp_path):
     asyncio.run(test())
 
 
-def test_fleet_routes_a_deliberate_request_only_to_its_named_auxiliary(tmp_path):
+@pytest.mark.parametrize("observes", [[], ["agent.task.requested"]])
+def test_fleet_routes_a_deliberate_request_only_to_its_named_auxiliary(tmp_path, observes):
     async def test():
         FakeSupervisor.instances = []
-        observes = ["agent.task.requested"]
         fleet = FleetSupervisor(
             tmp_path / "session.json",
             [

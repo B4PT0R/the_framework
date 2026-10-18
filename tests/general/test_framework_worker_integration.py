@@ -50,7 +50,7 @@ def test_independent_application_preserves_session_across_server_recreation(tmp_
                     ServerExtension(name="api", endpoints=(api.session, api.config, api.update_config),
                               requires_services=("runtime",)),
                 ),
-            ))
+            ), session=runtime)
             async with app.router.lifespan_context(app):
                 assert runtime.ready.session_id == session.id
                 processes.append(runtime.supervisor.process)

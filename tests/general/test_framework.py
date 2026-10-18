@@ -1,3 +1,4 @@
+from the_framework.agent import AgentTrigger
 from the_framework.agent.spec import AgentSpec
 import pytest
 from fastapi.testclient import TestClient
@@ -63,7 +64,7 @@ def test_compile_rejects_shared_service_names_before_construction(application_ow
         ),
     )
     with pytest.raises(ValueError, match="duplicate plugin runtime extension: shared"):
-        spec._build_server()
+        _assemble_server(spec)
     assert constructed == []
 
 
@@ -99,7 +100,7 @@ def test_plugin_runtime_factories_follow_capability_dependencies():
         ),
     ))
 
-    spec._build_server()
+    _assemble_server(spec)
     assert built == ["provider", "consumer"]
 
 
@@ -111,7 +112,7 @@ def test_failed_capability_provider_prevents_dependent_service_start():
             events.append("provider")
             raise RuntimeError("provider unavailable")
 
-    app = application("dependent services", plugins=(
+    app = _assemble_server(application("dependent services", plugins=(
         Plugin(
             name="consumer",
             requires_capabilities=(CapabilityRequirement(name="feature.provider"),),
@@ -126,7 +127,7 @@ def test_failed_capability_provider_prevents_dependent_service_start():
                 name="provider_service", service=Unavailable(events), critical=False,
             ),
         ),
-    ))._build_server()
+    )))
 
     with TestClient(app):
         graph = app.state.application.service_graph
@@ -160,7 +161,7 @@ def test_single_service_plugin_has_explicit_construction_and_lifecycle(factory):
     component = ServerExtension(name="counter", **(
         {"service_factory": lambda: counter} if factory else {"service": counter}
     ))
-    app = application("Counter", plugins=(Plugin(name="counter", server_extensions=component),))._build_server()
+    app = _assemble_server(application("Counter", plugins=(Plugin(name="counter", server_extensions=component),)))
     extension = app.state.application.extensions["counter"]
     assert extension.name == "counter"
     assert extension.service is counter
@@ -170,7 +171,7 @@ def test_single_service_plugin_has_explicit_construction_and_lifecycle(factory):
     assert events == ["start", "stop"]
 
     with pytest.raises(TypeError, match="server_extensions"):
-        application("Invalid", plugins=(Plugin(name="invalid", server_extensions=object()),))._build_server()
+        _assemble_server(application("Invalid", plugins=(Plugin(name="invalid", server_extensions=object()),)))
 
 
 def test_compile_rejects_private_agent_shadowing_application_agent():
@@ -304,19 +305,18 @@ def test_composition_errors_are_reported_before_the_server_starts():
         ))
 
 
-def test_specs_are_immutable_and_extend_without_side_effects():
+def test_application_declaration_is_immutable():
     base = application("Base")
-    extended = base.with_server_extensions(ServerExtension(name="runtime", service=object()))
-
+    with pytest.raises(TypeError):
+        base.server_extensions = (ServerExtension(name="runtime", service=object()),)
     assert base.server_extensions == ()
-    assert [extension.name for extension in extended.server_extensions] == ["runtime"]
 
 
 def test_server_build_preserves_the_definition_when_resolving_services():
     declaration = ServerExtension(name="service", service_factory=lambda: object())
     spec = application("Resolved services", server_extensions=(declaration,))
     plan = spec.compile()
-    host = spec._build_server().state.application
+    host = _assemble_server(spec).state.application
 
     assert host.plan == plan
     assert host.plan.application is spec
@@ -364,25 +364,25 @@ def test_factory_injection_separates_inputs_from_additional_ordering_constraints
         ServerExtension(name="barrier", service_factory=lambda: constructed.append("barrier") or object()),
         ServerExtension(name="dependency", service=dependency),
     ))
-    app = spec._build_server()
+    app = _assemble_server(spec)
     assert constructed == ["barrier", (dependency, "fallback")]
     assert tuple(app.state.application.extensions) == ("barrier", "dependency", "consumer")
 
     constructed.clear()
     with pytest.raises(ValueError, match="unknown.*dependency"):
-        application("Missing factory input", server_extensions=(
+        _assemble_server(application("Missing factory input", server_extensions=(
             ServerExtension(name="consumer", service_factory=build),
-        ))._build_server()
+        )))
     assert constructed == []
 
 
 def test_factory_injection_keeps_explicit_keyword_dependency_adapter():
     dependency = object()
-    app = application("Keyword factory", server_extensions=(
+    app = _assemble_server(application("Keyword factory", server_extensions=(
         ServerExtension(name="consumer", service_factory=lambda **services: services,
                         requires_services=("dependency",)),
         ServerExtension(name="dependency", service=dependency),
-    ))._build_server()
+    )))
     assert app.state.application.extensions["consumer"].service == {"dependency": dependency}
 
 
@@ -476,7 +476,7 @@ def test_compiler_keeps_server_factories_out_of_worker_projection():
     assert observed == []
     assert tuple(plan.agents) == ("memory.curator", "primary")
     assert plan.capabilities["memory.curate"].version == 2
-    app = spec._build_server(BuildContext({"marker": "resolved"}))
+    app = _assemble_server(spec, context=BuildContext({"marker": "resolved"}))
     assert observed == ["resolved"]
     assert "memory_runtime" in app.state.application.extensions
 
@@ -499,7 +499,7 @@ def test_importable_session_factory_is_resolved_only_for_server_build(monkeypatc
     ),))
     spec.compile()
     assert imported == []
-    app = spec._build_server(BuildContext({"name": "feature_runtime"}))
+    app = _assemble_server(spec, context=BuildContext({"name": "feature_runtime"}))
     assert imported == ["feature.server"]
     assert "feature_runtime" in app.state.application.extensions
 
@@ -534,17 +534,17 @@ def test_optional_capability_orders_present_provider_without_requiring_installat
         configure=provider,
         provides_capabilities=(Capability(name="example.provider"),),
     )
-    with_provider = application(
+    with_provider = _assemble_server(application(
         "With optional provider", plugins=(consumer_plugin, provider_plugin),
-    )._build_server(BuildContext())
+    ), context=BuildContext())
     assert observed == [(True, False, prepared)]
     assert tuple(with_provider.state.application.extensions) == (
         "provider_runtime", "consumer_runtime",
     )
 
-    without_provider = application(
+    without_provider = _assemble_server(application(
         "Without optional provider", plugins=(consumer_plugin,),
-    )._build_server(BuildContext())
+    ), context=BuildContext())
     assert observed == [(True, False, prepared), (False, False, None)]
     assert "provider_runtime" not in without_provider.state.application.extensions
 
@@ -571,23 +571,23 @@ def test_optional_extension_service_is_ordered_and_injected_only_if_installed():
     consumer = ServerExtension(
         name="consumer", service_factory=build_consumer,
     )
-    installed = application("With service", server_extensions=(
+    installed = _assemble_server(application("With service", server_extensions=(
         consumer, ServerExtension(name="provider_service", service=provider),
-    ))._build_server()
+    )))
     assert tuple(installed.state.application.extensions) == (
         "provider_service", "consumer",
     )
     assert observed == [provider]
 
-    absent = application("Without service", server_extensions=(consumer,))._build_server()
+    absent = _assemble_server(application("Without service", server_extensions=(consumer,)))
     assert tuple(absent.state.application.extensions) == ("consumer",)
     assert observed == [provider, None]
 
     with pytest.raises(ValueError, match="cyclic application extension"):
-        application("Optional cycle", server_extensions=(
+        _assemble_server(application("Optional cycle", server_extensions=(
             consumer,
             ServerExtension(name="provider_service", requires_services=("consumer",)),
-        ))._build_server()
+        )))
     with pytest.raises(ValueError, match="duplicate extension dependency"):
         ServerExtension(name="duplicate", requires_services=("provider_service",),
                   optional_services=("provider_service",))
@@ -639,8 +639,8 @@ def test_plugin_private_agent_identities_are_namespaced_and_ephemeral_by_default
     ).compile()
 
     assert "owner.observer" in plan.agents
-    assert not plan.agents["owner.observer"].fleet_profile().retain_history
-    assert plan.agents["owner.observer"].queue.mode == "fifo"
+    assert not AgentTrigger(spec=plan.agents["owner.observer"]).profile().retain_history
+    assert AgentTrigger(spec=plan.agents["owner.observer"]).queue.mode == "fifo"
     assert [profile.name for profile in plan.specialists] == [
         "owner.observer",
     ]

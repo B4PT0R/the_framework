@@ -1,5 +1,10 @@
 # Framework clarification follow-up
 
+> Historical design/audit record. API names, paths and verification counts below
+> describe that iteration; use [the current guide](framework.md), README and
+> CHANGELOG for the supported composition API.
+
+
 ## Changes and verification boundaries
 
 - Usage payloads (`ResponseUsage`, `TokenDetails`) live in `agent/models/usage.py`.

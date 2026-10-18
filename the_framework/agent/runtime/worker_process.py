@@ -79,6 +79,10 @@ async def _run(
             profile = WorkerProfile(**json.load(file))
         if spec is None:
             spec = AgentSpec.from_profile(profile)
+    elif plan is not None:
+        invocation = next((item for item in plan.specialists if item.name == identity), None)
+        if invocation is not None:
+            profile = invocation.profile()
     durable = (profile.durable if profile is not None else True) if durable is None else durable
     retain_history = ((profile.retain_history if profile is not None else True)
                       if retain_history is None else retain_history)

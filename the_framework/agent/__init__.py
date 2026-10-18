@@ -6,6 +6,7 @@ from .extensions.specialists import (
     AgentTask,
     AgentTrigger,
     AgentTriggers,
+    QueuePolicy,
     agent_trigger,
 )
 from .runtime.command_loop import CommandLoop
@@ -104,7 +105,7 @@ from .models.responses import (
     ToolOutput,
 )
 from .context.session import CommandReceipt, Session, SessionWatermark
-from .spec import AgentResources, AgentSpec, QueuePolicy
+from .spec import AgentResources, AgentSpec
 from .models.state import State, States
 from ..utils.tokens import token_count, token_count_payload, tokenizer_for_model
 from .extensions.tools import (

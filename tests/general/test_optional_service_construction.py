@@ -4,6 +4,7 @@ import asyncio
 import pytest
 from fastapi.testclient import TestClient
 
+from the_framework.server.composition.application import _assemble_server
 from the_framework import Application, AgentSpec, BuildContext, Plugin, ServerExtension
 from the_framework.server.api.endpoints import Principal
 from tests.fixtures.multi_session_app import application as agents
@@ -74,10 +75,10 @@ def test_new_composition_retries_optional_construction_after_resource_recovers()
     spec = Application(name='Example', version='1', agents=(AgentSpec(name='agent'),),
                            server_extensions=(ServerExtension(name='resource', critical=False, service_factory=factory),))
     async def run():
-        unavailable = spec._build_server()
+        unavailable = _assemble_server(spec)
         async with unavailable.router.lifespan_context(unavailable):
             assert (await unavailable.state.application.service_graph.health())['resource']['status']=='error'
-        recovered = spec._build_server()
+        recovered = _assemble_server(spec)
         async with recovered.router.lifespan_context(recovered):
             assert (await recovered.state.application.service_graph.health())['resource']['status']=='running'
     asyncio.run(run())
@@ -92,7 +93,7 @@ def test_required_resource_failure_remains_fatal(dependent):
     if dependent:
         extensions.append(ServerExtension(name='required_consumer', service_factory=lambda resource: object()))
     with pytest.raises((OSError, RuntimeError), match='offline|dependencies are unavailable'):
-        Application(name='Example', version='1', agents=(AgentSpec(name='agent'),), server_extensions=extensions)._build_server()
+        _assemble_server(Application(name='Example', version='1', agents=(AgentSpec(name='agent'),), server_extensions=extensions))
 
 
 @pytest.mark.parametrize('failure', ['missing_dependency', 'invalid_endpoints', 'async_factory'])
@@ -106,4 +107,4 @@ def test_invalid_optional_service_contract_is_not_downgraded(failure):
     else:
         extension = ServerExtension(name='invalid', critical=False, service_factory=asynchronous)
     with pytest.raises((ValueError, TypeError)):
-        Application(name='Example', version='1', agents=(AgentSpec(name='agent'),), server_extensions=(extension,))._build_server()
+        _assemble_server(Application(name='Example', version='1', agents=(AgentSpec(name='agent'),), server_extensions=(extension,)))

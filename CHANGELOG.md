@@ -6,6 +6,25 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Keep AgentSpec exclusively about reusable agent construction. AgentTrigger owns
+  queue, idle shutdown, completion requirements and retries, and compiles the
+  execution profile. Remove fleet_profile and recipe orchestration fields. A
+  required completion tool supports a single attempt without forced retries.
+- Give resource factories the actual session workspace directory, independent of
+  persistence. Remove fabricated session filenames and the unused memory-path
+  helper. Expose Session with the core root-level construction API.
+- Remove the parallel internal application builder and unused extension-copy
+  shortcut. Pass sessions explicitly to assembly; install authenticated routes
+  and surfaces in a distinct internal phase without adding public concepts.
+- Refresh the onboarding recipe, responsibility guide and historical audit labels.
+  Keep memory implementation helpers private to the feature package.
+- Preserve explicit private invocation policies in compilation and direct launches;
+  adding a helper keeps class-discovered triggers. Named requests route to their
+  target independently of ambient observation filters. Remove obsolete inline
+  conversions of specialist result fields and pending-task documents.
+- Update the starter source-map-js lock to 1.2.2, fixing [GHSA-68fv-2mgg-jv7q](https://github.com/advisories/GHSA-68fv-2mgg-jv7q);
+  npm audit reports no remaining vulnerabilities in the starter dependency tree.
+
 - Remove session lifetime from AgentSpec. Construct it with a Session:
   `Session()` keeps context in memory, `Session(retain_history=False)` clears
   context between tasks, and `Session.open(path)` persists on disk. Retention

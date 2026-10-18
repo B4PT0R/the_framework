@@ -9,7 +9,6 @@ from the_framework import (
     Application,
     BuildContext,
     Plugin,
-    ServerExtension,
 )
 from the_framework.agent import Session
 from the_framework.agent.extensions.extension import AgentExtension
@@ -61,8 +60,11 @@ def test_agent_tool_changes_binding_without_ending_its_turn(tmp_path, external_f
                 await self.worker_task
 
         runtime = SessionRuntime(Supervisor())
-        app = Application({**spec, "server_extensions": (ServerExtension(name="runtime", service=runtime),)})._build_server(
-            BuildContext()
+        spec = Application({**spec, "surfaces": ()})
+        app = spec.build(
+            "tests.fixtures.multi_session_app:application", BuildContext(data_root=tmp_path),
+            supervisor=runtime.supervisor, session_factory=lambda worker, context: runtime,
+            handshake=lambda socket: None,
         )
         results = []
         entered = asyncio.Event()
@@ -85,7 +87,7 @@ def test_agent_tool_changes_binding_without_ending_its_turn(tmp_path, external_f
             if with_voice:
                 from tests.fixtures.realtime import Sideband
 
-                voice = app.state.application.services["realtime"]
+                voice = app.state.application.default_session.services["realtime"]
                 voice.call_id = "owning-browser"
                 voice.controller.call_id = "transport"
                 voice.controller.sideband = Sideband()
@@ -109,14 +111,14 @@ def test_agent_tool_changes_binding_without_ending_its_turn(tmp_path, external_f
                         sent.set()
 
                 runtime.supervisor.send = send
-                external = asyncio.create_task(app.state.application.plugin_host.set_binding("feature", False))
+                external = asyncio.create_task(app.state.application.default_session.plugin_host.set_binding("feature", False))
                 await asyncio.wait_for(sent.wait(), 1)
             release.set()
             await turn
             if external_first:
                 await external
             assert results[0]["binding_enabled"] is external_first
-            assert app.state.application.plugin_host.status("feature").binding_enabled is external_first
+            assert app.state.application.default_session.plugin_host.status("feature").binding_enabled is external_first
             assert agent.session.command_status("turn") == "completed"
             assert runtime.active_command_id is None
             assert agent.session.plugins["feature"] is external_first

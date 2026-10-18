@@ -132,8 +132,6 @@ class AgentRunner:
         if not self.tasks_path.exists():
             return
         document = json.loads(self.tasks_path.read_text(encoding="utf-8"))
-        if isinstance(document, list):
-            document = {"pending": document, "outbox": []}
         tasks = (
             [AgentTask.from_dict(value) for value in document.get("pending", [])]
             if self.profile.durable_tasks
@@ -542,10 +540,11 @@ class FleetSupervisor:
         for profile in self.profiles.values():
             if profile.name not in self.enabled:
                 continue
-            if output.event.type not in profile.observes:
-                continue
             direct_request = isinstance(output.event, AgentTaskRequested)
-            if direct_request and output.event.profile != profile.name:
+            if direct_request:
+                if output.event.profile != profile.name:
+                    continue
+            elif output.event.type not in profile.observes:
                 continue
             if (
                 output.event.type == "agent.response_item.added"
