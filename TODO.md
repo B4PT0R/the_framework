@@ -684,3 +684,40 @@ CLI comme tranche indépendante. Les retouches de vocabulaire sont secondaires.
 Validation de la revue : 51 tests ciblés service_construction, application_sessions,
 plugin_host, framework_bootstrap et live_context_composition réussis. Aucun changement
 exécutable, aucune relance de l'installation ; suite complète non répétée.
+
+
+### Livraison des chantiers de cette revue — 18 octobre
+
+- [x] Contributions serveur explicites : Plugin.server_extensions pour les
+  déclarations, configure(context) pour les contributions et groupes dynamiques.
+  Plus de service brut ni champ server_extension surchargé. Les plugins voix et
+  notifications déclarent leurs services statiquement et réservent configure à
+  leurs contributions. Mémoire/registre suivent le même vocabulaire. Références
+  lazy résolues côté serveur avant le DAG ; compilation worker toujours inerte.
+- [x] Services partagés : ServiceContext est un mapping local avec emprunt en
+  lecture des services application. ServiceGraph démarre/arrête uniquement les
+  services locaux et rapporte la santé des services empruntés depuis leur vrai
+  propriétaire. Plus de déclarations clonées avec start/stop neutres. La vue
+  capturée pendant configure reste vivante à l'ouverture d'une autre session
+  (régression reproduite puis corrigée). Configures toujours propres à chaque
+  session ; aucun cache global des contributions contextuelles.
+- [x] CLI : run vérifie uv sync --check et un véritable lancement Chromium
+  headless, avec vérification du binaire visible. Installe seulement si nécessaire ;
+  la commande prepare explicite rafraîchit Python/Chromium. Checkpoints npm et
+  reprise après échec conservés. Test réel d'un bootstrap neuf puis seconde
+  préparation sans installation/rebuild, démarrage jusqu'à l'UI authentifiée et
+  arrêt propre du superviseur.
+- [x] Vocabulaire : décorateurs disponibles à la racine ; projection activity
+  pour messages/artefacts/appels de fonctions, sans référence au device ni alias
+  remote. API distante Harness adaptée. Modèles de payload et schémas inchangés.
+
+Starter, exemples, plugins embarqués et Harness adaptés ensemble. Tests durables
+ajoutés pour phases de déclaration, propriété des services, vues vivantes, santé
+et réparation/chemin rapide de bootstrap. Les essais de vraie installation restent
+ponctuels hors de la suite ; pas de nouvelle classe publique ni de couche de compat.
+
+Validation finale : Framework 719 succès / 3 skips avec Chromium ; Harness 157
+succès ; Ruff critique et diff --check propres. Bootstrap neuf préparé et démarré
+jusqu'à l'UI réelle ; seconde préparation sans installations ni rebuild ; arrêt
+supervisé propre. Installation Harness relancée : même navigateur/fenêtre, session
+canonique conservée, chat/voix disponibles et Jiminy conforme aux réglages mémoire.

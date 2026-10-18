@@ -66,7 +66,7 @@ application = Application(
     name="Minimal Agent Application",
     version="1.0",
     security=BearerSecurity(),
-    plugins=(Plugin(name="counter", server_extension=ServerExtension(
+    plugins=(Plugin(name="counter", server_extensions=ServerExtension(
         name="counter", service_factory=CounterService,
     )),),
     server_extensions=(

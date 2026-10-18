@@ -3,7 +3,7 @@ from .agent import RegistryConfig, RegistryExtension, RegistryStore
 
 REGISTRY = Plugin(
     name="registry", agent_extension=RegistryExtension,
-    server_extension="the_framework.plugins.registry.live:build_server_extensions",
+    configure="the_framework.plugins.registry.live:configure",
 )
 
 __all__ = ["REGISTRY", "RegistryConfig", "RegistryExtension", "RegistryStore"]

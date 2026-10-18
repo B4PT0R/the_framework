@@ -26,7 +26,10 @@ the-framework run --code-dir /path/to/app
 the-framework prepare --code-dir /path/to/app
 ```
 
-`run` prepares first, reuses successful npm stages and rebuilds edited UI sources.
+`run` checks that Python dependencies are synchronized and Chromium can actually
+launch, installing only missing or outdated resources. It reuses successful npm
+stages and rebuilds edited UI sources. Explicit `prepare` refreshes Python and
+Chromium even when those checks pass, so it also serves as a repair command.
 It also accepts `--headless`, `--no-browser` and `--port`. Inside the generated
 project you can use `uv run the-framework run`. `bootstrap --no-prepare` copies
 source without installing dependencies. System browser libraries and account

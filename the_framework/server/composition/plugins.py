@@ -58,7 +58,7 @@ class PluginHost:
                 running=all(
                     name in self.service_graph.context
                     for name, owner in self.service_owners.items()
-                    if owner == plugin_name and name in self.service_graph.specs
+                    if owner == plugin_name
                 ),
                 binding_available=spec.agent_extension is not None,
                 binding_enabled=self.bindings[plugin_name],

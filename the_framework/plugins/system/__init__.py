@@ -3,7 +3,7 @@ from .agent import SystemExtension
 
 SYSTEM = Plugin(
     name="system", agent_extension=SystemExtension,
-    server_extension=ServerExtension(
+    server_extensions=ServerExtension(
         name="system", scope="session",
         service_factory="the_framework.plugins.system.server:build_service",
     ),

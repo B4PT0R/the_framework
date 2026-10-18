@@ -109,11 +109,12 @@ def _fingerprint(root, *, packages_only=False):
     return digest.hexdigest()
 
 
-def prepare(code_dir):
+def prepare(code_dir, *, force=False):
     """Prepare a private Python environment, Chromium and the editable web UI.
 
-    Successful npm stages are checkpointed independently. Failed preparations
-    leave source/data intact and can be resumed with the same command.
+    Check the real Python environment and browser before installing anything.
+    Successful npm stages are checkpointed independently. force refreshes Python
+    and Chromium explicitly; failures leave source/data intact for resumption.
     """
     code = _application(code_dir)
     _tools()
@@ -130,10 +131,27 @@ def prepare(code_dir):
         with atomic_text_writer(state_path) as stream:
             json.dump(state, stream)
 
-    print("Preparing application Python environment…", flush=True)
-    _run(["uv", "sync"], code)
-    print("Preparing Chromium…", flush=True)
-    _run(["uv", "run", "--no-sync", "python", "-m", "playwright", "install", "chromium"], code)
+    if force or _run(["uv", "sync", "--check"], code, check=False).returncode:
+        print("Preparing application Python environment…", flush=True)
+        _run(["uv", "sync"], code)
+    # Verify both the visible browser executable and a working headless launch.
+    # Playwright selects its version's binaries; a stale marker cannot hide a
+    # removed browser, changed cache path or missing headless shell.
+    browser_check = """
+from pathlib import Path
+try:
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as playwright:
+        if not Path(playwright.chromium.executable_path).is_file():
+            raise FileNotFoundError()
+        browser = playwright.chromium.launch(headless=True)
+        browser.close()
+except Exception:
+    raise SystemExit(1)
+"""
+    if force or _run([str(code / ".venv/bin/python"), "-c", browser_check], code, check=False).returncode:
+        print("Preparing Chromium…", flush=True)
+        _run(["uv", "run", "--no-sync", "python", "-m", "playwright", "install", "chromium"], code)
     ui = code / "starter" / "ui"
     packages = _fingerprint(ui, packages_only=True)
     if state.get("packages") != packages or not (ui / "node_modules").is_dir():
@@ -180,7 +198,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.command == "prepare":
-            prepare(args.code_dir)
+            prepare(args.code_dir, force=True)
             return 0
         if args.command == "run":
             return run_application(args.code_dir, port=args.port, no_browser=args.no_browser, headless=args.headless)

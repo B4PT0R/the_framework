@@ -265,7 +265,8 @@ class Plugin(modict):
 
     name: str
     agent_extension: Callable | type | object | None = None
-    server_extension: object | None = None
+    server_extensions: tuple[ServerExtension, ...] = ()
+    configure: Callable[[BuildContext], ServerExtension | tuple[ServerExtension, ...] | None] | str | None = None
     specialists: tuple[AgentSpec, ...] = ()
     provides_capabilities: tuple[Capability, ...] = ()
     requires_capabilities: tuple[CapabilityRequirement, ...] = ()
@@ -280,16 +281,20 @@ class Plugin(modict):
             raise ValueError("a required plugin binding cannot start disabled")
         if self.agent_binding_required and self.agent_extension is None:
             raise ValueError("a server-only plugin cannot require an agent binding")
-        if isinstance(self.server_extension, str):
-            module, separator, attribute = self.server_extension.partition(":")
+        if isinstance(self.configure, str):
+            module, separator, attribute = self.configure.partition(":")
             if (
                 not separator
                 or not all(part.isidentifier() for part in module.split("."))
                 or not attribute.isidentifier()
             ):
                 raise ValueError(
-                    f"plugin {self.name} server extension reference must use module:factory"
+                    f"plugin {self.name} configure reference must use module:factory"
                 )
+        if not all(isinstance(item, ServerExtension) for item in self.server_extensions):
+            raise TypeError("plugin server_extensions must contain ServerExtension declarations")
+        if self.configure is not None and not isinstance(self.configure, str) and not callable(self.configure):
+            raise TypeError("plugin configure must be callable or an import reference")
         names = [agent.name for agent in self.specialists]
         if len(names) != len(set(names)):
             raise ValueError(f"duplicate private agent in plugin {self.name}")
@@ -305,38 +310,21 @@ class Plugin(modict):
                 for _, member in inspect.getmembers(self.agent_extension)
                 if getattr(member, "agent_trigger", None) is not None
             )
-        return _tuple(value) if key in {"specialists", "provides_capabilities", "requires_capabilities", "optional_capabilities"} else value
+        return _tuple(value) if key in {"server_extensions", "specialists", "provides_capabilities", "requires_capabilities", "optional_capabilities"} else value
 
     def build_server_extensions(self, context: BuildContext):
-        if self.server_extension is None:
-            return None
-        runtime = self.server_extension
-        if isinstance(runtime, str):
-            module, attribute = runtime.split(":", 1)
-            runtime = getattr(import_module(module), attribute)
-        if not isinstance(runtime, (ServerExtension, tuple)) and callable(runtime):
-            runtime = runtime(context)
-        if not isinstance(runtime, (ServerExtension, tuple)):
-            has_endpoints = _service_declares_endpoints(runtime)
-            if not (
-                has_endpoints
-                or callable(getattr(runtime, "websocket_declarations", None))
-                or callable(getattr(runtime, "start", None))
-                or callable(getattr(runtime, "stop", None))
-                or callable(getattr(runtime, "health", None))
-            ):
-                raise TypeError(
-                    f"plugin {self.name} runtime must be a server service "
-                    "or ServerExtension declaration"
-                )
-            runtime = ServerExtension(
-                name=self.name,
-                service=runtime,
-            )
-        extensions = _tuple(runtime)
-        if not all(isinstance(item, ServerExtension) for item in extensions):
-            raise TypeError(f"plugin {self.name} did not produce ServerExtension declarations")
-        return extensions
+        """Collect explicit declarations before any service is constructed."""
+        declarations = self.server_extensions
+        configure = self.configure
+        if isinstance(configure, str):
+            module, attribute = configure.split(":", 1)
+            configure = getattr(import_module(module), attribute)
+        if configure is not None:
+            declarations = (*declarations, *_tuple(configure(context)))
+        if not all(isinstance(item, ServerExtension) for item in declarations):
+            raise TypeError(f"plugin {self.name} must declare ServerExtension components")
+        return declarations
+
 
 class ApplicationPlan(modict):
     """Validated immutable output of application compilation."""
@@ -754,8 +742,7 @@ def _compile_application(application, *, extra_extensions=(), surfaces=None):
             capabilities[capability.name] = capability
         # A worker must be able to compile the agent projection without
         # constructing server-only resources or needing server credentials.
-        static_runtime = plugin.server_extension if isinstance(plugin.server_extension, (ServerExtension, tuple)) else ()
-        static_extensions = _tuple(static_runtime)
+        static_extensions = plugin.server_extensions
         if not all(isinstance(item, ServerExtension) for item in static_extensions):
             raise TypeError(f"plugin {plugin.name} server contribution must contain ServerExtension declarations")
         for extension in static_extensions:
@@ -859,8 +846,6 @@ def _resolve_plugin_server_extensions(plan, context):
     for plugin_name in _plugin_dependency_order(plan.plugins):
         plugin = plan.plugins[plugin_name]
         plugin_runtime = plugin.build_server_extensions(context)
-        if plugin_runtime is None:
-            continue
         for extension in plugin_runtime:
             if extension.name in names:
                 raise ValueError(f"duplicate plugin runtime extension: {extension.name}")
@@ -1058,22 +1043,26 @@ def _assemble_server(
     )})
     extension_dependencies = _extension_dependencies(plan, plugin_server_extensions)
     startup_order = dependency_order(extension_dependencies, kind="application extension")
+    owner = build_context.get("session_owner")
+    if owner is not None:
+        build_context._services.parent = owner.service_graph
     resolved_services = {}
     resolved_extensions = {}
     construction_errors = {}
+    inherited = set()
     for name in startup_order:
         declaration = declarations[name]
-        owner = build_context.get("session_owner")
         if owner is not None and declaration.scope == "application":
             shared = owner.extensions.get(name)
             if shared is None:
                 raise ValueError(f"application service is unavailable: {name}")
             if name in owner.service_graph.errors:
                 construction_errors[name] = owner.service_graph.errors[name]
-            declaration = ServerExtension({
-                **shared, "endpoints": (), "websockets": (), "mounts": (), "middleware": (),
-                "start": lambda *_: None, "stop": lambda *_: None,
-            })
+            inherited.add(name)
+            resolved_extensions[name] = shared
+            if name in owner.services:
+                resolved_services[name] = owner.services[name]
+            continue
         unavailable = [dependency for dependency in extension_dependencies[name]
                        if dependency in construction_errors]
         if unavailable:
@@ -1109,6 +1098,8 @@ def _assemble_server(
 
     services = []
     for name in startup_order:
+        if name in inherited:
+            continue
         extension = resolved_extensions[name]
         if extension.service is None and name not in construction_errors:
             if any((extension.start, extension.stop, extension.health)):
@@ -1119,11 +1110,13 @@ def _assemble_server(
         services.append(extension)
     service_names = {extension.name for extension in services}
     graph = ServiceGraph(
-        services, context=runtime.services, construction_errors=construction_errors,
+        services, context=runtime.services, construction_errors={
+            name: error for name, error in construction_errors.items() if name not in inherited
+        },
         dependencies={
             extension.name: tuple(
                 dependency for dependency in extension_dependencies[extension.name]
-                if dependency in service_names
+                if dependency in service_names or (dependency in inherited and dependency in owner.service_graph.specs)
             )
             for extension in services
         },
@@ -1147,7 +1140,7 @@ def _assemble_server(
     }
     all_extensions = tuple(
         (runtime.extensions[name], plugin_owners.get(name, name))
-        for name in startup_order
+        for name in startup_order if name not in inherited
     )
     mounts = []
     middleware_entries = []
@@ -1262,7 +1255,10 @@ def _assemble_server(
     if len(binding_updates) > 1:
         raise ValueError("only one plugin binding coordinator may be installed")
     plugin_host = PluginHost(
-        plan, service_graph=graph, service_owners=MappingProxyType(plugin_owners),
+        plan, service_graph=graph, service_owners=MappingProxyType({
+            name: plugin for name, plugin in plugin_owners.items()
+            if resolved_extensions[name].service is not None or name in construction_errors
+        }),
         binding_update=build_context.get("plugin_binding_update", binding_updates[0] if binding_updates else agent_runtime.set_plugin_binding if agent_runtime else None),
         binding_snapshot=build_context.get("plugin_binding_snapshot", agent_runtime.plugin_bindings if agent_runtime else None),
     )

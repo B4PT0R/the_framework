@@ -6,6 +6,21 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Make plugin server assembly explicit: `server_extensions` contains component
+  declarations and `configure(context)` collects advanced build-time contributions.
+  Remove the overloaded `server_extension` field and implicit bare-service wrapping.
+  Keep service factories separate and resolve lazy references before dependency
+  ordering. Bundled plugins, examples, starter and Harness follow the same contract.
+- Let session service contexts borrow application resources without taking over
+  their lifecycle. Keep shared health/error reporting and live lookups, including
+  views captured during configuration; session shutdown stops only local services.
+- Check the synchronized Python environment and a real headless Chromium launch
+  before preparing a starter again. A ready run skips installations and npm rebuilds;
+  explicit `prepare` refreshes Python/Chromium, and missing resources are repaired.
+- Expose declaration decorators together at the package root. Name the standard
+  chat-plus-tool-calls projection `activity` rather than `remote`; client device
+  type and authentication policy remain separate from history presentation.
+
 - Remove application-specific Portrait and MediaReference payloads and their
   session projection exceptions. Generic Image inputs obey the same image limit,
   including dynamic context prefixes; Artifact remains the presentation primitive.

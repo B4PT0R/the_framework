@@ -17,6 +17,10 @@ including memory and voice, a persistent Chromium shell, and an editable UI with
 build/preview/publish/rollback. Its composition and interface are ordinary
 application source, not a mandatory core frontend.
 
+The root package exposes the declaration decorators together: `tool`, `provider`,
+`command`, `hook`, `agent_trigger`, `endpoint` and `websocket`. Specialized runtime
+controllers and wire payloads remain available through their dedicated modules.
+
 ## Responsibility map
 
 Modules are grouped by responsibility, not by implementation size:
@@ -190,7 +194,7 @@ def greeting() -> dict[str, str]:
 application = Application(
     name="Example",
     version="1.0",
-    plugins=(Plugin(name="greeting", server_extension=ServerExtension(
+    plugins=(Plugin(name="greeting", server_extensions=ServerExtension(
         name="greeting_api", endpoints=(greeting,),
     )),),
 )
@@ -318,6 +322,13 @@ reset transaction factory exists.
 session, such as reset endpoints and access middleware. It is invoked once per
 session, alongside `session_factory`; these callbacks must not cache/reuse a live
 controller across independent sessions. The starter and Harness use this same path.
+
+A session's service context borrows running application-scoped resources from
+the application graph. Only local services belong to its start/stop lifecycle;
+closing a session cannot stop shared resources. Health retains the shared service's
+original probe and errors, and the lookup never exposes another session's private
+services. Build-time configure hooks still run with each session's own inputs;
+their contributions are not cached globally.
 
 Set the fixed `restart` input on `BuildContext` for the default runtime's supervised
 restart callback. Runtime subclasses may specialize restart and UI notifications
@@ -502,7 +513,7 @@ class WeatherService:
         self.options = context.plugin("weather")
         self.runtime = runtime
 
-weather = Plugin(name="weather", server_extension=ServerExtension(
+weather = Plugin(name="weather", server_extensions=ServerExtension(
     name="weather", scope="session", service_factory=WeatherService,
 ))
 ```
@@ -555,7 +566,8 @@ whereas a server extension is a declaration describing a service and its surface
 | Composition field | Expected contribution |
 | --- | --- |
 | `Plugin.agent_extension` | Agent extension class, factory or import reference |
-| `Plugin.server_extension` | Server declaration, service, or build-context factory returning one or more components; an import reference defers server imports |
+| `Plugin.server_extensions` | Explicit `ServerExtension` declarations; a single declaration is normalized to a tuple |
+| `Plugin.configure` | Advanced `configure(context)` hook collecting contributions and optionally returning additional `ServerExtension` declarations; an import reference defers server imports |
 | `Plugin.specialists` | Private `AgentSpec` declarations |
 | `Plugin.provides_capabilities` | Versioned contracts exported by this feature |
 | `Plugin.requires_capabilities` / `optional_capabilities` | Required or optional versioned contracts from other plugins |
@@ -638,7 +650,7 @@ directly; the framework owns construction, ordering and lifecycle:
 ```python
 images = Plugin(
     name="images", agent_extension=ImageGenerationExtension,
-    server_extension=ServerExtension(
+    server_extensions=ServerExtension(
         name="images", scope="session",
         service_factory="your_app.images.server:ImageService",
     ),
@@ -648,9 +660,9 @@ images = Plugin(
 `ImageService.__init__(self, context, runtime)` receives the session's build context
 and runtime. A callable factory or class works in place of the import reference
 when server-only imports are not a concern. Decorated routes and socket declarations
-are discovered on the result. A service already constructed in the server process
-can also be passed directly as `Plugin.server_extension`; its lifecycle is still
-owned by the application.
+are discovered on the result. Wrap an already constructed service in
+`ServerExtension(name=..., service=...)`; the application still owns its lifecycle.
+A bare service is not a plugin declaration.
 
 `Plugin.name` is the shared feature identity. Its agent extension is bound under
 that name for configuration, state, tool namespaces, specialists and live
@@ -659,8 +671,7 @@ used directly by `AgentSpec.extensions` keeps its own name (or class name).
 This lets a complete plugin supply the identity while its implementation stays
 reusable. An already loaded extension cannot be renamed.
 
-The service may instead be returned by a server-side factory that receives
-`BuildContext`. Use `ServerExtension` to defer service construction or specify scope, dependencies,
+Use `ServerExtension` to defer service construction or specify scope, dependencies,
 route selection, middleware, mounts or lifecycle adapters, or when the plugin
 owns several server components:
 
@@ -668,7 +679,7 @@ owns several server components:
 images = Plugin(
     name="images",
     agent_extension=ImageGenerationExtension,
-    server_extension=ServerExtension(
+    server_extensions=ServerExtension(
         name="image_api",
         service=image_service,
         endpoints=(image_service,),
@@ -678,15 +689,19 @@ images = Plugin(
 ```
 
 A feature can own several server components without splitting its runtime into
-unrelated application extensions. Its `server_extension` may be a tuple of `ServerExtension`
-objects, or a server-side factory receiving `BuildContext` and returning that
-tuple. Application and plugin services share one dependency graph: components
+unrelated application extensions. Its `server_extensions` contains explicit
+`ServerExtension` declarations. For build-time contributions or dynamic assembly,
+`configure(context)` runs before service construction and may return additional
+declarations or None. It can be a callable or a `"module:configure"` reference.
+The hook is distinct from `service_factory(context, named_service, ...)`: it
+collects declarations and contributions, and must not construct live services.
+Application and plugin services share one dependency graph: components
 are constructed and started in dependency order, then stopped in reverse order.
 This also lets an application extension depend on a plugin-owned service.
 The worker's `compile()` path never
-calls that factory. Use an importable `"package.module:factory"` reference when
+calls the configure hook or service factories. Use an importable reference when
 the worker should not even import the server module; the reference is resolved
-only by `build(context)`. For example, a media plugin can own a store, an index and
+only by `Application.build(...)`. For example, a media plugin can own a store, an index and
 an HTTP API, while the application supplies only process-local objects through
 `BuildContext` at server build time. Shared core services still live in
 `Application.server_extensions`: for example, the canonical worker supervisor
@@ -967,7 +982,7 @@ Middleware has the small async-generator contract
 `middleware(agent, command, call_next)`. It adds cross-cutting behavior such as
 timing or tracing without subclassing the worker. `SessionProjections` supplies
 three reserved standard views: `display` keeps user/assistant messages and
-artifacts, `remote` additionally keeps function calls, and `full` keeps all items.
+artifacts, `activity` additionally keeps function calls, and `full` keeps all items.
 These preserve item order and leave vision-only Image items out of chat.
 Applications add pure named projections through `AgentSpec.projections`; select
 one with `Application.build(session_projection=...)` when a custom view is needed.

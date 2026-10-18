@@ -13,7 +13,7 @@ def _display(items):
     )]
 
 
-def _remote(items):
+def _activity(items):
     return [item for item in items if isinstance(item, (Artifact, FunctionCall)) or (
         isinstance(item, Message) and item.role in {"user", "assistant"}
     )]
@@ -23,7 +23,7 @@ class SessionProjections:
     """Registry of pure turn projections used by worker page requests."""
 
     def __init__(self, projections=None):
-        self._projections = {"full": list, "display": _display, "remote": _remote}
+        self._projections = {"full": list, "display": _display, "activity": _activity}
         for name, projection in dict(projections or {}).items():
             self.add(name, projection)
 

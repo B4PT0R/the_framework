@@ -520,7 +520,7 @@ def test_worker_projects_only_displayable_session_items(tmp_path):
         await incoming.put(SessionPageRequest(
             id="remote-page",
             limit=25,
-            projection="remote",
+            projection="activity",
         ))
         await incoming.put(SessionPageRequest(id="full-page", limit=25, projection="full"))
         await incoming.put(ShutdownRequest(id="stop"))

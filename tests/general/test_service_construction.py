@@ -25,7 +25,7 @@ def test_factory_receives_explicit_build_context_and_ordered_services(tmp_path):
             return {"label": self.label}
 
     application = Application(name="Construction", version="1", plugins=(
-        Plugin(name="feature", server_extension=ServerExtension(
+        Plugin(name="feature", server_extensions=ServerExtension(
             name="feature", service_factory=Feature,
         )),
     ), server_extensions=(ServerExtension(name="resource", service=resource),))
@@ -58,7 +58,7 @@ class Feature:
     resource = object()
     feature_declaration = ServerExtension(name="feature", service_factory=f"{name}:Feature")
     application = Application(name="Lazy", version="1",
-        plugins=(Plugin(name="feature", server_extension=feature_declaration),) if plugin_owned else (),
+        plugins=(Plugin(name="feature", server_extensions=feature_declaration),) if plugin_owned else (),
         server_extensions=(ServerExtension(name="resource", service=resource),
                            *((feature_declaration,) if not plugin_owned else ())),
     )
@@ -104,3 +104,29 @@ def test_discovery_flags_are_removed_and_explicit_empty_surfaces_stay_private():
     ))
     with TestClient(application.build()) as client:
         assert client.get("/private").status_code == 404
+
+
+def test_plugin_configuration_collects_declarations_without_constructing_services():
+    events = []
+
+    def configure(context):
+        events.append("configure")
+        context.contribute("feature.inputs", "configured")
+        return ServerExtension(name="dynamic", service_factory=lambda context: (
+            events.append("construct"), context.contributions("feature.inputs")
+        )[1])
+
+    plugin = Plugin(name="feature", configure=configure,
+                    server_extensions=ServerExtension(name="static", service=object()))
+    application = Application(name="Phases", version="1", plugins=(plugin,))
+    application.compile()
+    assert events == []
+    application.build()
+    assert events == ["configure", "construct"]
+    assert application.extensions["dynamic"].service == ("configured",)
+    with pytest.raises(TypeError):
+        Plugin(name="implicit", server_extensions=object())
+    with pytest.raises(TypeError, match="ServerExtension"):
+        Application(name="Implicit", version="1", plugins=(
+            Plugin(name="implicit", configure=lambda context: object()),
+        )).build()

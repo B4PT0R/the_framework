@@ -58,7 +58,7 @@ def declaration(service, **plugin_options):
         plugins=(Plugin(
             name="example",
             agent_extension=object,
-            server_extension=ServerExtension(name="example_runtime", service=service, endpoints=(Api(),)),
+            server_extensions=ServerExtension(name="example_runtime", service=service, endpoints=(Api(),)),
             **plugin_options,
         ),),
     )
@@ -188,7 +188,7 @@ def test_plugin_owns_multiple_ordered_server_components_and_static_routes():
             primary_agent=AgentSpec(
                 name="primary", session_mode='durable'
             ),
-            plugins=(Plugin(name="feature", server_extension=runtime),),
+            plugins=(Plugin(name="feature", configure=runtime),),
         )
         spec.compile()
         app = spec._build_server()
@@ -232,7 +232,7 @@ def test_plugin_runtime_installs_mount_middleware_and_openapi_on_main_app():
         primary_agent=AgentSpec(name="primary", session_mode='durable'),
         plugins=(Plugin(
             name="feature",
-            server_extension=ServerExtension(
+            server_extensions=ServerExtension(
                 name="feature_runtime", endpoints=(Api(),),
                 middleware=((TraceMiddleware, {}),),
                 mounts=(("/plugin/assets", assets, "feature-assets"),),
@@ -267,7 +267,7 @@ def test_plugin_mount_collision_is_rejected_before_start():
         primary_agent=AgentSpec(name="primary", session_mode='durable'),
         plugins=(Plugin(
             name="feature",
-            server_extension=ServerExtension(
+            server_extensions=ServerExtension(
                 name="feature_runtime", mounts=(("/plugin", app, None),),
             ),
         ),),
@@ -295,7 +295,7 @@ def test_application_service_can_depend_on_plugin_owned_service():
         primary_agent=AgentSpec(name="primary", session_mode='durable'),
         plugins=(Plugin(
             name="provider",
-            server_extension=ServerExtension(name="provider_service", service=provider),
+            server_extensions=ServerExtension(name="provider_service", service=provider),
         ),),
         server_extensions=(ServerExtension(
             name="dependent_service",
@@ -337,12 +337,12 @@ def test_capability_dependency_orders_plugin_services_without_extension_edge():
             Plugin(
                 name="consumer",
                 requires_capabilities=(CapabilityRequirement(name="provider.api"),),
-                server_extension=ServerExtension(name="consumer_service", service=NamedService("consumer")),
+                server_extensions=ServerExtension(name="consumer_service", service=NamedService("consumer")),
             ),
             Plugin(
                 name="provider",
                 provides_capabilities=(Capability(name="provider.api"),),
-                server_extension=ServerExtension(name="provider_service", service=NamedService("provider")),
+                server_extensions=ServerExtension(name="provider_service", service=NamedService("provider")),
             ),
         ),
     )._build_server()
@@ -364,7 +364,7 @@ def test_grouped_plugin_start_failure_rolls_back_earlier_services():
         base = declaration(Service(events))
         plugin = Plugin(
             name="example",
-            server_extension=(
+            server_extensions=(
                 ServerExtension(name="first", service=Service(events)),
                 ServerExtension(
                     name="second",
@@ -437,7 +437,7 @@ def test_plugin_route_collision_fails_before_start():
             ),
             plugins=(Plugin(
                 name="example",
-                server_extension=ServerExtension(name="plugin_api", endpoints=(Api(),)),
+                server_extensions=ServerExtension(name="plugin_api", endpoints=(Api(),)),
             ),),
             server_extensions=(ServerExtension(name="core_api", endpoints=(Api(),)),),
         )._build_server()
@@ -456,11 +456,11 @@ def test_failed_plugin_start_rolls_back_started_runtimes():
             plugins=(
                 Plugin(
                     name="first",
-                    server_extension=ServerExtension(name="first_runtime", service=Service(first)),
+                    server_extensions=ServerExtension(name="first_runtime", service=Service(first)),
                 ),
                 Plugin(
                     name="second",
-                    server_extension=ServerExtension(
+                    server_extensions=ServerExtension(
                         name="second_runtime", service=Service(second, fail=True)
                     ),
                 ),
@@ -491,7 +491,7 @@ def test_plugin_service_factory_receives_application_dependency_and_starts():
         server_extensions=(ServerExtension(name="dependency", service=dependency),),
         plugins=(Plugin(
             name="feature",
-            server_extension=ServerExtension(
+            server_extensions=ServerExtension(
                 name="feature_runtime",
                 service_factory=create,
                 requires_services=("dependency",),
@@ -523,13 +523,13 @@ def test_plugin_service_factory_can_depend_on_another_plugin_capability():
             Plugin(
                 name="consumer",
                 requires_capabilities=(CapabilityRequirement(name="provider.api"),),
-                server_extension=ServerExtension(
+                server_extensions=ServerExtension(
                     name="consumer_runtime", service_factory=create,
                 ),
             ),
             Plugin(
                 name="provider", provides_capabilities=(Capability(name="provider.api"),),
-                server_extension=ServerExtension(name="provider_runtime", service=provider),
+                server_extensions=ServerExtension(name="provider_runtime", service=provider),
             ),
         ),
     )._build_server()
@@ -544,12 +544,12 @@ def test_plugin_service_factory_can_depend_on_another_plugin_capability():
 def test_cross_plugin_service_edge_requires_a_public_capability():
     consumer = Plugin(
         name="consumer",
-        server_extension=ServerExtension(name="consumer_runtime", service_factory=lambda provider_runtime: object()),
+        server_extensions=ServerExtension(name="consumer_runtime", service_factory=lambda provider_runtime: object()),
     )
     provider = Plugin(
         name="provider",
         provides_capabilities=(Capability(name="provider.api"),),
-        server_extension=ServerExtension(name="provider_runtime", service=object()),
+        server_extensions=ServerExtension(name="provider_runtime", service=object()),
     )
     spec = Application(
         name="Undeclared dependency", version="1",
@@ -642,7 +642,7 @@ def test_factory_service_exposes_its_decorated_routes_without_endpoint_copy():
         server_extensions=(ServerExtension(name="dependency", service="ready"),),
         plugins=(Plugin(
             name="feature",
-            server_extension=ServerExtension(
+            server_extensions=ServerExtension(
                 name="feature_runtime",
                 service_factory=FeatureService,
 
@@ -675,7 +675,7 @@ def test_prebuilt_plugin_service_exposes_decorated_routes_without_endpoint_copy(
         primary_agent=AgentSpec(name="primary", session_mode='durable'),
         plugins=(Plugin(
             name="feature",
-            server_extension=ServerExtension(name="feature_runtime", service=Api()),
+            server_extensions=ServerExtension(name="feature_runtime", service=Api()),
         ),),
     )._build_server()
 
@@ -696,7 +696,7 @@ def test_service_routes_can_be_explicitly_hidden():
         primary_agent=AgentSpec(name="primary", session_mode='durable'),
         plugins=(Plugin(
             name="feature",
-            server_extension=ServerExtension(name="feature_runtime", service=Api(), endpoints=()),
+            server_extensions=ServerExtension(name="feature_runtime", service=Api(), endpoints=()),
         ),),
     )._build_server()
 
@@ -715,14 +715,14 @@ def test_plugin_status_uses_actual_service_lifecycle_and_keeps_failed_routes_ins
             name="Runtime diagnostics", version="1", security=Security(),
             primary_agent=AgentSpec(name="primary", session_mode="durable"),
             plugins=(
-                Plugin(name="failing", server_extension=ServerExtension(
+                Plugin(name="failing", server_extensions=ServerExtension(
                     name="failed_service", service=Service(events, fail=True),
                     critical=False, endpoints=(Api(),),
                 )),
-                Plugin(name="healthy", server_extension=ServerExtension(
+                Plugin(name="healthy", server_extensions=ServerExtension(
                     name="healthy_service", service=Service(events),
                 )),
-                Plugin(name="routes", server_extension=ServerExtension(
+                Plugin(name="routes", server_extensions=ServerExtension(
                     name="routes", endpoints=(),
                 )),
             ),
@@ -754,11 +754,11 @@ def test_plugin_status_requires_all_of_its_services_and_ignores_other_owners():
             name="Composite diagnostics", version="1",
             primary_agent=AgentSpec(name="primary", session_mode="durable"),
             plugins=(
-                Plugin(name="partial", server_extension=(
+                Plugin(name="partial", server_extensions=(
                     ServerExtension(name="store", service=Service([])),
                     ServerExtension(name="consumer", service=Service([], fail=True), critical=False),
                 )),
-                Plugin(name="independent", server_extension=ServerExtension(
+                Plugin(name="independent", server_extensions=ServerExtension(
                     name="independent", service=Service([]),
                 )),
                 Plugin(name="agent_only", agent_extension=object),

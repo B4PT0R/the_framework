@@ -5,7 +5,7 @@ from .agent import ArtifactsExtension
 
 ARTIFACTS = Plugin(
     name="artifacts", agent_extension=ArtifactsExtension,
-    server_extension=ServerExtension(
+    server_extensions=ServerExtension(
         name="artifacts", scope="session",
         service_factory="the_framework.plugins.artifacts.server:build_service",
     ),

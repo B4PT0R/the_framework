@@ -57,8 +57,8 @@ def test_compile_rejects_shared_service_names_before_construction(application_ow
         "collision",
         server_extensions=(extension,) if application_owned else (),
         plugins=(
-            *((Plugin(name="first", server_extension=extension),) if not application_owned else ()),
-            Plugin(name="second", server_extension=extension),
+            *((Plugin(name="first", server_extensions=extension),) if not application_owned else ()),
+            Plugin(name="second", server_extensions=extension),
         ),
     )
     with pytest.raises(ValueError, match="duplicate plugin runtime extension: shared"):
@@ -68,11 +68,11 @@ def test_compile_rejects_shared_service_names_before_construction(application_ow
 
 def test_compile_allows_runtime_name_equal_to_another_plugin_identity():
     plan = application("distinct", plugins=(
-        Plugin(name="first", server_extension=ServerExtension(name="second")),
-        Plugin(name="second", server_extension=ServerExtension(name="third")),
+        Plugin(name="first", server_extensions=ServerExtension(name="second")),
+        Plugin(name="second", server_extensions=ServerExtension(name="third")),
     )).compile()
-    assert plan.plugins["first"].server_extension.name == "second"
-    assert plan.plugins["second"].server_extension.name == "third"
+    assert plan.plugins["first"].server_extensions[0].name == "second"
+    assert plan.plugins["second"].server_extensions[0].name == "third"
 
 
 def test_plugin_runtime_factories_follow_capability_dependencies():
@@ -89,11 +89,11 @@ def test_plugin_runtime_factories_follow_capability_dependencies():
 
     spec = application("ordered runtimes", plugins=(
         Plugin(
-            name="consumer", server_extension=consumer,
+            name="consumer", configure=consumer,
             requires_capabilities=(CapabilityRequirement(name="feature.provider"),),
         ),
         Plugin(
-            name="provider", server_extension=provider,
+            name="provider", configure=provider,
             provides_capabilities=(Capability(name="feature.provider"),),
         ),
     ))
@@ -114,14 +114,14 @@ def test_failed_capability_provider_prevents_dependent_service_start():
         Plugin(
             name="consumer",
             requires_capabilities=(CapabilityRequirement(name="feature.provider"),),
-            server_extension=ServerExtension(
+            server_extensions=ServerExtension(
                 name="consumer_service", service=Service(events), critical=False,
             ),
         ),
         Plugin(
             name="provider",
             provides_capabilities=(Capability(name="feature.provider"),),
-            server_extension=ServerExtension(
+            server_extensions=ServerExtension(
                 name="provider_service", service=Unavailable(events), critical=False,
             ),
         ),
@@ -139,7 +139,7 @@ def test_failed_capability_provider_prevents_dependent_service_start():
 
 
 @pytest.mark.parametrize("factory", [False, True])
-def test_single_service_plugin_needs_no_extension_boilerplate(factory):
+def test_single_service_plugin_has_explicit_construction_and_lifecycle(factory):
     events = []
 
     class Counter(Service):
@@ -156,8 +156,10 @@ def test_single_service_plugin_needs_no_extension_boilerplate(factory):
             return {"value": self.value}
 
     counter = Counter()
-    runtime = (lambda _context: counter) if factory else counter
-    app = application("Counter", plugins=(Plugin(name="counter", server_extension=runtime),))._build_server()
+    component = ServerExtension(name="counter", **(
+        {"service_factory": lambda: counter} if factory else {"service": counter}
+    ))
+    app = application("Counter", plugins=(Plugin(name="counter", server_extensions=component),))._build_server()
     extension = app.state.application.extensions["counter"]
     assert extension.name == "counter"
     assert extension.service is counter
@@ -166,8 +168,8 @@ def test_single_service_plugin_needs_no_extension_boilerplate(factory):
         assert events == ["start"]
     assert events == ["start", "stop"]
 
-    with pytest.raises(TypeError, match="must be a server service"):
-        application("Invalid", plugins=(Plugin(name="invalid", server_extension=object()),))._build_server()
+    with pytest.raises(TypeError, match="server_extensions"):
+        application("Invalid", plugins=(Plugin(name="invalid", server_extensions=object()),))._build_server()
 
 
 def test_compile_rejects_private_agent_shadowing_primary():
@@ -219,7 +221,7 @@ def test_application_spec_builds_a_small_complete_server():
             Plugin(
                 name="echo",
                 agent_extension=object,
-                server_extension=ServerExtension(
+                server_extensions=ServerExtension(
                     name="echo_api",
                     endpoints=(echo,),
                     requires_services=("runtime",),
@@ -435,7 +437,7 @@ def test_plugin_agent_binding_can_be_disabled_while_runtime_is_installed():
         plugins=(Plugin(
             name="echo",
             agent_extension=object,
-            server_extension=ServerExtension(name="echo_api", endpoints=(echo,)),
+            server_extensions=ServerExtension(name="echo_api", endpoints=(echo,)),
             agent_binding_enabled=False,
         ),),
         security=Security(),
@@ -457,7 +459,7 @@ def test_compiler_keeps_server_factories_out_of_worker_projection():
         plugins=(
             Plugin(
                 name="memory",
-                server_extension=runtime,
+                configure=runtime,
                 specialists=(AgentSpec(name="curator", description="Private memory curator."),),
                 provides_capabilities=(Capability(name="memory.curate", version=2),),
             ),
@@ -492,7 +494,7 @@ def test_importable_session_factory_is_resolved_only_for_server_build(monkeypatc
 
     monkeypatch.setattr(composition, "import_module", load)
     spec = application("Lazy runtime", plugins=(Plugin(
-        name="feature", server_extension="feature.server:factory",
+        name="feature", configure="feature.server:factory",
     ),))
     spec.compile()
     assert imported == []
@@ -501,7 +503,7 @@ def test_importable_session_factory_is_resolved_only_for_server_build(monkeypatc
     assert "feature_runtime" in app.state.application.extensions
 
     with pytest.raises(ValueError, match="module:factory"):
-        Plugin(name="invalid", server_extension="feature.server.factory")
+        Plugin(name="invalid", configure="feature.server.factory")
 
 
 def test_optional_capability_orders_present_provider_without_requiring_installation():
@@ -523,12 +525,12 @@ def test_optional_capability_orders_present_provider_without_requiring_installat
 
     consumer_plugin = Plugin(
         name="consumer",
-        server_extension=consumer,
+        configure=consumer,
         optional_capabilities=(CapabilityRequirement(name="example.provider"),),
     )
     provider_plugin = Plugin(
         name="provider",
-        server_extension=provider,
+        configure=provider,
         provides_capabilities=(Capability(name="example.provider"),),
     )
     with_provider = application(

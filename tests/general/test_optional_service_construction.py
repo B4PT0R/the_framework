@@ -30,7 +30,7 @@ def test_optional_construction_failure_is_visible_and_chat_and_other_sessions_su
     def view(weather):
         calls.append('view')
         raise AssertionError('a dependent factory must not run without its dependency')
-    plugin = Plugin(name='weather', server_extension=(
+    plugin = Plugin(name='weather', server_extensions=(
         ServerExtension(name='weather', service_factory=weather, critical=False),
         ServerExtension(name='weather_view', service_factory=view, critical=False, scope='session'),
     ))

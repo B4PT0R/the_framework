@@ -275,7 +275,7 @@ def test_surface_mounts_reject_nested_routes_and_shadowed_plugin_endpoints(tmp_p
             ),
             plugins=(Plugin(
                 name="example",
-                server_extension=ServerExtension(
+                server_extensions=ServerExtension(
                     name="example_runtime", endpoints=(shadowed_plugin_endpoint,),
                 ),
             ),),
@@ -294,7 +294,7 @@ def test_declared_plugin_bootstrap_endpoint_may_precede_its_surface_mount(tmp_pa
         name="Surface bootstrap", version="1",
         primary_agent=AgentSpec(name="primary", session_mode='durable'),
         plugins=(Plugin(
-            name="hosted_ui", server_extension=ServerExtension(
+            name="hosted_ui", server_extensions=ServerExtension(
                 name="hosted_ui_runtime", endpoints=(bootstrap,),
             ),
         ),),

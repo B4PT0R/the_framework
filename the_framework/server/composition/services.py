@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 from types import MappingProxyType
+from collections.abc import Mapping
 
 from .dependencies import dependency_order
 
@@ -21,26 +22,24 @@ async def invoke_lifecycle(spec, action, context):
     return await result if inspect.isawaitable(result) else result
 
 
-class ServiceContext:
-    """Typed-by-name runtime lookup shared only by process-local services."""
+class ServiceContext(Mapping):
+    """Started local services with read-only access to application-owned services."""
 
-    def __init__(self, values=None):
+    def __init__(self, values=None, *, parent=None):
         self._values = dict(values or {})
+        self.parent = parent
 
     def add(self, name, value):
-        if name in self._values:
-            if self._values[name] is value:
+        if name in self:
+            if self[name] is value:
                 return value
             raise ValueError(f"duplicate service context value: {name}")
         self._values[name] = value
         return value
 
-    def get(self, name, default=None):
-        return self._values.get(name, default)
-
     def require(self, name):
         try:
-            return self._values[name]
+            return self[name]
         except KeyError as error:
             raise LookupError(f"application service is unavailable: {name}") from error
 
@@ -53,18 +52,31 @@ class ServiceContext:
         return self._values.pop(name)
 
     def __getitem__(self, name):
-        return self.require(name)
+        if name in self._values:
+            return self._values[name]
+        if self.parent is not None:
+            spec = self.parent.specs.get(name)
+            if spec is not None and spec.scope == "application":
+                return self.parent.context[name]
+        raise KeyError(name)
 
-    def __contains__(self, name):
-        return name in self._values
+    def __iter__(self):
+        yield from self._values
+        if self.parent is not None:
+            yield from (name for name, spec in self.parent.specs.items()
+                        if spec.scope == "application" and name in self.parent.context
+                        and name not in self._values)
+
+    def __len__(self):
+        return sum(1 for _ in self)
 
     def snapshot(self):
-        return dict(self._values)
+        return dict(self)
 
     @property
     def view(self):
         """Live, read-only lookup of services that have successfully started."""
-        return MappingProxyType(self._values)
+        return MappingProxyType(self)
 
 
 class ServiceGraph:
@@ -110,8 +122,15 @@ class ServiceGraph:
     def resolve_order(self):
         if self.order:
             return list(self.order)
+        inherited = self.context.parent
+        shared = {name for name, spec in inherited.specs.items() if spec.scope == "application"} if inherited else set()
+        unknown = {name for values in self.dependencies.values() for name in values
+                   if name not in self.specs and name not in shared}
+        if unknown:
+            raise ValueError("unknown application service dependencies: " + ", ".join(sorted(unknown)))
         self.order = dependency_order(
-            self.dependencies,
+            {name: tuple(value for value in values if value in self.specs)
+             for name, values in self.dependencies.items()},
             kind="application service",
         )
         return list(self.order)
@@ -131,7 +150,7 @@ class ServiceGraph:
                 unavailable = [
                     dependency
                     for dependency in self.dependencies[name]
-                    if dependency not in self.started
+                    if dependency not in self.context
                 ]
                 if unavailable:
                     error = RuntimeError(
@@ -176,10 +195,16 @@ class ServiceGraph:
         if failures:
             raise BaseExceptionGroup("application service shutdown failed", failures)
 
-    async def health(self):
+    async def health(self, *, names=None):
         result = {}
+        parent = self.context.parent
+        if parent is not None:
+            shared = {name for name, spec in parent.specs.items() if spec.scope == "application"}
+            result.update(await parent.health(names=shared if names is None else shared.intersection(names)))
         started = set(self.started)
         for name in self.resolve_order():
+            if names is not None and name not in names:
+                continue
             spec = self.specs[name]
             payload = None
             try:

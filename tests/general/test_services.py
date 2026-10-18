@@ -3,7 +3,7 @@ import asyncio
 import pytest
 
 from the_framework import ServerExtension
-from the_framework.server.composition.services import ServiceGraph
+from the_framework.server.composition.services import ServiceContext, ServiceGraph
 from the_framework.server.api.health import ApplicationHealthApi
 from types import SimpleNamespace
 
@@ -189,5 +189,64 @@ def test_live_health_failure_degrades_critical_service_and_recovers(probe):
         unhealthy = False
         assert (await graph.health())["backend"]["status"] == "running"
         await graph.stop()
+
+    asyncio.run(run())
+
+
+def test_session_services_borrow_application_resources_without_owning_their_lifecycle():
+    async def run():
+        events = []
+        shared = Service("shared", events)
+        parent = ServiceGraph([
+            ServerExtension(name="shared", service=shared),
+            ServerExtension(name="primary", service=Service("primary", events), scope="session"),
+        ])
+        context = ServiceContext(parent=parent)
+        view = context.view
+        assert not view
+        await parent.start()
+        assert view["shared"] is shared
+        assert "primary" not in view
+        with pytest.raises(TypeError):
+            view["shared"] = object()
+        child = ServiceGraph([
+            ServerExtension(name="child", service=Service("child", events),
+                            requires_services=("shared",), scope="session"),
+        ], context=context)
+        await child.start()
+        assert events == ["start:shared", "start:primary", "start:child"]
+        assert set(await child.health()) == {"shared", "child"}
+        await child.stop()
+        assert view["shared"] is shared and "child" not in view
+        assert events[-1] == "stop:child"
+        await parent.stop()
+        assert not view
+        assert events[-2:] == ["stop:primary", "stop:shared"]
+
+    asyncio.run(run())
+
+
+def test_failed_shared_dependency_is_reported_without_becoming_session_owned():
+    async def run():
+        events = []
+        parent = ServiceGraph([
+            ServerExtension(name="optional", service=Service("optional", events, fail_start=True),
+                            critical=False),
+            ServerExtension(name="healthy", service=Service("healthy", events)),
+        ])
+        await parent.start()
+        child = ServiceGraph([
+            ServerExtension(name="dependent", service=Service("dependent", events),
+                            requires_services=("optional",), critical=False, scope="session"),
+        ], context=ServiceContext(parent=parent))
+        await child.start()
+        health = await child.health()
+        assert health["optional"]["status"] == "error"
+        assert health["dependent"]["status"] == "error"
+        assert health["healthy"]["status"] == "running"
+        await child.stop()
+        assert events == ["start:optional", "start:healthy"]
+        await parent.stop()
+        assert events[-1] == "stop:healthy"
 
     asyncio.run(run())

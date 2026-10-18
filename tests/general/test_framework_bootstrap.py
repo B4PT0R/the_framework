@@ -54,7 +54,7 @@ def prepared_commands(tmp_path, monkeypatch):
     bootstrap(code, tmp_path / "private data")
     monkeypatch.setattr(cli.shutil, "which", lambda name: f"/bin/{name}")
     calls = []
-    fail = {"build": False}
+    fail = {"build": False, "python": True, "browser": True}
 
     def run(command, *, cwd, env, check):
         assert cwd == code
@@ -62,6 +62,14 @@ def prepared_commands(tmp_path, monkeypatch):
         assert "VIRTUAL_ENV" not in env and "PYTHONPATH" not in env
         calls.append(command)
         ui = code / "starter/ui"
+        if command == ["uv", "sync", "--check"]:
+            return subprocess.CompletedProcess(command, int(fail["python"]))
+        if command == ["uv", "sync"]:
+            fail["python"] = False
+        if command[0] == str(code / ".venv/bin/python"):
+            return subprocess.CompletedProcess(command, int(fail["browser"]))
+        if command[-2:] == ["install", "chromium"]:
+            fail["browser"] = False
         if command[-1] == "ci":
             (ui / "node_modules").mkdir(exist_ok=True)
         if command[-2:] == ["run", "build"]:
@@ -133,3 +141,35 @@ def test_prepare_cli_reports_a_resumable_failed_step(prepared_commands, capsys):
     assert main(["prepare", "--code-dir", str(code)]) == 1
     assert "Resume with:" in capsys.readouterr().err
     assert (code / "starter/application.py").is_file()
+
+
+def test_prepared_run_checks_real_resources_without_reinstalling(prepared_commands):
+    code, calls, fail = prepared_commands
+    prepare(code)
+    calls.clear()
+    assert run_application(code) == 0
+    assert ["uv", "sync"] not in calls
+    assert not any(command[-2:] == ["install", "chromium"] for command in calls)
+    assert not any(command[0] == "npm" for command in calls)
+
+
+@pytest.mark.parametrize("missing", ["python", "browser"])
+def test_run_repairs_missing_resources_despite_previous_preparation(prepared_commands, missing):
+    code, calls, fail = prepared_commands
+    prepare(code)
+    calls.clear()
+    fail[missing] = True
+    assert run_application(code) == 0
+    assert not fail[missing]
+    assert (["uv", "sync"] in calls) == (missing == "python")
+    assert any(command[-2:] == ["install", "chromium"] for command in calls) == (missing == "browser")
+    assert not any(command[0] == "npm" for command in calls)
+
+
+def test_explicit_prepare_refreshes_python_and_browser(prepared_commands):
+    code, calls, fail = prepared_commands
+    prepare(code)
+    calls.clear()
+    assert main(["prepare", "--code-dir", str(code)]) == 0
+    assert ["uv", "sync"] in calls
+    assert any(command[-2:] == ["install", "chromium"] for command in calls)

@@ -98,7 +98,7 @@ def test_contributions_are_collected_before_factories_in_any_plugin_order(tmp_pa
         context.contribute(CONTEXT_FACTORY, LiveContext)
         return ()
 
-    contributor = Plugin(name="context", server_extension=producer)
+    contributor = Plugin(name="context", configure=producer)
     for plugins in permutations((REALTIME, contributor)):
         context = BuildContext(data_root=tmp_path)
         app = declaration(*plugins).build(
@@ -118,7 +118,7 @@ def test_service_factory_cannot_change_contributions(tmp_path):
         return ServerExtension(name="late", service_factory=build)
 
     with pytest.raises(RuntimeError, match="sealed before service construction"):
-        declaration(Plugin(name="late", server_extension=declare))._build_server(BuildContext())
+        declaration(Plugin(name="late", configure=declare))._build_server(BuildContext())
 
 
 def test_services_have_one_lifecycle_owner_and_context_cannot_be_reused(tmp_path):
@@ -135,7 +135,7 @@ def test_services_have_one_lifecycle_owner_and_context_cannot_be_reused(tmp_path
     async def run():
         service = Service()
         context = BuildContext(data_root=tmp_path)
-        app = declaration(Plugin(name="feature", server_extension=service))._build_server(context)
+        app = declaration(Plugin(name="feature", server_extensions=ServerExtension(name="feature", service=service)))._build_server(context)
         with pytest.raises(RuntimeError, match="one application build"):
             declaration()._build_server(context)
         assert "feature" not in context.services

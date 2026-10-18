@@ -217,7 +217,7 @@ class MemoryLiveContext:
                 return
 
 
-def build_server_extensions(context):
+def configure(context):
     """Offer live context when voice is installed, without requiring voice."""
     from ..realtime.context import CONTEXT_FACTORY
     context.contribute(CONTEXT_FACTORY, MemoryLiveContext)

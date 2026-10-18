@@ -74,7 +74,7 @@ canonical preparation and compaction. Use agent.compact() for the current sessio
 not a separately assembled controller. Context.project is pure; canonical input
 preparation performs recovery before projection. Generation adds ephemeral providers;
 compaction never samples/persists them. Client archive and Realtime projections stay
-separate. SessionProjections owns the standard full/display/remote views; the HTTP
+separate. SessionProjections owns the standard full/display/activity views; the HTTP
 history defaults to display. Register only application-specific projections.
 SessionRuntime.reset_session is the application reset hook, unavailable by default
 even if a low-level reset transaction factory exists; do not restore reset_handler
@@ -82,7 +82,10 @@ plumbing in Application.build. Keep the Compaction item/response payloads and se
 
 ## Service construction
 
-Prefer a direct ServerExtension service factory over nested plugin/service builders.
+Declare Plugin.server_extensions explicitly and use Plugin.configure(context) only
+for declaration-time contributions or dynamic groups. Bare plugin services and the
+overloaded server_extension field are gone. Prefer a direct ServerExtension service
+factory over nested plugin/service builders.
 Factories request `context` for BuildContext inputs and name services in their other
 parameters. Use `module:factory` references for server-only imports; resolve them
 before dependency ordering, never during worker compilation. Decorated HTTP methods
@@ -130,3 +133,8 @@ only events needed for its generic operation. Events used only within a plugin's
 feature lifecycle must be declared and emitted by that plugin. Public consumers
 receive typed Framework/plugin events; backend wire events remain inside their
 respective adapters and must be explicitly converted or filtered.
+
+Session ServiceContext borrows only application-scoped services through its parent
+graph. Its ServiceGraph owns only local lifecycle entries; inherited resources keep
+their original owner and health probe, without no-op start/stop wrappers. Do not cache
+configure hooks across sessions: their contributions may depend on session inputs.

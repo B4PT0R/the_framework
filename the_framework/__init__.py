@@ -1,8 +1,19 @@
 """Short public API for composing agent applications."""
 
-from .agent import AgentExtension, AgentResources, AgentSpec, QueuePolicy, provider, tool
+from .agent import (
+    AgentExtension,
+    AgentResources,
+    AgentSpec,
+    QueuePolicy,
+    provider,
+    tool,
+    command,
+    hook,
+    agent_trigger,
+)
 from .server import (
     endpoint,
+    websocket,
     Application,
     BuildContext,
     Capability,
@@ -25,6 +36,10 @@ __all__ = [
     "Plugin",
     "QueuePolicy",
     "endpoint",
+    "websocket",
+    "command",
+    "hook",
+    "agent_trigger",
     "provider",
     "tool",
 ]

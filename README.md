@@ -187,8 +187,9 @@ the-framework run --code-dir /path/to/my-agent-code
 
 Add `--run` to `bootstrap` to create, prepare and start in one command. Use
 `bootstrap --no-prepare` for source only, or `the-framework prepare --code-dir ...`
-to resume a failed preparation without overwriting the app. `run` prepares first,
-reusing successful stages and rebuilding changed UI sources. It accepts `--port`,
+to resume or refresh preparation without overwriting the app. `run` checks the
+real Python environment and Chromium before installing anything, reuses successful
+npm stages and rebuilds changed UI sources. It accepts `--port`,
 `--headless` and `--no-browser`. Commands also work as `python -m the_framework`;
 inside the generated project, `uv run the-framework run` uses its own environment.
 
@@ -248,7 +249,7 @@ application = Application(
     name="Counter Service",
     version="0.1",
     security=BearerSecurity(),
-    plugins=(Plugin(name="counter", server_extension=ServerExtension(
+    plugins=(Plugin(name="counter", server_extensions=ServerExtension(
         name="counter", service_factory=Counter,
     )),),
 )
@@ -272,13 +273,13 @@ curl -sS -X POST http://127.0.0.1:8000/api/v1/counter/increment \
 
 The result is `{"value":2}`. The literal bearer secret is **only** for this
 loopback demonstration; use a real authentication policy for an application.
-The primary agent declaration alone does not create a chat API or start
-inference: the starter shows how to add its supervised worker and client
-transport. `@endpoint` validates request and response data and contributes an
-OpenAPI schema. Passing a service directly to `Plugin.server_extension` discovers its
-decorated routes and manages its `start()`/`stop()` lifecycle. For a feature
-with several server components or dependencies on other services, return
-`ServerExtension` declarations instead; the default `endpoints=None` automatically
+An application with a primary agent builds its canonical chat, supervised worker
+and authenticated transports through `Application.build(reference, context, ...)`.
+Construction does not start inference. `@endpoint` validates request and response data and contributes an
+OpenAPI schema. Declare server components through `Plugin.server_extensions`;
+use `ServerExtension(service=...)` for a constructed service or
+`ServerExtension(service_factory=...)` for dependency-aware construction.
+The default `endpoints=None` automatically
 enables discovery of decorated routes. Set `endpoints=()` to keep them private.
 Factories may request `context` for fixed build inputs alongside named service
 dependencies; a `module:factory` reference keeps server-only imports deferred.

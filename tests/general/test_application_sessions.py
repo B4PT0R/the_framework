@@ -134,10 +134,14 @@ def test_another_worker_cannot_claim_the_same_session(tmp_path):
 
 
 def test_service_scopes_share_only_application_resources_and_fan_out_surface_events(tmp_path):
-    from the_framework import Application, ServerExtension
+    from the_framework import Application, Plugin, ServerExtension
     from the_framework.plugins.realtime import REALTIME
 
     changes = []
+    views = []
+
+    def configure(context):
+        views.append((context, context.services))
 
     class Shared:
         async def start(self):
@@ -148,7 +152,7 @@ def test_service_scopes_share_only_application_resources_and_fan_out_surface_eve
 
     shared = Shared()
     spec = Application({**application,
-        "plugins": (*application.plugins, REALTIME),
+        "plugins": (*application.plugins, REALTIME, Plugin(name="views", configure=configure)),
         "server_extensions": (
             ServerExtension(name="shared", service=shared),
             ServerExtension(name="private", scope="session", service_factory=lambda shared, context: context),
@@ -176,6 +180,9 @@ def test_service_scopes_share_only_application_resources_and_fan_out_surface_eve
             assert child.context.require("session_path") != host.context.require("session_path")
             assert child_app.service("realtime").controller is not host.service("realtime").controller
             assert child_app.service("realtime").controller.runtime is child
+            assert views[-1][0] is child.context
+            assert views[-1][1]["shared"] is shared
+            assert views[-1][1]["private"] is child.context
             assert changes == ["start"]
             from contextlib import aclosing
             async with aclosing(host.primary_session.stream()) as primary_events, aclosing(child.stream()) as child_events:
