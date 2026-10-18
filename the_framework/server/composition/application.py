@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import inspect
+import asyncio
+import re
+import shutil
 from importlib import import_module
 from collections.abc import Callable, Mapping
 from contextlib import asynccontextmanager
@@ -16,6 +19,8 @@ from modict import modict
 from ..api.declarations import Endpoint
 from ...agent.extensions.extension import AgentExtension
 from ...agent.spec import AgentSpec
+from ...agent.context.session import Session
+from ...utils.ids import timestamp_id
 from ...agent.extensions.specialists import AgentTrigger
 
 from ..api.endpoints import EndpointRegistry, SecurityPolicy, endpoint_declarations
@@ -79,7 +84,6 @@ class BuildContext(modict[str, object]):
             root = Path(inputs["data_root"]).expanduser().resolve()
             inputs["data_root"] = root
             for name, relative in (("session_path", "session.json"),
-                                   ("plugin_state_path", "plugins.json"),
                                    ("surface_root", "surfaces")):
                 inputs.setdefault(name, root / relative)
         options = inputs.pop("plugins", {})
@@ -181,6 +185,7 @@ class ServerExtension(modict):
     requires_services: tuple[str, ...] = ()
     optional_services: tuple[str, ...] = ()
     critical: bool = True
+    scope: Literal["application", "session"] = "application"
     start: Callable | None = None
     stop: Callable | None = None
     health: Callable | None = None
@@ -338,6 +343,7 @@ class ApplicationSpec(modict):
     name: str
     version: str
     primary_agent: AgentSpec
+    agents: tuple[AgentSpec, ...] = ()
     plugins: tuple[Plugin, ...] = ()
     server_extensions: tuple[ServerExtension, ...] = ()
     surfaces: tuple[ClientSurface, ...] = ()
@@ -353,8 +359,6 @@ class ApplicationSpec(modict):
             raise ValueError("application name is required")
         if not self.version.strip():
             raise ValueError("application version is required")
-        if self.primary_agent.session_mode != "durable":
-            raise ValueError("the primary agent session must be durable")
 
     def with_server_extensions(self, *extensions):
         return type(self)({**self, "server_extensions": (*self.server_extensions, *extensions)})
@@ -370,7 +374,7 @@ class ApplicationSpec(modict):
                     declaration = Plugin(name=declaration.name, agent_extension=declaration)
                 plugins.append(declaration)
             return tuple(plugins)
-        return _tuple(value) if key in {"plugins", "server_extensions", "surfaces"} else value
+        return _tuple(value) if key in {"agents", "plugins", "server_extensions", "surfaces"} else value
 
     def compile(self):
         return _compile_application(self)
@@ -391,7 +395,7 @@ class ApplicationSpec(modict):
         reset_handler: Callable | None = None,
         extensions: tuple[ServerExtension, ...] | Callable = (),
     ):
-        """Assemble one durable worker, text/files, health and authenticated sockets.
+        """Assemble the default session and a host for independent agent sessions.
 
         Text and attachment ingress is always included and shares the installed
         realtime service’s transition lock when voice is available.
@@ -423,7 +427,9 @@ class ApplicationSpec(modict):
             supervisor = WorkerSupervisor(
                 context.require("session_path"), application_reference=reference,
                 agent_name=self.primary_agent.name,
-                plugin_state_path=context.require("plugin_state_path"),
+                application_root=context.get("machine_root", context.require("data_root")),
+                session_mode=context.get("session_mode"),
+                session_id=context.get("session_id"),
             )
         else:
             path = getattr(supervisor, "session_path", None)
@@ -433,7 +439,7 @@ class ApplicationSpec(modict):
             if worker_reference is not None and worker_reference != reference:
                 raise ValueError("supervisor and conversation must use the same application reference")
         runtime = (
-            runtime_factory(supervisor) if runtime_factory is not None
+            runtime_factory(supervisor, context) if runtime_factory is not None
             else ApplicationRuntime(supervisor, restart=context.get("restart"))
         )
         extra = extensions(runtime) if callable(extensions) else extensions
@@ -454,7 +460,39 @@ class ApplicationSpec(modict):
                 *_tuple(extra),
             ),
         })
-        return definition.build(context)
+        app = definition.build(context)
+        owner = app.state.application
+        if context.get("session_owner") is None:
+            owner.session_root = Path(context.require("data_root")) / "sessions"
+            owner.event_handshake = event_handshake
+
+            def build_session(path, agent_name, session_id, durable):
+                declarations = {agent.name: agent for agent in (self.primary_agent, *self.agents)}
+                if agent_name not in declarations:
+                    raise ValueError(f"unknown application agent: {agent_name}")
+                child = type(self)({**self, "primary_agent": declarations[agent_name],
+                                    "agents": (), "surfaces": ()})
+                inputs = dict(context)
+                inputs.update(session_path=path, session_id=session_id,
+                              session_mode="durable" if durable else "resident",
+                              session_owner=owner)
+                inputs["plugins"] = {name: dict(options) for name, options in context._plugin_options.items()}
+                return child.build_conversation(
+                    reference, BuildContext(inputs), security=security,
+                    event_handshake=event_handshake, application_handshake=application_handshake,
+                    runtime_factory=runtime_factory, session_projection=session_projection,
+                    health_projection=health_projection, reset_handler=reset_handler,
+                    extensions=extensions,
+                )
+
+            owner.session_builder = build_session
+            from ..api.sessions import SessionsApi
+            registry = EndpointRegistry(app, security=security, validate_responses=self.validate_responses)
+            for endpoint in endpoint_declarations(SessionsApi(owner)):
+                registry.add(endpoint, owner="sessions")
+            registry.install()
+            app.mount("/sessions", owner.serve_session, name="sessions")
+        return app
 
 
 class ApplicationContext:
@@ -469,9 +507,157 @@ class ApplicationContext:
         self.service_graph = None
         self.plugin_host = None
         self.surface_service = None
+        self.session_root = None
+        self.session_builder = None
+        self.session_lock = asyncio.Lock()
+        self.session_apps = {}
+        self.accepting_sessions = False
+        self.event_handshake = None
+        self.default_runtime = None
+        self.app = None
 
     def service(self, name):
         return self.services.require(name)
+
+    def agent_runtimes(self):
+        if self.default_runtime is not None:
+            yield self.default_runtime
+        for app, _ in tuple(self.session_apps.values()):
+            yield app.state.application.service("runtime")
+
+    async def surface_notify(self, payload):
+        for runtime in self.agent_runtimes():
+            await runtime.surface_notify(payload)
+
+    async def surface_progress(self, payload):
+        for runtime in self.agent_runtimes():
+            await runtime.surface_progress(payload)
+
+    def list_sessions(self):
+        active = {key: app.state.application.service("runtime") for key, (app, _) in self.session_apps.items()}
+        records = {}
+        if self.default_runtime is not None and self.default_runtime.ready is not None:
+            runtime = self.default_runtime
+            records[runtime.ready.session_id] = {
+                "id": runtime.ready.session_id, "agent": runtime.ready.name,
+                "durable": Path(runtime.supervisor.session_path).is_file(),
+                "running": runtime.supervisor.running, "default": True,
+            }
+        if self.session_root is not None and self.session_root.exists():
+            for path in sorted(self.session_root.glob("*/session.json")):
+                session = Session.open(path)
+                records[path.parent.name] = {"id": session.id, "agent": session.agent_name,
+                                             "durable": True, "running": False}
+        for key, runtime in active.items():
+            records[key] = {"id": key, "agent": runtime.ready.name,
+                            "durable": (self.session_root / key / "session.json").is_file(),
+                            "running": runtime.supervisor.running}
+        return list(records.values())
+
+    async def open_session(self, *, session_id=None, agent=None, durable=True):
+        """Open one independent agent worker; its persisted session owns its state."""
+        if self.session_builder is None:
+            raise RuntimeError("session hosting is not configured")
+        key = session_id or timestamp_id()
+        if not isinstance(key, str) or re.fullmatch(r"[a-zA-Z0-9_-]{1,128}", key) is None:
+            raise ValueError("invalid session id")
+        async with self.session_lock:
+            if not self.accepting_sessions:
+                raise RuntimeError("application session host is not running")
+            if self.default_runtime is not None and self.default_runtime.ready is not None and key == self.default_runtime.ready.session_id:
+                if agent is not None and agent != self.default_runtime.ready.name:
+                    raise ValueError("session belongs to another agent")
+                return self.default_runtime
+            if key in self.session_apps:
+                app, _ = self.session_apps[key]
+                runtime = app.state.application.service("runtime")
+                if agent is not None and runtime.ready.name != agent:
+                    raise ValueError("session belongs to another agent")
+                return runtime
+            path = self.session_root / key / "session.json"
+            if path.exists():
+                saved = Session.open(path)
+                if not durable or (agent is not None and saved.agent_name != agent):
+                    raise ValueError("session identity or persistence mode differs")
+                agent = saved.agent_name
+            else:
+                agent = agent or self.spec.primary_agent.name
+            created = not path.exists()
+            app = self.session_builder(path, agent, key, durable)
+            runtime = app.state.application.server_extensions["runtime"].service
+            if runtime is self.server_extensions["runtime"].service:
+                raise ValueError("runtime_factory must create an independent runtime for each session")
+            if durable and created:
+                session = Session(id=key, agent_name=agent)
+                session.set_attr("path", path)
+                session.save()
+            lifespan = app.router.lifespan_context(app)
+            try:
+                await lifespan.__aenter__()
+            except BaseException:
+                if created:
+                    shutil.rmtree(path.parent, ignore_errors=True)
+                raise
+            self.session_apps[key] = (app, lifespan)
+            return app.state.application.service("runtime")
+
+    async def close_session(self, session_id):
+        """Stop a worker; durable session data remains available for reopening."""
+        async with self.session_lock:
+            item = self.session_apps.pop(session_id, None)
+            if item is None:
+                return False
+            app, lifespan = item
+            await lifespan.__aexit__(None, None, None)
+            if not (self.session_root / session_id / "session.json").exists():
+                shutil.rmtree(self.session_root / session_id, ignore_errors=True)
+            return True
+
+    async def close_sessions(self):
+        errors = []
+        for key in tuple(self.session_apps):
+            try:
+                await self.close_session(key)
+            except BaseException as error:
+                errors.append(error)
+        if errors:
+            raise BaseExceptionGroup("session shutdown failed", errors)
+
+    async def serve_session(self, scope, receive, send):
+        """Dispatch a session's API/sockets without sharing its worker or services."""
+        from starlette.requests import Request
+        from starlette.websockets import WebSocket
+        from starlette.responses import JSONResponse
+
+        relative = scope["path"][len(scope.get("root_path", "")):].lstrip("/")
+        key = relative.split("/", 1)[0]
+        if scope["type"] == "websocket":
+            authenticated = await self.event_handshake(WebSocket(scope, receive, send))
+        else:
+            request = Request(scope, receive)
+            principal = await self.spec.security.authenticate(request)
+            authenticated = principal is not None and await self.spec.security.authorize(
+                principal, {"scope": "session:read"}, request,
+            )
+        if not authenticated:
+            if scope["type"] == "websocket":
+                await send({"type": "websocket.close", "code": 1008})
+            else:
+                await JSONResponse({"error": "unauthorized"}, status_code=401)(scope, receive, send)
+            return
+        default = self.default_runtime is not None and self.default_runtime.ready is not None and key == self.default_runtime.ready.session_id
+        if re.fullmatch(r"[a-zA-Z0-9_-]{1,128}", key) is None or (
+            not default and key not in self.session_apps and not (self.session_root / key / "session.json").is_file()
+        ):
+            if scope["type"] == "websocket":
+                await send({"type": "websocket.close", "code": 1008})
+            else:
+                await JSONResponse({"error": "session_not_found"}, status_code=404)(scope, receive, send)
+            return
+        await self.open_session(session_id=key)
+        app = self.app if default else self.session_apps[key][0]
+        scope = {**scope, "root_path": scope.get("root_path", "") + "/" + key}
+        await app(scope, receive, send)
 
 
 def _compile_application(application):
@@ -597,6 +783,10 @@ def _compile_application(application):
         *agent_contributions
     ).with_specialist_profiles(*specialist_profiles)
     agents[primary_agent.name] = primary_agent
+    for declaration in application.agents:
+        if declaration.name in agents:
+            raise ValueError(f"duplicate agent identity: {declaration.name}")
+        agents[declaration.name] = declaration.with_extensions(*agent_contributions).with_specialist_profiles(*specialist_profiles)
     return ApplicationPlan(
         application=application,
         primary_agent=primary_agent,
@@ -781,15 +971,29 @@ def build_application(
     resolved_services = {}
     resolved_extensions = {}
     for name in startup_order:
-        extension = _construct_extension_service(declarations[name], resolved_services)
+        declaration = declarations[name]
+        owner = build_context.get("session_owner")
+        if owner is not None and declaration.scope == "application":
+            shared = owner.server_extensions.get(name)
+            if shared is None:
+                raise ValueError(f"application service is unavailable: {name}")
+            declaration = ServerExtension({
+                **shared, "endpoints": (), "websockets": (), "mounts": (), "middleware": (),
+                "start": lambda *_: None, "stop": lambda *_: None,
+            })
+        extension = _construct_extension_service(declaration, resolved_services)
         resolved_extensions[name] = extension
         if extension.service is not None:
             resolved_services[name] = extension.service
     runtime = ApplicationContext(plan, resolved_extensions, services=build_context._services)
+    owner = build_context.get("session_owner")
+    if owner is not None:
+        runtime.surface_service = owner.surface_service
     agent_runtimes = [service for service in resolved_services.values() if isinstance(service, ApplicationRuntime)]
     if len(agent_runtimes) > 1:
         raise ValueError("an application may install only one primary agent runtime")
     agent_runtime = agent_runtimes[0] if agent_runtimes else None
+    runtime.default_runtime = agent_runtime
 
     services = []
     for name in startup_order:
@@ -822,6 +1026,7 @@ def build_application(
         docs_url=application.docs_url,
     )
     app.state.application = runtime
+    runtime.app = app
     plugin_owners = {
         extension.name: plugin_name
         for plugin_name, group in plugin_server_extensions.items()
@@ -919,8 +1124,8 @@ def build_application(
             application.surfaces,
             surface_root,
             origin=build_context.get("origin"),
-            notify=build_context.get("surface_notify", agent_runtime.surface_notify if agent_runtime else None),
-            progress=build_context.get("surface_progress", agent_runtime.surface_progress if agent_runtime else None),
+            notify=build_context.get("surface_notify", runtime.surface_notify),
+            progress=build_context.get("surface_progress", runtime.surface_progress),
         )
         runtime.surface_service = surface_service
         for surface in application.surfaces:
@@ -945,7 +1150,6 @@ def build_application(
         raise ValueError("only one plugin binding coordinator may be installed")
     plugin_host = PluginHost(
         plan, service_graph=graph, service_owners=MappingProxyType(plugin_owners),
-        state_path=build_context.get("plugin_state_path"),
         binding_update=build_context.get("plugin_binding_update", binding_updates[0] if binding_updates else agent_runtime.set_plugin_binding if agent_runtime else None),
         binding_snapshot=build_context.get("plugin_binding_snapshot", agent_runtime.plugin_bindings if agent_runtime else None),
     )
@@ -955,14 +1159,19 @@ def build_application(
 
     @asynccontextmanager
     async def lifespan(_app):
-        if runtime.surface_service is not None:
+        if build_context.get("session_owner") is None and runtime.surface_service is not None:
             await runtime.surface_service.initialize(ui_root=build_context.get("ui_root"))
         await graph.start()
         try:
             await plugin_host.start()
+            runtime.accepting_sessions = True
             yield
         finally:
-            await graph.stop()
+            runtime.accepting_sessions = False
+            try:
+                await runtime.close_sessions()
+            finally:
+                await graph.stop()
 
     app.router.lifespan_context = lifespan
     return app

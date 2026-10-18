@@ -28,16 +28,21 @@ class WorkerSupervisor:
         *,
         application_reference: str | None = None,
         agent_name: str | None = None,
-        plugin_state_path=None,
+        application_root=None,
+        session_mode=None,
+        session_id=None,
     ):
         if stream_limit_bytes < 64 * 1024:
             raise ValueError("worker IPC stream limit must be at least 64 KiB")
-        if command is not None and any(value is not None for value in (application_reference, agent_name, plugin_state_path)):
+        if command is not None and any(value is not None for value in (application_reference, agent_name, application_root, session_mode, session_id)):
             raise ValueError("a custom worker command cannot also declare application inputs")
-        if application_reference is None and (agent_name is not None or plugin_state_path is not None):
-            raise ValueError("agent and plugin state require an application reference")
+        if application_reference is None and agent_name is not None:
+            raise ValueError("an agent name requires an application reference")
         self.session_path = session_path
         self.application_reference = application_reference
+        self.application_root = application_root
+        self.session_id = session_id
+        self.session_mode = session_mode
         self.command = command or [
             sys.executable,
             "-m",
@@ -49,8 +54,10 @@ class WorkerSupervisor:
             self.command.extend(("--application", application_reference))
         if agent_name is not None:
             self.command.extend(("--agent", agent_name))
-        if plugin_state_path is not None:
-            self.command.extend(("--plugin-state", str(plugin_state_path)))
+        for flag, value in (("--application-root", application_root),
+                            ("--session-mode", session_mode), ("--session-id", session_id)):
+            if value is not None:
+                self.command.extend((flag, str(value)))
         self.ready_timeout = ready_timeout
         self.stop_timeout = stop_timeout
         self.stream_limit_bytes = stream_limit_bytes
@@ -84,7 +91,7 @@ class WorkerSupervisor:
         self.stderr_task = asyncio.create_task(self._read_stderr())
         try:
             self.ready_output = await asyncio.wait_for(self.ready, self.ready_timeout)
-        except Exception:
+        except BaseException:
             await self.kill()
             raise
         return self.ready_output

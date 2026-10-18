@@ -92,3 +92,17 @@ export function eventMessages(current, event) {
     ? current.map((value) => (value.id === item.id ? item : value))
     : [...current, item];
 }
+
+
+// Child activity is transient and never becomes a primary conversation message.
+export function subagentActivities(current, output) {
+  if (output.type !== "subagent_event") return current;
+  const key = output.task_id;
+  const next = { ...current };
+  if (["agent.task.completed", "agent.task.failed"].includes(output.event?.type)) delete next[key];
+  else next[key] = {
+    agent: output.agent, sessionId: output.session_id,
+    feedback: output.event?.user_feedback || current[key]?.feedback || "",
+  };
+  return next;
+}

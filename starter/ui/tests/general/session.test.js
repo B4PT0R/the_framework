@@ -7,6 +7,7 @@ import {
   providerArtifacts,
   snapshot,
   voiceCaptions,
+  subagentActivities,
 } from "../../src/session.js";
 
 test("live voice captions replace drafts and disappear on canonical completion", () => {
@@ -145,4 +146,19 @@ test("provider artifacts replace this turn's view and never become replay histor
   assert.deepEqual(eventMessages([], { type: "agent.provider_artifacts.updated", items: [first] }), []);
   for (const type of ["agent.turn.start", "agent.turn.end", "agent.interrupted", "agent.error"])
     assert.deepEqual(providerArtifacts(transient, { type }), []);
+});
+
+
+test("subagent activity is isolated by task and never becomes primary history", () => {
+  const activity = (task_id, event) => ({type: "subagent_event", task_id, agent: "reviewer", session_id: "child", event});
+  const first = activity("a", {type: "agent.tool_call.start", user_feedback: "Reading sources"});
+  let state = subagentActivities({}, first);
+  state = subagentActivities(state, activity("b", {type: "agent.turn.start"}));
+  assert.equal(state.a.feedback, "Reading sources");
+  assert.equal(state.a.sessionId, "child");
+  assert.deepEqual(eventMessages([], first.event), []);
+  state = subagentActivities(state, activity("a", {type: "agent.task.completed"}));
+  assert.deepEqual(Object.keys(state), ["b"]);
+  state = subagentActivities(state, activity("b", {type: "agent.task.failed"}));
+  assert.deepEqual(state, {});
 });

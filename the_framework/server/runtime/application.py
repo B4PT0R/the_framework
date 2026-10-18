@@ -9,6 +9,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+from ...agent.context.session import Session
 from ...agent.models.events import Event
 from ...agent.runtime.protocol import (
     ApplicationCall,
@@ -89,6 +90,7 @@ class ApplicationRuntime:
         self.fleet_result_handlers = set()
         self.fleet = None
         self.fleet_result_task = None
+        self.fleet_event_task = None
         self.ready = None
         self.responses = {}
         self.relay_task = None
@@ -167,6 +169,7 @@ class ApplicationRuntime:
                 if self.fleet_factory is not None else FleetSupervisor(
                     self.supervisor.session_path, self.ready.specialists,
                     application_reference=getattr(self.supervisor, "application_reference", None),
+                    application_root=getattr(self.supervisor, "application_root", None),
                 )
             )
             await self.fleet.start()
@@ -174,6 +177,8 @@ class ApplicationRuntime:
             self.fleet_result_task = asyncio.create_task(
                 self.relay_fleet_results(), name="agent-fleet-results",
             )
+            if getattr(self.fleet, "events", None) is not None:
+                self.fleet_event_task = asyncio.create_task(self.relay_fleet_events(), name="subagent-events")
             self.relay_task = asyncio.create_task(self.relay(), name="agent-worker-relay")
             await self.application.start()
             await self.broadcast_worker_directory()
@@ -196,7 +201,7 @@ class ApplicationRuntime:
         await self.publish(WorkerExited(returncode=0, stderr=[]))
         if self.fleet is not None:
             self.unregister_observer(self.fleet.observe)
-        tasks = (self.fleet_result_task, self.relay_task)
+        tasks = (self.fleet_result_task, self.fleet_event_task, self.relay_task)
         for task in tasks:
             if task:
                 task.cancel()
@@ -204,7 +209,7 @@ class ApplicationRuntime:
             *(task for task in tasks if task),
             return_exceptions=True,
         )
-        self.fleet_result_task = self.relay_task = None
+        self.fleet_result_task = self.fleet_event_task = self.relay_task = None
         errors = []
         for service in (self.application, self.fleet, self.supervisor):
             if service is None:
@@ -271,6 +276,12 @@ class ApplicationRuntime:
 
     async def _reset_canonical_runtime(self, transaction_factory):
         await self.stop()
+        path = Path(self.supervisor.session_path)
+        try:
+            previous = Session.open(path)
+        except ValueError:
+            logger.warning("Resetting a session with unreadable settings")
+            previous = Session()
         try:
             staged = transaction_factory(
                 self.supervisor.session_path,
@@ -285,6 +296,14 @@ class ApplicationRuntime:
                 ) from stage_error
             raise
         try:
+            if not path.exists():
+                replacement = Session(
+                    **({"id": self.supervisor.session_id} if getattr(self.supervisor, "session_id", None) else {}),
+                    plugins=dict(previous.plugins), configuration=dict(previous.configuration),
+                    state=dict(previous.state),
+                )
+                replacement.set_attr("path", path)
+                replacement.save()
             await self.start()
         except Exception as reset_error:
             try:
@@ -304,6 +323,14 @@ class ApplicationRuntime:
             ) from reset_error
         staged.commit()
         return self.ready
+
+    async def relay_fleet_events(self):
+        while True:
+            event = await self.fleet.events.get()
+            try:
+                await self.publish(event)
+            finally:
+                self.fleet.events.task_done()
 
     async def relay_fleet_results(self):
         while True:

@@ -61,7 +61,7 @@ def test_agent_tool_changes_binding_without_ending_its_turn(tmp_path, external_f
 
         runtime = ApplicationRuntime(Supervisor())
         app = ApplicationSpec({**spec, "server_extensions": (ServerExtension(name="runtime", service=runtime),)}).build(
-            BuildContext({"plugin_state_path": tmp_path / "plugins.json"})
+            BuildContext()
         )
         results = []
         entered = asyncio.Event()

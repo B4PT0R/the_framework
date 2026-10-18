@@ -661,3 +661,32 @@ def test_plugin_runtime_transition_stops_and_restarts_owned_agents(tmp_path):
         await fleet.stop()
 
     asyncio.run(scenario())
+
+
+def test_subagent_activity_returns_only_to_its_calling_session(tmp_path):
+    async def run():
+        fleets = [FleetSupervisor(
+            tmp_path / name / "session.json", [profile("reviewer")],
+            supervisor_factory=FakeSupervisor,
+        ) for name in ("a", "b")]
+        try:
+            for index, fleet in enumerate(fleets):
+                await fleet.start()
+                await fleet.submit("reviewer", prompt=f"task-{index}",
+                                   watermark=SessionWatermark(session_id=f"caller-{index}", revision=0,
+                                                              anchor_id=None, tail_start=0),
+                                   observation_type="explicit", metadata={"command_id": f"parent-{index}"})
+            for index, fleet in enumerate(fleets):
+                result = await asyncio.wait_for(fleet.results.get(), 2)
+                activity = await asyncio.wait_for(fleet.events.get(), 2)
+                completion = await asyncio.wait_for(fleet.events.get(), 2)
+                assert activity.task_id == result.task_id
+                assert activity.command_id == f"parent-{index}"
+                assert activity.session_id == result.agent_session_id
+                assert completion.task_id == result.task_id
+                assert completion.event == {"type": "agent.task.completed"}
+                assert fleet.events.empty()
+        finally:
+            for fleet in fleets:
+                await fleet.stop()
+    asyncio.run(asyncio.wait_for(run(), 10))

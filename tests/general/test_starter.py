@@ -1,7 +1,6 @@
 from tests.fixtures.runtime import FakeRuntime
 from the_framework import ApplicationSpec, AgentResources
 from the_framework.agent.context.session import Session
-from the_framework.utils.persistence import MappingStore
 from starter.application import application, resources
 
 
@@ -96,15 +95,6 @@ def test_starter_host_provides_chat_outside_the_plugin_catalogue(tmp_path):
         assert runtime.submitted[-1].prompt == "Hello"
 
 
-def test_starter_worker_uses_declared_primary_agent_name(tmp_path):
-    from starter.server import create_app
-
-    app = create_app(tmp_path, token="test", origin="http://testserver")
-    runtime = app.state.application.server_extensions["runtime"].service
-    assert runtime.supervisor.command[-4:] == [
-        "--agent", application.primary_agent.name,
-        "--plugin-state", str(tmp_path / "plugins.json"),
-    ]
 
 
 def test_starter_without_credentials_remains_available_after_inference_failure(tmp_path):
@@ -143,8 +133,7 @@ def test_starter_builds_without_inference_or_product_configuration(tmp_path):
     )
     assert agent.name == "assistant"
     agent.update_config({"bash": {"default_cwd": str(tmp_path)}})
-    assert resources(session).configuration["bash"]["default_cwd"] == str(tmp_path)
-    assert MappingStore(tmp_path / "settings.json", field="settings").load()
+    assert Session.open(session).configuration["bash"]["default_cwd"] == str(tmp_path)
 
 
 def test_starter_http_uses_authenticated_canonical_queue(tmp_path):
@@ -245,7 +234,7 @@ def test_starter_real_worker_starts_and_restores_configuration(tmp_path):
                 assert next(plugin for plugin in plugins if plugin["name"] == "registry")["binding_enabled"] is False
 
 
-def test_starter_migrates_worker_binding_and_restores_it_after_session_loss(tmp_path):
+def test_replacing_session_starts_with_default_bindings(tmp_path):
     from fastapi.testclient import TestClient
     from starter.server import create_app
 
@@ -264,9 +253,9 @@ def test_starter_migrates_worker_binding_and_restores_it_after_session_loss(tmp_
     second = create_app(tmp_path, token="private-test-secret", origin="http://testserver")
     with TestClient(second) as client:
         plugins = client.get("/api/v1/plugins", headers=headers).json()["plugins"]
-        assert next(item for item in plugins if item["name"] == "registry")["binding_enabled"] is False
+        assert next(item for item in plugins if item["name"] == "registry")["binding_enabled"] is True
         assert next(item for item in second.state.application.service("runtime").ready.plugins
-                    if item["name"] == "registry")["activated"] is False
+                    if item["name"] == "registry")["activated"] is True
 
 
 def test_starter_voice_transcript_is_committed_once_and_restored(tmp_path):

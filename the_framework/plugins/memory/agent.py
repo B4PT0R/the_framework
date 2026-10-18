@@ -125,7 +125,7 @@ class MemoryExtension(AgentExtension):
             minimum_context_limit,
         )
         self.store = MemoryStore(
-            memory_path(self.agent.session.path),
+            memory_path(self.agent.session_root / "session.json" if self.agent.session_root else None),
             entry_token_limit=self.config.entry_token_limit,
             max_entries=self.config.max_entries,
             token_budget=self.config.memory_token_budget,
@@ -145,7 +145,7 @@ class MemoryExtension(AgentExtension):
                 "trigger_ratio": self.config.curator_trigger_ratio,
             },
             "memory_curator": {
-                "store_path": str(memory_path(self.agent.session.path)),
+                "store_path": str(memory_path(self.agent.session_root / "session.json" if self.agent.session_root else None)),
                 "entry_token_limit": self.config.entry_token_limit,
                 "entry_maintenance_token_threshold": (
                     self.config.entry_maintenance_token_threshold

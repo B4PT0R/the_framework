@@ -56,9 +56,11 @@ from the_framework.plugins.system import SYSTEM
 Their declarations include server wiring and lifecycle; applications supply
 storage inputs and restart policy rather than reconstruct those integrations.
 
-There is exactly **one primary, durable conversation**. Private specialist
-agents can perform bounded background work, but their sessions are not new
-user-facing conversations and they cannot edit the primary history directly.
+The default is one durable conversation. Applications can also host independent
+concurrent sessions, each with its own supervised worker, history, configuration,
+extension state and plugin bindings. Private specialist agents use the same agent
+and session primitives; they return results and transient activity only to their
+caller and cannot edit its history directly.
 The server supervises workers and owns authentication and client transport;
 workers own inference and their own sessions; a browser client owns its local
 interface and device/media execution. This separation lets a client reconnect

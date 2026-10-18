@@ -13,6 +13,7 @@ import {
   providerArtifacts,
   snapshot,
   voiceCaptions,
+  subagentActivities,
 } from "./session";
 import "./style.css";
 
@@ -37,6 +38,7 @@ function App({ artifactRenderers }) {
   const [voiceState, setVoiceState] = useState("idle");
   const [voiceAvailable, setVoiceAvailable] = useState(false);
   const [captions, setCaptions] = useState({});
+  const [subagents, setSubagents] = useState({});
   const voice = useRef(null);
   useEffect(() => {
     const controller = new AbortController();
@@ -115,12 +117,15 @@ function App({ artifactRenderers }) {
       active.onopen = () => {
         if (!current()) return;
         attempts = 0;
+        setSubagents({});
         setConnection("Connected");
         reconcile().catch(fail);
       };
       active.onmessage = ({ data }) => {
         if (!current()) return;
         const output = JSON.parse(data);
+        if (["worker_exited", "worker_transport_error"].includes(output.type)) setSubagents({});
+        if (output.type === "subagent_event") setSubagents((items) => subagentActivities(items, output));
         if (output.type === "realtime_reconnect_requested") {
           void voice.current?.reconnect(output);
         }
@@ -185,7 +190,7 @@ function App({ artifactRenderers }) {
   }, []);
   useLayoutEffect(() => {
     followLatest();
-  }, [messages, artifacts, activity, captions]);
+  }, [messages, artifacts, activity, captions, subagents]);
   useLayoutEffect(() => {
     if (historyScroll.current && scroll.current) {
       const { height, top } = historyScroll.current;
@@ -294,6 +299,9 @@ function App({ artifactRenderers }) {
               </article>
             ))}
             {artifacts.map((item) => <Artifact key={`provider-${item.id}`} {...item} temporary renderers={artifactRenderers} />)}
+            {Object.entries(subagents).map(([task, value]) => <aside key={task} className="message" role="status">
+              <small>Subagent · {value.agent}</small><p>{value.feedback || "Working…"}</p>
+            </aside>)}
             {Object.entries(captions).map(([role, text]) => (
               <article key={role} className={`message ${role}`}>
                 <small>{role === "user" ? "You" : "Assistant"} · Live</small>

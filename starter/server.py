@@ -19,6 +19,6 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None, browser_
             plugins={"system": {"state_path": Path(data_root) / "system.json"}},
         ),
         security=security, handshake=security.handshake,
-        runtime_factory=(lambda _supervisor: runtime) if runtime is not None else None,
+        runtime_factory=(lambda _supervisor, _context: runtime) if runtime is not None else None,
         session_projection="display",
     )

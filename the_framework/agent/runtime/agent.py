@@ -35,6 +35,8 @@ class Agent:
         name="agent",
         description="General-purpose agent worker.",
         retain_history=True,
+        application_root=None,
+        session_root=None,
         state=None,
         **kwargs,
     ):
@@ -47,13 +49,17 @@ class Agent:
             raise ValueError("agent name must not be empty")
         if not isinstance(description, str) or not description.strip():
             raise ValueError("agent description must not be empty")
+        self.application_root = Path(application_root or (self.session.path.parent if self.session.path else ".")).resolve()
+        root = session_root or (self.session.path.parent if self.session.path else None)
+        self.session_root = Path(root).resolve() if root is not None else None
         self.name = name
         self.description = description
         self.retain_history = bool(retain_history)
         if not self.retain_history and (self.session.history or self.session.archive):
             self.session.clear_context()
         self.configs = Configs(**kwargs)
-        self.states = States(state)
+        self.configs.merge(self.session.configuration)
+        self.states = States({**dict(state or {}), **self.session.state})
         self.commands = Commands()
         self.compaction = Compaction(self)
         self.context = Context(self)
@@ -75,8 +81,6 @@ class Agent:
         self.extensions = []
         self.required_extensions = set()
         self.tools = Tools()
-        self.persist_config = None
-        self.persist_state = None
 
     @property
     def client(self):
@@ -113,8 +117,7 @@ class Agent:
             raise ValueError(f"unknown agent config fields: {', '.join(sorted(unknown))}")
         candidate = self.configs.deepcopy()
         candidate.merge(updates)
-        if self.persist_config is not None:
-            self.persist_config(candidate)
+        self.session.update_agent(configuration=candidate)
         self.configs.merge(updates)
         self.emit(AgentConfigUpdated(config=dict(self.configs)))
         return self.configs
@@ -129,8 +132,7 @@ class Agent:
         candidate.merge(updates)
         snapshot = self.states.snapshot()
         snapshot[name] = dict(candidate)
-        if self.persist_state is not None:
-            self.persist_state(snapshot)
+        self.session.update_agent(state=snapshot)
         current.merge(updates)
         if emit:
             projected = self.state_snapshot()

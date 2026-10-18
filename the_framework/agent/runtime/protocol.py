@@ -277,3 +277,12 @@ class ApplicationCancel(WorkerOutput):
     command_id: str | None = None
     call_id: str
     reason: str
+
+
+class SubagentEvent(WorkerOutput):
+    """Transient child activity, correlated to its caller and delegation."""
+    session_id: str
+    agent: str
+    task_id: str
+    command_id: str | None = None
+    event: dict

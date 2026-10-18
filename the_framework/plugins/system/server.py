@@ -9,7 +9,7 @@ from .service import SystemControlService
 def build_server_extensions(context):
     path = context.plugin("system").get("state_path")
     if path is None:
-        path = Path(context.require("data_root")) / "system-control.json"
+        path = Path(context.require("session_path")).parent / "system-control.json"
 
     def build(runtime):
         restart = runtime.restart_server if getattr(runtime, "restart", None) is not None else None
@@ -20,5 +20,5 @@ def build_server_extensions(context):
         return system
 
     return ServerExtension(
-        name="system", service_factory=build,
+        name="system", scope="session", service_factory=build,
     )

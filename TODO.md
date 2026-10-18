@@ -4,6 +4,14 @@ Relevé du 10 octobre 2026. The Harness est le cas canonique, mais une extractio
 n'est justifiée que si elle sert aussi d'autres applications et réduit la surface
 conceptuelle totale. Ces notes ne constituent pas des demandes de refonte immédiate.
 
+## Priorité après la tranche sessions — remarque du 18 octobre
+
+- [ ] Définir un vocabulaire d'événements Framework complet et délimité pour les
+  consommateurs. Convertir ou filtrer les événements Responses reçus en interne,
+  au lieu de transmettre les signaux backend verbatim. S'appuyer sur LocalEvent
+  et enrichir les événements Framework. Reprendre après validation de la tranche
+  sessions ; cette remarque ne change pas la tâche en cours.
+
 ## Revue d'ensemble avant refonte de l'API — 18 octobre 2026
 
 - Minimiser le vocabulaire nécessaire aux cas simples et réutiliser les mêmes
@@ -37,6 +45,28 @@ conceptuelle totale. Ces notes ne constituent pas des demandes de refonte imméd
   l'assemblage complet. Ne pas confondre composition et isolation des pannes.
 
 ## Livré dans cette passe
+
+- [x] **Sessions indépendantes — 18 octobre.** ApplicationContext héberge des
+  workers concurrents avec API/sockets par session, reprise paresseuse des sessions
+  persistées, sessions résidentes et arrêt explicite. Session devient la source
+  canonique de l'historique, configuration, état des extensions et bindings ;
+  suppression des callbacks et du magasin de bindings concurrents. AgentResources
+  fournit client et valeurs initiales. Verrou d'écriture worker, écritures atomiques,
+  nettoyage d'un démarrage annulé et route conservée lors d'un reset.
+  Services de portée application partagés, services de portée session isolés
+  (dont texte/voix) ; bucket/navigateur/surfaces gardent leur portée application.
+  Les flottes de spécialistes utilisent les mêmes AgentSpec/sessions et routent
+  résultats et activité vers leur seul appelant ; retour visuel transitoire
+  « sous-agent » dans le starter/Harness. Le Harness conserve sa conversation
+  par défaut ; aucun sélecteur multi-conversation ajouté à son interface.
+  Les ponts desktop/distants applicatifs restent attachés à cette conversation ;
+  leur sélection de session sera une évolution produit explicite.
+  Validation : 659 tests Framework, 3 skips ; 156 tests Harness ; 26/54 tests JS
+  starter/Harness, builds et contrôle visuel des deux états de sous-agent réussis.
+  Reprise navigateur/starter/aperçus, isolation voix/config/bindings et absence de
+  worker orphelin après annulation vérifiées. Installation basculée par script
+  ponctuel retiré après exécution, historique/réglages/fenêtre conservés.
+
 
 - [x] **Chat intégré à l’hôte — 18 octobre.** `build_conversation()` assemble les
   routes texte/pièces jointes et la barrière texte/voix. Plugin `CHAT` et capacité

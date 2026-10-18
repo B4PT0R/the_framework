@@ -25,7 +25,7 @@ def test_standard_assembly_keeps_authentication_and_includes_runtime_health(tmp_
     )
     app = application.build_conversation(
         "example:application", BuildContext(data_root=tmp_path),
-        supervisor=object(), runtime_factory=lambda supervisor: Runtime(),
+        supervisor=object(), runtime_factory=lambda supervisor, context: Runtime(),
         handshake=lambda socket: None,
     )
     with TestClient(app) as client:

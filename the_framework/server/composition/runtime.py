@@ -27,20 +27,20 @@ def _conversation_extensions(
         application_handshake=application_handshake,
     )
     return (
-        ServerExtension(name="runtime", service=runtime, endpoints=(
+        ServerExtension(name="runtime", service=runtime, scope="session", endpoints=(
             agent_api if agent_api is not None else CanonicalAgentApi(runtime),
         )),
         ServerExtension(
-            name="chat",
+            name="chat", scope="session",
             service_factory=lambda runtime, realtime=None: ChatApi(
                 runtime, FileBucket(data_root).root, realtime,
             ),
             endpoints="service",
         ),
-        ServerExtension(name="health", endpoints=(
+        ServerExtension(name="health", scope="session", endpoints=(
             health_api if health_api is not None else ApplicationHealthApi(runtime=runtime),
         ), requires_services=("runtime",)),
-        ServerExtension(name="canonical_transport", service=sockets, websockets=(
+        ServerExtension(name="canonical_transport", scope="session", service=sockets, websockets=(
             sockets.events_socket, sockets.application_socket,
         ), requires_services=("runtime",)),
     )

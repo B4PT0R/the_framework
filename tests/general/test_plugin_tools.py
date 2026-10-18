@@ -780,7 +780,6 @@ def test_inactive_plugin_config_remains_registered_and_live():
     agent.instructions = Instructions()
     agent.configs = Configs(configured={"limits": {"maximum": 60}})
     agent.states = States()
-    agent.persist_config = None
     agent.session = Session(plugins={"configured": False})
     agent.extensions = []
     agent.required_extensions = set()

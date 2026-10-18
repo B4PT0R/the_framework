@@ -609,18 +609,12 @@ def test_extension_discovers_decorated_methods_from_an_object():
         assert client.get("/object-endpoint").json() == {"ok": True}
 
 
-def test_primary_agent_must_be_durable():
-
-    with pytest.raises(ValueError, match="primary agent session must be durable"):
-        ApplicationSpec(
-            name="Invalid",
-            version="1",
-            primary_agent=AgentSpec(
-                name="primary",
-                description="Primary test agent.",
-                session_mode='ephemeral',
-            ),
-        )
+def test_application_accepts_an_in_memory_default_agent():
+    application = ApplicationSpec(
+        name="In-memory application", version="1",
+        primary_agent=AgentSpec(name="primary", session_mode="ephemeral"),
+    )
+    assert application.compile().primary_agent.session_mode == "ephemeral"
 
 
 @pytest.mark.parametrize("short_form", [False, True])

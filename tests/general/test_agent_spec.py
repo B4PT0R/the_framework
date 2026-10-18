@@ -82,10 +82,8 @@ def test_trigger_keeps_selection_separate_from_shared_agent_spec():
 def test_agent_resources_factory_is_resolved_once_at_construction(tmp_path):
     calls = []
     client = object()
-    saves = []
     resources = AgentResources(
         client=client, configuration={"model": "resource-model"},
-        persist_config=saves.append,
     )
 
     def load(path):
@@ -100,7 +98,7 @@ def test_agent_resources_factory_is_resolved_once_at_construction(tmp_path):
     assert agent.client is client
     assert agent.configs.model == "resource-model"
     agent.update_config({"model": "updated"})
-    assert saves[0]["model"] == "updated"
+    assert agent.session.configuration["model"] == "updated"
 
 
 def test_explicit_resources_replace_factory_without_loading_it():
@@ -111,7 +109,7 @@ def test_explicit_resources_replace_factory_without_loading_it():
     resources = AgentResources(client=client)
     agent = AgentSpec(name="example", resources=unexpected).build_agent(resources=resources)
     assert agent.client is client
-    assert agent.persist_config is None
+    assert agent.session.configuration["model"] == agent.configs.model
     assert resources.client is client
     with pytest.raises(TypeError):
         resources.client = object()
@@ -222,7 +220,6 @@ def test_projection_declaration_is_an_immutable_snapshot():
 
 
 def test_agent_spec_builds_identity_instructions_plugins_and_config(tmp_path):
-    persisted = []
     initialized = []
 
     def initialize(agent):
@@ -242,7 +239,6 @@ def test_agent_spec_builds_identity_instructions_plugins_and_config(tmp_path):
         resources=AgentResources(
             client=object(),
             configuration={"model": "example-model"},
-            persist_config=persisted.append,
         ),
     )
 
@@ -346,21 +342,6 @@ def test_required_plugin_binding_overrides_stale_session_state(tmp_path):
         agent.deactivate_extension("example")
 
 
-def test_server_binding_overrides_stale_worker_session(tmp_path):
-    path = tmp_path / "session.json"
-    Session.open(path).set_plugin("example", True)
-    spec = AgentSpec(
-        name="agent", session_mode='durable',
-        extensions=(Plugin(name="example", agent_extension=ExampleExtension),),
-    )
-
-    agent = spec.build_agent(
-        path, resources=AgentResources(client=object()),
-        binding_overrides={"example": False},
-    )
-
-    assert not agent.extension("example").activated
-    assert Session.open(path).plugins["example"] is False
 
 
 @pytest.mark.parametrize("intrinsic_name", [None, "example"])
@@ -375,13 +356,13 @@ def test_complete_plugin_name_owns_agent_binding_and_resources(tmp_path, intrins
             return dict(self.plugin_state)
 
     path = tmp_path / "session.json"
-    Session.open(path).set_plugin("feature", True)
+    Session.open(path).set_plugin("feature", False)
     spec = AgentSpec(name="agent", session_mode="durable", extensions=(Plugin(
         name="feature", agent_extension=(lambda agent: Feature(agent)) if factory else Feature,
     ),))
     resources = AgentResources(client=object(), configuration={"feature": {"enabled": True}},
                                state={"feature": {"counter": 2}})
-    agent = spec.build_agent(path, resources=resources, binding_overrides={"feature": False})
+    agent = spec.build_agent(path, resources=resources)
     extension = agent.extension("feature")
     assert Feature.name == intrinsic_name
     assert extension.config.enabled is True

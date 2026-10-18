@@ -1,5 +1,7 @@
 import json
 from functools import wraps
+from contextlib import contextmanager
+import os
 from pathlib import Path
 from threading import RLock
 from xml.etree import ElementTree
@@ -58,6 +60,26 @@ class Session(Base):
     context_usage: ResponseUsage | None = None
     commands: dict[str, CommandReceipt] = modict.factory(dict)
     plugins: dict[str, bool] = modict.factory(dict)
+    agent_name: str | None = None
+    configuration: dict = modict.factory(dict)
+    state: dict = modict.factory(dict)
+
+    @staticmethod
+    @contextmanager
+    def writer(path):
+        """Hold exclusive worker ownership independently of the server process."""
+        import fcntl
+        path = Path(path).expanduser().resolve().with_suffix(".lock")
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+        try:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as error:
+                raise RuntimeError("session already has an active worker") from error
+            yield
+        finally:
+            os.close(fd)
 
     def watermark(self):
         return SessionWatermark(
@@ -453,6 +475,23 @@ class Session(Base):
             self.commands = previous
             raise
         return removed
+
+    @serialized_session_write
+    def update_agent(self, *, configuration=None, state=None):
+        """Commit resumable agent settings/state in the same durable session."""
+        updates = {
+            key: json.loads(json.dumps(value))
+            for key, value in (("configuration", configuration), ("state", state))
+            if value is not None
+        }
+        previous = {key: self[key] for key in updates}
+        self.update(updates)
+        try:
+            self.save()
+        except BaseException:
+            self.update(previous)
+            raise
+        return self
 
     @serialized_session_write
     def set_plugin(self, name, activated):

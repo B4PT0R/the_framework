@@ -4,7 +4,6 @@ import json
 import sys
 from importlib import import_module
 
-from ...utils.persistence import MappingStore
 from .agent import Agent
 from .protocol import ShutdownRequest
 from .worker import Worker
@@ -40,13 +39,15 @@ def load_application(reference):
     return application
 
 
-async def run(
+async def _run(
     session_path,
     *,
     application_reference=None,
     agent_name=None,
     profile_path=None,
-    plugin_state_path=None,
+    application_root=None,
+    session_mode=None,
+    session_id=None,
 ):
     transport = JsonLines()
     spec = None
@@ -77,24 +78,23 @@ async def run(
             "configuration": {**spec.configuration, **configured.configuration},
         })
     if spec is not None:
-        binding_overrides = None
-        if plugin_state_path is not None:
-            if plan is None or identity != plan.primary_agent.name:
-                raise ValueError("plugin state can only be supplied for the primary agent")
-            saved = MappingStore(plugin_state_path, field="plugins").load()
-            binding_overrides = {}
-            for name, state in saved.items():
-                if not isinstance(state, dict) or not isinstance(
-                    state.get("binding_enabled"), bool
-                ):
-                    raise ValueError(f"invalid persisted plugin binding: {name}")
-                binding_overrides[name] = state["binding_enabled"]
-        agent = spec.build_agent(session_path, binding_overrides=binding_overrides)
+        if session_mode is not None:
+            spec = type(spec)({**spec, "session_mode": session_mode})
+        agent = spec.build_agent(session_path, application_root=application_root)
         worker = spec.build_worker(agent, transport.receive, transport.send)
     else:
         agent = Agent(session_path=session_path)
+        agent.session.update_agent(configuration=agent.configs, state=agent.states.snapshot())
         worker = Worker(agent, transport.receive, transport.send)
+    if session_id is not None and agent.session.path is None:
+        agent.session.id = session_id
     await worker.run()
+
+
+async def run(session_path, **options):
+    from ..context.session import Session
+    with Session.writer(session_path):
+        await _run(session_path, **options)
 
 
 def main():
@@ -103,14 +103,18 @@ def main():
     parser.add_argument("--application")
     parser.add_argument("--agent")
     parser.add_argument("--profile")
-    parser.add_argument("--plugin-state")
+    parser.add_argument("--application-root")
+    parser.add_argument("--session-mode", choices=("durable", "resident", "ephemeral"))
+    parser.add_argument("--session-id")
     args = parser.parse_args()
     asyncio.run(run(
         args.session,
         application_reference=args.application,
         agent_name=args.agent,
         profile_path=args.profile,
-        plugin_state_path=args.plugin_state,
+        application_root=args.application_root,
+        session_mode=args.session_mode,
+        session_id=args.session_id,
     ))
 
 

@@ -181,7 +181,7 @@ def test_minimal_host_accepts_text_and_files_without_plugins(tmp_path):
     runtime = FakeRuntime()
     app = declaration().build_conversation(
         "example:application", BuildContext(data_root=tmp_path),
-        handshake=lambda socket: None, runtime_factory=lambda supervisor: runtime,
+        handshake=lambda socket: None, runtime_factory=lambda supervisor, context: runtime,
     )
     with TestClient(app) as client:
         assert client.post('/api/v1/agent/prompt', json={

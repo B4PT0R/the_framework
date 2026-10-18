@@ -227,3 +227,9 @@ See [the artifact contract](../docs/framework.md#conversation-artifacts).
 All uploaded and published client files share `data_root/bucket/`, including images,
 video and other media. `ARTIFACTS` serves this tree through authenticated
 `/api/v1/bucket/...` URLs. Application-private state stays outside the bucket.
+
+The starter presents one default conversation. The server can additionally host
+independent sessions via `/api/v1/sessions`; each owns its worker, history, settings
+and bindings. See the Framework's independent application sessions documentation
+for scoped HTTP and WebSocket endpoints. Agent resources supply defaults; the
+canonical session persists changes without separate configuration/state files.

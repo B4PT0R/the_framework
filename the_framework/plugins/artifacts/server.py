@@ -63,4 +63,4 @@ def build_server_extensions(context):
         runtime.application.register("artifacts", assets.handle)
         return assets
 
-    return ServerExtension(name="artifacts", service_factory=build, endpoints="service")
+    return ServerExtension(name="artifacts", scope="session", service_factory=build, endpoints="service")

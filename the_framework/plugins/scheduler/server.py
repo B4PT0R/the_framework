@@ -9,7 +9,7 @@ from .service import SchedulerService
 def build_server_extensions(context):
     path = context.plugin("scheduler").get("state_path")
     if path is None:
-        path = Path(context.require("data_root")) / "scheduler.json"
+        path = Path(context.require("session_path")).parent / "scheduler.json"
 
     def build(runtime):
         scheduler = SchedulerService(path, runtime.submit)
@@ -19,5 +19,5 @@ def build_server_extensions(context):
         return scheduler
 
     return ServerExtension(
-        name="scheduler", service_factory=build,
+        name="scheduler", scope="session", service_factory=build,
     )

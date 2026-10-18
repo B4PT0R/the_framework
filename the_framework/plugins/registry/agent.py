@@ -304,7 +304,8 @@ class RegistryExtension(AgentExtension):
         super().__init__(agent)
         session_path = getattr(getattr(agent, "session", None), "path", None)
         self.runtime_root = Path(
-            runtime_root or (Path(session_path).parent if session_path else Path.cwd())
+            runtime_root or getattr(agent, "session_root", None)
+            or (Path(session_path).parent if session_path else Path.cwd())
         ).expanduser().resolve()
         self.store = None
 

@@ -6,12 +6,10 @@ from the_framework import (
     ApplicationSpec,
     AgentResources,
     AgentSpec,
-    CapabilityRequirement,
     ClientSurface,
     Plugin,
 )
 from the_framework.agent import Worker
-from the_framework.utils.persistence import MappingStore
 from the_framework.plugins.bash import BASH
 from the_framework.plugins.artifacts import ARTIFACTS
 from the_framework.plugins.browser import CHROMIUM
@@ -30,17 +28,11 @@ class Memory(MemoryExtension):
 
 
 def resources(session_path):
-    """Keep the user's configuration and plugin state beside their session."""
+    """Provide construction defaults; the session owns saved settings and state."""
     if session_path is None:
-        raise ValueError("the starter requires a persistent session path")
-    root = Path(session_path).resolve().parent
-    settings = MappingStore(root / "settings.json", field="settings")
-    state = MappingStore(root / "state.json", field="state")
+        raise ValueError("the starter requires a session resource directory")
     return AgentResources(
-        configuration={"model": "gpt-5.6-luna", "bash": {"default_cwd": str(ROOT)}, **settings.load()},
-        state=state.load(),
-        persist_config=settings.save,
-        persist_state=state.save,
+        configuration={"model": "gpt-5.6-luna", "bash": {"default_cwd": str(ROOT)}},
     )
 
 

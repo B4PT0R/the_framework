@@ -11,10 +11,12 @@ file records the constraints to preserve when changing the framework.
   features outside `the_framework`. Dependencies point from applications to the
   framework, never the reverse. The starter must depend on `the_framework`, not
   on any particular application.
-- An `ApplicationSpec` has one durable primary conversation. The worker is its
-  only history writer. Plugins may declare private specialist agents, but a
-  specialist must not write into primary history; results return through the
-  owning plugin or an ordered primary-agent input.
+- An `ApplicationSpec` declares a default agent and may host independent concurrent
+  sessions. Each session has exactly one worker/history writer and owns its durable
+  configuration, extension state and plugin bindings. Private specialists are agents
+  with their own session; they never write into the caller history. Results return
+  as ordered caller input; transient activity is routed only to that caller. The
+  Harness may retain its single-conversation product policy.
 - The server owns authentication, routes, client connections and worker
   supervision. Workers own inference, tools and their sessions. Clients own
   their local interface and media/device execution. Do not move a

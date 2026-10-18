@@ -106,7 +106,6 @@ def test_default_fleet_uses_the_primary_application_declaration(tmp_path):
         runtime = ApplicationRuntime(WorkerSupervisor(
             tmp_path / "session.json",
             application_reference="starter.application:application",
-            plugin_state_path=tmp_path / "plugins.json",
         ))
         await runtime.start()
         try:

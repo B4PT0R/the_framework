@@ -192,7 +192,7 @@ execute at an application-call suspension point, including before that call is
 sent; other queued commands retain their priority and FIFO ordering. Correlated
 binding requests whose tool call is no longer waiting fail instead of becoming
 late queued mutations. The worker remains the owner of activation and durable
-session writes, and confirms application before the server persists its binding.
+session writes, and confirms application before the server updates its binding cache.
 
 ### Standard conversation assembly
 
@@ -212,14 +212,14 @@ app = application.build_conversation(
 )
 ```
 
-The default runtime derives `session.json`, `plugins.json` and `surfaces/` from
+The default runtime derives `session.json` and `surfaces/` from
 `data_root`. `handshake` applies to both sockets; `event_handshake` and
 `application_handshake` independently override it when their wire protocols differ.
 The declared primary agent name is passed to the supervised worker automatically.
 The framework owns construction, ordering and cleanup; it does not start inference
 or perform network authentication during declaration/build.
 
-Advanced applications can pass `runtime_factory(supervisor)` to specialize the
+Advanced applications can pass `runtime_factory(supervisor, context)` to specialize the
 runtime, or inject a supervisor for another worker executable. An injected
 supervisor must refer to the same session and, when declared, application reference.
 `session_projection` selects history presentation, `health_projection(payload)`
@@ -471,8 +471,10 @@ through `BuildContext(plugins={"system": {"state_path": path}})`. System restart
 uses the runtime's application-owned `restart_server` operation when configured.
 The neutral realtime plugin exposes call creation/readiness/stop endpoints and
 its controller, with an optional `realtime.client_factory` plugin option.
-The browser defaults to the agent session directory, where a browser RPC host
-must be running; applications with another browser host specialize its binding.
+The browser uses the process-local `agent.application_root`, where a browser RPC
+host must be running. This application root stays shared when an agent uses a
+separate session directory. `agent.session_root` locates per-session resources,
+including those of in-memory agents.
 `BrowserService.open_application_ui(url)` opens the application's chosen route;
 `application_ui_origins` permits explicitly trusted HTTPS origins in addition to
 loopback. Query and fragment values are excluded from Chromium launch arguments
@@ -614,23 +616,51 @@ are installed on one server at startup; route and mount collisions fail before
 any service starts. OpenAPI includes the complete fixed endpoint set. Required
 bindings, such as the system boundary, cannot be disabled.
 
-When launching the generic primary worker, pass `--plugin-state` the same
-`plugins.json` path supplied under `plugin_state_path` in the server's
-`BuildContext`.
-The worker applies that persisted binding state before constructing its agent,
-including after a crash or session reset. If the file does not yet exist, the
-server imports the worker's existing session bindings on first startup; after
-that, the server's plugin state is authoritative. Private specialist workers
-do not receive this argument. The starter demonstrates the complete wiring.
+Plugin bindings live in `Session.plugins`. The worker commits a binding before
+confirming it; the server mirrors the worker snapshot and has no separate binding
+store. Restarting that session restores its bindings. Starting a new session uses
+the declaration defaults.
+
+### Independent application sessions
+
+`build_conversation()` keeps the existing `/api/v1/...` API for the default
+session. `ApplicationSpec.agents` optionally declares other selectable agents.
+Authenticated consumers can create or reopen sessions with
+`POST /api/v1/sessions` (`agent`, optional `session_id`, `durable`, default true),
+list them with `GET /api/v1/sessions`, and stop an additional worker with
+`DELETE /api/v1/sessions/{id}`. Closing preserves durable session data; the
+default session follows the application lifecycle.
+
+The response returns an `api` prefix: `/sessions/{id}/api/v1`. History, settings,
+plugin bindings, voice and event/application sockets under this prefix belong to
+that session. A request to a known persisted session lazily resumes its worker;
+an unknown id never creates a worker implicitly. Persistent sessions live under
+`data_root/sessions/{id}/session.json`. Resident sessions disappear on close.
+Python hosts use `app.state.application.open_session(...)` and `close_session(id)`.
+A filesystem writer lock rejects another worker trying to own the same session.
+
+`ServerExtension.scope="application"` (default) shares one service and lifecycle
+across sessions. Its routes remain at the root. `scope="session"` builds an
+independent service and routes for each session. The standard conversation,
+realtime, scheduler and system services use session scope. Their default private
+files are relative to `session_path`; the shared file bucket stays application-wide.
+Application-wide desktop/remote bridges keep their application policy; selecting
+a session in a custom client requires using that session's API and sockets.
+The starter and Harness still show their default conversation.
+
+Every runtime owns its own specialist fleet. `subagent_event` carries `agent`,
+`session_id`, `task_id`, caller `command_id` and an activity `event`. This ephemeral
+feedback never enters the caller history. Durable results retain their ordered
+delivery and acknowledgement contract independently of activity feedback.
 
 ## Agent construction
 
 `AgentSpec` declares what an agent is; `AgentResources` supplies the process-local
-inputs needed to construct it: inference client, loaded configuration/state and
-callbacks that save their changes. It is not another plugin or application
+inputs needed to construct it: an inference client and initial configuration/state
+defaults. The session owns subsequent changes and overrides these defaults on resume. It is not another plugin or application
 composition layer. Ordinary applications provide a `resources(session_path)`
 factory so the generic worker owns construction and the application chooses its
-storage. Use explicit resources when constructing an agent directly.
+initial process-local resources. Use explicit resources when constructing an agent directly.
 
 ```python
 from the_framework.agent import AgentResources, AgentSpec
@@ -648,8 +678,7 @@ agent_spec = AgentSpec(
 agent = agent_spec.build_agent(
     session_path,
     resources=AgentResources(
-        configuration=config_store.load(),
-        persist_config=config_store.save,
+        configuration={"model": "your-model"},
     ),
 )
 worker = agent_spec.build_worker(agent, receive, send)
@@ -920,27 +949,21 @@ No product import is required by these shared mechanisms. Runtime observers use
 An `ApplicationRuntime(WorkerSupervisor(session_path))` can be installed as an
 `ServerExtension` service, with `CanonicalAgentApi` endpoints in a dependent extension.
 For a declared application, pass `application_reference="my_app:application"`
-to `WorkerSupervisor`, with optional `agent_name` and `plugin_state_path`.
+to `WorkerSupervisor`, with optional `agent_name` and process-local `application_root`.
 The default fleet uses the same application reference to build private agents;
 no custom worker command or forwarding fleet factory is needed. A custom
 `command` remains available for other worker executables, and cannot be combined
 with these declaration inputs; custom fleet factories remain explicit overrides.
-The default generic worker persists its canonical session. Durable configuration
-and plugin-state storage are separate application choices. Declare a
-`resources(session_path) -> AgentResources` factory on `AgentSpec`, returning
-`configuration`, `state`, their `persist_config`/`persist_state` callbacks and an
-optional inference `client`. It runs once when constructing the agent, not while
-compiling its declaration. Tests or embedding callers may instead pass a complete
-`AgentResources` to `build_agent(resources=...)`; that bypasses the factory, with
-no implicit merge or persistence side effects. The default `the_framework.agent.runtime.worker_process` does
-not persist configuration updates across process recreation.
+The default generic worker persists history, configuration, plugin state and
+bindings in its canonical session. Declare a
+`resources(session_path) -> AgentResources` factory for initial configuration,
+state and optional inference client. It runs during construction, never during
+compilation. Explicit `build_agent(resources=...)` replaces this factory. Saved
+session values override initial defaults. Updates commit atomically before live
+configuration or state changes; a failed write leaves the live values intact.
 
-`the_framework.utils.persistence.MappingStore(path, field="settings")` supplies private atomic
-JSON snapshot persistence for these callbacks. Use `store.load()` as the initial
-configuration and `store.save` as its persistence callback. The document contains
-`version` and the selected mapping field. Application-specific migrations remain
-outside this store. Snapshot replacement is atomic; coordinating read/modify/write
-operations remains the application's single-writer responsibility.
+`the_framework.utils.persistence.MappingStore` remains useful for separate
+application service documents. It is not an alternative agent settings store.
 
 The public `the_framework.server` package exports reusable pieces for common agent apps:
 

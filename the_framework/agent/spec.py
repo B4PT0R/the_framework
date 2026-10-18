@@ -48,14 +48,12 @@ class QueuePolicy(modict):
 
 
 class AgentResources(modict):
-    """Process-local inputs and persistence callbacks for constructing an agent."""
+    """Process-local client and initial defaults; resumable values live in the session."""
 
     _config = modict.config(frozen=True, strict=True, extra="forbid", auto_convert=False)
     client: object | None = None
     configuration: Mapping[str, object] = modict.factory(dict)
     state: Mapping[str, object] | None = None
-    persist_config: Callable | None = None
-    persist_state: Callable | None = None
 
 
 class AgentSpec(modict):
@@ -202,7 +200,7 @@ class AgentSpec(modict):
         session_path=None,
         *,
         resources: AgentResources | None = None,
-        binding_overrides: Mapping[str, bool] | None = None,
+        application_root=None,
     ):
         from .runtime.agent import Agent
         # Explicit resources replace the factory as a whole; there is no hidden
@@ -218,25 +216,16 @@ class AgentSpec(modict):
         agent = Agent(
             session_path=session_path if self.session_mode == "durable" else None,
             name=self.name,
+            application_root=application_root,
+            session_root=Path(session_path).parent if session_path is not None else None,
             description=self.description,
             retain_history=self.session_mode != "ephemeral",
             state=resources.state,
             **options,
         )
-        agent.persist_config = resources.persist_config
-        agent.persist_state = resources.persist_state
-        if binding_overrides is not None:
-            if not isinstance(binding_overrides, Mapping):
-                raise TypeError("binding overrides must be a mapping")
-            declared = {
-                getattr(contribution, "name", None)
-                for contribution in self.extensions
-            }
-            for name, enabled in binding_overrides.items():
-                if not isinstance(name, str) or not isinstance(enabled, bool):
-                    raise TypeError("binding overrides must map plugin names to booleans")
-                if name in declared:
-                    agent.session.set_plugin(name, enabled)
+        if agent.session.agent_name not in (None, self.name):
+            raise ValueError("session belongs to another agent declaration")
+        agent.session.agent_name = self.name
         for instruction in self.instructions:
             agent.add_instruction(
                 instruction
@@ -255,6 +244,7 @@ class AgentSpec(modict):
             result = initialize(agent)
             if result is not None and result is not agent:
                 raise ValueError("agent initializer must return the agent or None")
+        agent.session.update_agent(configuration=agent.configs, state=agent.states.snapshot())
         return agent
 
     def build_worker(self, agent, receive, send):

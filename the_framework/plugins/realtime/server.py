@@ -24,7 +24,7 @@ def build_server_extensions(context):
         return api
 
     return ServerExtension(
-        name="realtime", service_factory=build,
+        name="realtime", scope="session", service_factory=build,
         endpoints="service",
         stop=lambda service, _context: service.stop(),
     )

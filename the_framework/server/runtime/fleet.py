@@ -102,10 +102,13 @@ class AgentRunner:
         supervisor_factory=WorkerSupervisor,
         worker_module="the_framework.agent.runtime.worker_process",
         application_reference=None,
+        application_root=None,
+        activity=None,
     ):
         self.profile = WorkerProfile(**profile)
         self.root = Path(root) / self.profile.name
         self.results = results
+        self.activity = activity
         self.queue = asyncio.Queue(self.profile.queue_limit)
         self.tasks_path = self.root / "tasks.json"
         self.pending = []
@@ -114,6 +117,7 @@ class AgentRunner:
         self.persist_lock = asyncio.Lock()
         self.supervisor_factory = supervisor_factory
         self.worker_module = worker_module
+        self.application_root = application_root
         self.application_reference = application_reference
         self.supervisor = None
         self.task = None
@@ -185,6 +189,7 @@ class AgentRunner:
                 self.application_reference,
                 "--agent",
                 self.profile.name,
+                *(["--application-root", str(self.application_root)] if self.application_root is not None else []),
                 "--profile",
                 str(profile_path),
             ]
@@ -320,6 +325,11 @@ class AgentRunner:
             completion_succeeded = False
             while True:
                 output = await self.supervisor.outputs.get()
+                if self.activity is not None and (
+                    isinstance(output, CommandEvent) and output.command_id == request_id
+                    or isinstance(output, (CommandCompleted, CommandFailed)) and output.request_id == request_id
+                ):
+                    await self.activity(task, self.ready, output)
                 if isinstance(output, CommandEvent) and output.command_id == request_id:
                     item = getattr(output.event, "item", None)
                     output_text = _message_text(item) or output_text
@@ -469,6 +479,7 @@ class FleetSupervisor:
         supervisor_factory=WorkerSupervisor,
         worker_module="the_framework.agent.runtime.worker_process",
         application_reference=None,
+        application_root=None,
     ):
         session_path = Path(session_path)
         self.root = session_path.parent / f"{session_path.stem}.auxiliaries"
@@ -477,6 +488,7 @@ class FleetSupervisor:
             for profile in profiles
         }
         self.results = asyncio.Queue(512)
+        self.events = asyncio.Queue(512)
         self.command_events = {}
         self.runners = {
             name: AgentRunner(
@@ -486,10 +498,25 @@ class FleetSupervisor:
                 supervisor_factory=supervisor_factory,
                 worker_module=worker_module,
                 application_reference=application_reference,
+                application_root=application_root,
+                activity=self.observe_activity,
             )
             for name, profile in self.profiles.items()
         }
         self.enabled = set(self.runners)
+
+    async def observe_activity(self, task, ready, output):
+        from ...agent.runtime.protocol import SubagentEvent
+        output = SubagentEvent(
+            session_id=ready.session_id, agent=ready.name,
+            task_id=task.id, command_id=task.metadata.get("command_id"),
+            event=(dict(output.event) if isinstance(output, CommandEvent) else {
+                "type": "agent.task.failed" if isinstance(output, CommandFailed) else "agent.task.completed",
+            }),
+        )
+        if self.events.full():
+            self.events.get_nowait()
+        self.events.put_nowait(output)
 
     async def start(self):
         if self.runners:
