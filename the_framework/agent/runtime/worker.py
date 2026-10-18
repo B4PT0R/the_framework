@@ -42,6 +42,8 @@ from .protocol import (
     WorkerStopped,
 )
 from ..models.usage import usage_window
+from ..models.responses import Message
+from ..models.content import InputText, OutputText
 
 
 class Worker:
@@ -149,7 +151,11 @@ class Worker:
             raise ValueError("a realtime turn requires a user or assistant transcript")
         if not str(payload.get("call_id") or "") or not str(payload.get("turn_id") or ""):
             raise ValueError("a realtime turn requires call_id and turn_id")
-        return self.agent.add_message(role, transcript, kind="realtime")
+        content = OutputText if role == "assistant" else InputText
+        return self.agent.add_response_item(Message(
+            id=f"realtime:{payload['call_id']}:{payload['turn_id']}:{role}",
+            role=role, kind="realtime", content=[content(text=transcript)],
+        ))
 
     async def execute(self, command):
         if isinstance(command, PromptRequest):

@@ -168,3 +168,29 @@ def test_delegation_preserves_spoken_reply_and_following_voice_turns(failed):
         assert not voice.pending_delegation_deliveries
 
     asyncio.run(run())
+
+
+def test_voice_completion_links_pending_display_to_later_canonical_commit():
+    from the_framework.agent import Agent
+    from the_framework.agent.runtime.worker import Worker
+    from the_framework.plugins.realtime.live_events import LiveEvents
+
+    async def run():
+        voice = controller()
+        event = {"type": "turn.done", "turn": {
+            "id": "spoken", "role": "assistant", "transcript": "Keep this phrase visible",
+        }}
+        message_id = await voice._handle_sideband_event(event)
+        completion, = LiveEvents().convert(event, message_id=message_id)
+        request, = voice.runtime.supervisor.sent
+        assert completion.message_id == request.id == "realtime:call:spoken:assistant"
+        agent = Agent(client=object())
+        assert not agent.session.history
+        worker = Worker(agent, None, None)
+        outputs = [output async for output in worker.execute(request)]
+        added, = [output for output in outputs if output.type == "agent.response_item.added"]
+        assert added.item.id == completion.message_id
+        assert added.item.kind == "realtime"
+        assert added.item.content[0].text == completion.transcript
+
+    asyncio.run(run())

@@ -13,6 +13,7 @@ class VoiceTurnCompleted(LocalEvent):
     type: str = "voice.turn.completed"
     role: Literal["user", "assistant"]
     turn_id: str | None = None
+    message_id: str | None = None
     transcript: str = ""
     interrupted: bool = False
 

@@ -6,7 +6,7 @@ class LiveEvents:
     def __init__(self):
         self.transcripts = {}
 
-    def convert(self, event):
+    def convert(self, event, *, message_id=None):
         kind = event.get("type")
         roles = {"input_transcript.added": "user", "output_transcript.added": "assistant"}
         if kind in roles:
@@ -26,7 +26,7 @@ class LiveEvents:
             if role not in {"user", "assistant"}:
                 return ()
             self.transcripts.pop(role, None)
-            return (VoiceTurnCompleted(role=role, turn_id=turn.get("id"),
+            return (VoiceTurnCompleted(role=role, turn_id=turn.get("id"), message_id=message_id,
                                       transcript=str(turn.get("transcript") or "").strip(),
                                       interrupted=bool(turn.get("interrupted", False))),)
         states = {"response.created": "started", "response.in_progress": "started", "response.done": "completed",

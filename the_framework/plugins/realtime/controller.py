@@ -284,8 +284,10 @@ class RealtimeController:
                 live_event = await asyncio.to_thread(self.sideband.recv)
                 event = self._live_event_payload(live_event)
                 handled = await self._handle_sideband_event(event)
-                if not handled:
-                    for converted in adapter.convert(event):
+                if handled is not True:
+                    for converted in adapter.convert(
+                        event, message_id=handled if isinstance(handled, str) else None,
+                    ):
                         await self.runtime.publish(RealtimeEvent(call_id=self.call_id, event=converted))
                 if event.get("type") == "error" and not handled:
                     return
@@ -321,6 +323,7 @@ class RealtimeController:
             await asyncio.to_thread(sideband.close)
 
     async def _handle_sideband_event(self, event):
+        """Return True to suppress publication, or the accepted canonical message ID."""
         event_type = event.get("type")
         if event_type in {"response.created", "response.in_progress"}:
             self.realtime_response_active = True
@@ -378,8 +381,9 @@ class RealtimeController:
         # Spoken replies have their own provenance, including after delegation.
         # The backend result is not a substitute for what the user actually heard.
         turn_id = str(turn.get("id") or self._content_id(role, transcript))
+        message_id = f"realtime:{self.call_id}:{turn_id}:{role}"
         await self.runtime.supervisor.send(ExternalEventRequest(
-            id=f"realtime:{self.call_id}:{turn_id}:{role}",
+            id=message_id,
             name="realtime_turn",
             payload={
                 "call_id": self.call_id,
@@ -389,7 +393,7 @@ class RealtimeController:
                 "interrupted": bool(turn.get("interrupted", False)),
             },
         ))
-        return False
+        return message_id
 
     async def _start_delegation(self, event):
         item = event.get("item") or {}
