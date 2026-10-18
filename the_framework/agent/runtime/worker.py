@@ -163,6 +163,8 @@ class Worker:
                     turn_options["prompt_role"] = command.prompt_role
                 if command.prompt_kind != "message":
                     turn_options["prompt_kind"] = command.prompt_kind
+                if command.response_kind != "message":
+                    turn_options["response_kind"] = command.response_kind
                 if command.reasoning_effort is not None:
                     turn_options["reasoning_effort"] = command.reasoning_effort
                 stream = self.agent.astream(command.prompt, **turn_options)
@@ -408,6 +410,7 @@ class Worker:
                     append_prompt=command.append_prompt,
                     prompt_role=command.prompt_role,
                     prompt_kind=command.prompt_kind,
+                    response_kind=command.response_kind,
                     reasoning_effort=command.reasoning_effort,
                     input_items=command.input_items,
                     future=command.future,

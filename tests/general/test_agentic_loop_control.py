@@ -9,6 +9,50 @@ from the_framework.agent.runtime.agentic_loop import AgenticLoop, GenerationUnav
 from the_framework.agent.models.responses import FunctionCall, FunctionCallOutput
 
 
+def test_response_kind_matches_stream_and_canonical_replay_and_is_scoped(tmp_path):
+    from the_framework.agent import Session
+    from the_framework.agent.context.builder import Context
+
+    class Responses:
+        counter = 0
+
+        def create(self, **_payload):
+            self.counter += 1
+            identity = f"answer-{self.counter}"
+            return iter([
+                {"type": "response.output_text.delta", "item_id": identity,
+                 "delta": "Answer", "sequence_number": 1, "content_index": 0},
+                {"type": "response.output_item.done", "sequence_number": 2,
+                 "item": {"type": "message", "id": identity, "role": "assistant",
+                          "content": [{"type": "output_text", "text": "Answer"}]}},
+            ])
+
+    agent = Agent(client=SimpleNamespace(responses=Responses()), session_path=tmp_path / "session.json")
+    loop = agent.agentic_loop
+    events = []
+    agent.events.subscribe("*", events.append)
+
+    async def step():
+        loop.generation({"stream": True})
+
+    loop.step = step
+    asyncio.run(loop.turn("Voice question", response_kind="delegation"))
+    assert loop.response_kind == "message"
+    asyncio.run(loop.turn("Text question"))
+    assert [event.kind for event in events if event.type == "agent.text.delta"] == ["delegation", "message"]
+    restored = Session.open(agent.session.path)
+    assert [item.kind for item in restored.history if item.get("role") == "assistant"] == ["delegation", "message"]
+    assert all("kind" not in item for item in Context.project(restored.history))
+
+    async def fail():
+        raise RuntimeError("interrupted generation")
+
+    loop.step = fail
+    with pytest.raises(RuntimeError):
+        asyncio.run(loop.turn("Another voice question", response_kind="delegation"))
+    assert loop.response_kind == "message"
+
+
 def test_interrupt_finishes_current_tool_and_marks_remaining_calls_skipped():
     async def test():
         agent = Agent(client=object())

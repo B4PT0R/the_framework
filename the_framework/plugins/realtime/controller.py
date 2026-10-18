@@ -418,6 +418,7 @@ class RealtimeController:
             id=command_id,
             prompt=transcript,
             append_prompt=append_prompt,
+            response_kind="realtime_delegation",
             # Keep delegated voice turns responsive without requiring models to
             # support disabling reasoning (GPT-6.1 Sol, for example, does not).
             reasoning_effort="low",

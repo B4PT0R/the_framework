@@ -126,6 +126,7 @@ class AgentOutputItemStarted(LocalEvent):
 class AgentTextDelta(LocalEvent):
     type: str = "agent.text.delta"
     item_id: str
+    kind: str = "message"
     channel: Literal["output", "refusal", "reasoning", "summary"] = "output"
     part_index: int = 0
     delta: str
@@ -135,6 +136,7 @@ class AgentTextDelta(LocalEvent):
 class AgentTextDone(LocalEvent):
     type: str = "agent.text.done"
     item_id: str
+    kind: str = "message"
     channel: Literal["output", "refusal", "reasoning", "summary"] = "output"
     part_index: int = 0
     text: str

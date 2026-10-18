@@ -38,6 +38,7 @@ def test_voice_delegation_uses_low_reasoning_without_disabling_it():
         request, = voice.runtime.supervisor.sent
         assert request.prompt == "Bonjour"
         assert request.reasoning_effort == "low"
+        assert request.response_kind == "realtime_delegation"
         assert request.id == "realtime-delegation:call:question"
 
     asyncio.run(run())

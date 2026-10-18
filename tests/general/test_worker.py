@@ -110,10 +110,11 @@ def test_worker_applies_a_prompt_reasoning_override_without_changing_defaults():
             id="realtime-delegation",
             prompt="Réponds vite",
             reasoning_effort="none",
+            response_kind="delegation",
         ))]
 
         assert events
-        assert agent.prompt_options == [{"reasoning_effort": "none"}]
+        assert agent.prompt_options == [{"reasoning_effort": "none", "response_kind": "delegation"}]
 
     asyncio.run(test())
 

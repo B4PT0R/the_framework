@@ -1516,6 +1516,12 @@ The local prompt endpoint still returns its client-generated id.
 non-HTTP applications. Construct it with a runtime and, optionally, the installed
 realtime service (controller and transition lock). Without voice it uses an
 optional `text_lock`, or its own lock. Share one ingress between transports.
+`PromptRequest.response_kind` selects the canonical kind of generated assistant
+messages and their streamed text events for that command. It is scoped to the
+turn (including steering), restored on completion or failure and absent from
+model API input. Realtime delegation uses `realtime_delegation`; spoken canonical
+transcripts retain `realtime`, allowing clients to distinguish both on replay.
+
 Voice accepts ordinary user prompts only: input items, suppressed prompts,
 custom roles/kinds and per-command reasoning overrides raise `ValueError` rather
 than silently losing text-only semantics. Voice submission failures also raise

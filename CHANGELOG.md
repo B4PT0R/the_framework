@@ -6,6 +6,11 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Preserve delegated voice-response provenance in canonical messages and streamed
+  text events through scoped `PromptRequest.response_kind`. Ordinary text turns
+  keep their standard kind; clients can distinguish spoken and backend output
+  consistently across streaming and session replay.
+
 - Use low reasoning effort for delegated voice turns instead of forcing none,
   which models such as GPT-6.1 Sol reject. Keep the override scoped to the command;
   ordinary text conversations retain their configured reasoning settings.

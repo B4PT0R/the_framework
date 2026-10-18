@@ -110,6 +110,7 @@ from ..models.responses import (
     ToolOutput,
     ToolSearchCall,
     ToolSearchOutput,
+    Message,
 )
 from ..extensions.tools import USER_FEEDBACK_PARAMETER
 from the_framework.utils.ids import timestamp_id
@@ -122,6 +123,7 @@ class PendingSteering(modict):
     append_prompt: bool = True
     prompt_role: str = "user"
     prompt_kind: str = "message"
+    response_kind: str = "message"
     reasoning_effort: str | None = None
     input_items: tuple = ()
     future: asyncio.Future | None = None
@@ -140,6 +142,7 @@ class AgenticLoop:
         self.activity_condition = Condition()
         self.activity_sequence = 0
         self.reasoning_effort_override = None
+        self.response_kind = "message"
 
     @property
     def pending_count(self):
@@ -160,6 +163,7 @@ class AgenticLoop:
         append_prompt=True,
         prompt_role="user",
         prompt_kind="message",
+        response_kind="message",
         reasoning_effort=None,
         input_items=(),
         future=None,
@@ -171,6 +175,7 @@ class AgenticLoop:
             append_prompt=append_prompt,
             prompt_role=prompt_role,
             prompt_kind=prompt_kind,
+            response_kind=response_kind,
             reasoning_effort=reasoning_effort,
             input_items=tuple(input_items),
             future=future,
@@ -239,6 +244,7 @@ class AgenticLoop:
                     self.request_next_step = True
                 if steering.reasoning_effort is not None:
                     self.reasoning_effort_override = steering.reasoning_effort
+                self.response_kind = steering.response_kind
                 if steering.future is not None and not steering.future.done():
                     steering.future.set_result(None)
             except Exception as error:
@@ -261,6 +267,8 @@ class AgenticLoop:
 
     def handle(self, event):
         if isinstance(event, AgentResponseItemAdded):
+            if isinstance(event.item, Message) and event.item.role == "assistant" and event.item.kind == "message":
+                event.item.kind = self.response_kind
             if self.should_resolve(event.item):
                 self.tool_calls.append(event.item)
             return self.agent.add_response_item(event.item)
@@ -339,6 +347,8 @@ class AgenticLoop:
                             usage = self.agent.context.record_response_usage(response)
                             status = "completed" if kind == "response.completed" else "incomplete"
                         for event in adapter.convert(event_payload):
+                            if event.type in {"agent.text.delta", "agent.text.done"}:
+                                event.kind = self.response_kind
                             event = self.agent.registry("hooks").run("on_event", event)
                             if isinstance(event, AgentResponseItemAdded):
                                 self.handle(event)
@@ -602,12 +612,15 @@ class AgenticLoop:
         append_prompt=True,
         prompt_role="user",
         prompt_kind="message",
+        response_kind="message",
         reasoning_effort=None,
     ):
         if prompt_role not in {"user", "developer"}:
             raise ValueError("prompt_role must be user or developer")
         previous_reasoning_effort = self.reasoning_effort_override
+        previous_response_kind = self.response_kind
         self.reasoning_effort_override = reasoning_effort
+        self.response_kind = response_kind
         try:
             prompt = self.agent.registry("hooks").run("before_turn", prompt)
             self.end_turn = False
@@ -637,6 +650,7 @@ class AgenticLoop:
             self.agent.emit(AgentTurnEnd())
         finally:
             self.reasoning_effort_override = previous_reasoning_effort
+            self.response_kind = previous_response_kind
 
     def turn_sync(self, prompt=None):
         return asyncio.run(self.turn(prompt))

@@ -38,7 +38,7 @@ def test_backend_stream_is_converted_before_hooks_and_only_commits_final_items(t
     assert [e.type for e in observed] == ["agent.generation.start", "agent.output_item.started", "agent.text.delta",
                                             "agent.response_item.added", "agent.generation.end"]
     delta = observed[2]
-    assert dict(delta) == {"type": "agent.text.delta", "item_id": "reply", "channel": "output", "part_index": 0, "delta": "Hello", "sequence": 0}
+    assert dict(delta) == {"type": "agent.text.delta", "item_id": "reply", "kind": "message", "channel": "output", "part_index": 0, "delta": "Hello", "sequence": 0}
     assert agent.session.history == [item]
     assert observed[-1].status == "completed"
     assert observed[-1].usage.total_tokens == 3

@@ -30,6 +30,7 @@ class ChatIngress:
                 if (
                     not command.append_prompt or command.input_items
                     or command.prompt_role != "user" or command.prompt_kind != "message"
+                    or command.response_kind != "message"
                     or command.reasoning_effort is not None
                 ):
                     raise ValueError("This turn requires text mode; stop voice before submitting it")

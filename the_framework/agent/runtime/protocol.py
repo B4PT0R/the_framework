@@ -23,6 +23,7 @@ class PromptRequest(QueuedRequest):
     append_prompt: bool = True
     prompt_role: str = "user"
     prompt_kind: str = "message"
+    response_kind: str = "message"
     # Optional, per-command Responses override. ``None`` means inherit the
     # canonical agent configuration; "none" explicitly disables reasoning.
     reasoning_effort: str | None = None

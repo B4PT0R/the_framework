@@ -87,6 +87,7 @@ def test_submission_waits_for_voice_transition_before_selecting_route(tmp_path, 
     {"input_items": [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": "attachment"}]}]},
     {"prompt_role": "developer"},
     {"prompt_kind": "custom"},
+    {"response_kind": "custom"},
     {"reasoning_effort": "low"},
 ])
 def test_voice_rejects_turns_whose_semantics_cannot_be_preserved(fields):
