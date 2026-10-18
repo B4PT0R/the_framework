@@ -102,7 +102,7 @@ def test_system_plugin_requests_reboot_then_gracefully_ends_the_turn():
                 "action_id": payload.payload["action_id"],
             }
 
-        agent.application.bind(request)
+        agent.bridge.bind(request)
         plugin = agent.add_extension(SystemExtension)
         result = await plugin.reboot_server("Relis les changements puis lance les tests.")
 
@@ -124,7 +124,7 @@ def test_system_plugin_builds_publishes_and_rolls_back_surfaces():
             calls.append(payload)
             return {"release": "release-1"}
 
-        agent.application.bind(request)
+        agent.bridge.bind(request)
         plugin = agent.add_extension(SystemExtension)
         inspected = await plugin.surfaces()
         built = await plugin.build_surface()
@@ -150,7 +150,7 @@ def test_failed_reboot_request_does_not_end_the_turn():
         async def request(payload):
             raise RuntimeError("restart unavailable")
 
-        agent.application.bind(request)
+        agent.bridge.bind(request)
         plugin = agent.add_extension(SystemExtension)
         try:
             await plugin.reboot_server()
@@ -171,7 +171,7 @@ def test_system_opens_a_named_preview_without_restarting_or_publishing():
         async def request(payload):
             calls.append(payload)
             return {'role': 'preview', 'target': 'web'}
-        agent.application.bind(request)
+        agent.bridge.bind(request)
         plugin = agent.add_extension(SystemExtension)
         assert await plugin.preview_surface(name='quest', release='candidate') == {'role': 'preview', 'target': 'web'}
         assert len(calls) == 1

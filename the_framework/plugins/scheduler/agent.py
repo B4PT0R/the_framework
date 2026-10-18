@@ -31,7 +31,7 @@ class SchedulerExtension(AgentExtension):
     instructions_file = "instructions.md"
 
     async def _call(self, method, payload=None):
-        return await self.agent.application.call(
+        return await self.agent.bridge.call(
             "scheduler",
             method,
             payload or {},

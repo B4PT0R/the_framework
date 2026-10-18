@@ -43,6 +43,6 @@ def _bind_application_controls(runtime, app, context):
             return await surface_service.rollback(name)
         raise ValueError(f"unknown surface operation: {method}")
 
-    runtime.application.register("plugins", handle_plugins, contextual="call")
+    runtime.bridge.register("plugins", handle_plugins, contextual="call")
     if surface_service is not None:
-        runtime.application.register("surfaces", handle_surfaces)
+        runtime.bridge.register("surfaces", handle_surfaces)

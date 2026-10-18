@@ -19,7 +19,7 @@ def test_scheduler_plugin_calls_the_server_owned_application_capability():
             calls.append(payload)
             return {"id": payload.payload["wake_id"], "status": "created"}
 
-        agent.application.bind(request)
+        agent.bridge.bind(request)
         plugin = agent.add_extension(SchedulerExtension)
         result = await plugin.create_wake(
             "Morning hello",

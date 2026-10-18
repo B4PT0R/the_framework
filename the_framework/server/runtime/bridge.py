@@ -5,7 +5,7 @@ from typing import Literal
 
 from starlette.websockets import WebSocketDisconnect
 
-from ...agent.runtime.application import ApplicationError
+from ...agent.runtime.bridge import ApplicationError
 from ...agent.runtime.protocol import (
     ApplicationCall,
     ApplicationCancel,

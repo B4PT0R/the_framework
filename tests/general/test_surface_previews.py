@@ -8,7 +8,7 @@ from starlette.websockets import WebSocketDisconnect
 
 import starter.server
 from tests.fixtures.runtime import FakeRuntime
-from the_framework import ApplicationSpec, ClientSurface
+from the_framework import Application, ClientSurface
 
 
 def application(tmp_path, monkeypatch):
@@ -17,7 +17,7 @@ def application(tmp_path, monkeypatch):
     (source / 'dist').mkdir()
     (source / 'dist/index.html').write_text('<html><head><title>Candidate</title></head><body>Preview</body></html>')
     surface = ClientSurface(name='mobile', source=source, artifact='dist', build=('true',), routes=('/mobile',))
-    monkeypatch.setattr(starter.server, 'application', ApplicationSpec({
+    monkeypatch.setattr(starter.server, 'application', Application({
         **starter.server.application, 'surfaces': (surface,),
     }))
     runtime = FakeRuntime()
@@ -68,8 +68,8 @@ def test_preview_is_authenticated_read_only_and_does_not_take_primary_connection
                     transport = app.state.application.services['canonical_transport']
                     assert transport.event_connection_count == 2
                     assert transport.primary_event_connection_count == 1
-                    assert runtime.application.connected
-                assert runtime.application.connected
+                    assert runtime.bridge.connected
+                assert runtime.bridge.connected
                 assert runtime.submitted == []
 
 
@@ -122,7 +122,7 @@ def test_agent_preview_control_opens_a_new_authenticated_web_tab(tmp_path, monke
         runtime = app.state.application.services['runtime']
         before_session = client.get('/api/v1/session', headers={'authorization': 'Bearer control'}).json()['watermark']
         before = app.state.application.surface_service.active_path('mobile').name
-        result = client.portal.call(runtime.application.call, 'surfaces', 'preview', {'name': 'mobile'})
+        result = client.portal.call(runtime.bridge.call, 'surfaces', 'preview', {'name': 'mobile'})
         assert result == {'surface': 'mobile', 'release': before, 'target': 'web', 'role': 'preview'}
         assert len(calls) == 1
         method, url, options = calls[0]

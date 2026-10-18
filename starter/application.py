@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from the_framework import (
-    ApplicationSpec,
+    Application,
     AgentResources,
     AgentSpec,
     ClientSurface,
@@ -36,7 +36,7 @@ def resources(session_path):
     )
 
 
-application = ApplicationSpec(
+application = Application(
     name="Pandora",
     version="0.1.0",
     primary_agent=AgentSpec(

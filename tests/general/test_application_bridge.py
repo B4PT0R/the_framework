@@ -195,7 +195,7 @@ def test_invalid_server_result_is_reported_as_call_failure():
 
 def test_stopping_bridge_releases_server_requests_to_client():
     import pytest
-    from the_framework.agent.runtime.application import ApplicationError
+    from the_framework.agent.runtime.bridge import ApplicationError
 
     async def run():
         bridge = ApplicationBridge(Supervisor())

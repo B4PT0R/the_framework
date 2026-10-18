@@ -12,7 +12,7 @@ from the_framework.plugins.system import SYSTEM
 def test_complete_plugin_imports_and_worker_compile_do_not_import_server_modules():
     result = subprocess.run([sys.executable, "-c", '''
 import sys
-from the_framework import ApplicationSpec, AgentSpec, Plugin
+from the_framework import Application, AgentSpec, Plugin
 from the_framework.plugins.bash import BASH
 from the_framework.plugins.browser import CHROMIUM
 from the_framework.plugins.memory import MEMORY
@@ -23,7 +23,7 @@ from the_framework.plugins.system import SYSTEM
 from the_framework.plugins.web_search import WEB_SEARCH
 plugins = (BASH, CHROMIUM, MEMORY, REALTIME, REGISTRY, SCHEDULER, SYSTEM, WEB_SEARCH)
 assert all(isinstance(plugin, Plugin) for plugin in plugins)
-plan = ApplicationSpec(name="Example", version="1", plugins=plugins,
+plan = Application(name="Example", version="1", plugins=plugins,
     primary_agent=AgentSpec(name="primary", session_mode="durable")).compile()
 assert "memory.jiminy" in plan.agents
 assert len(plan.primary_agent.extensions) == len(plugins)
@@ -38,7 +38,7 @@ assert "the_framework.plugins.realtime.api" not in sys.modules
 def test_complete_stateful_plugins_install_handlers_and_reset_hooks(tmp_path):
     handlers, observers, hooks = {}, [], []
     runtime = SimpleNamespace(
-        application=SimpleNamespace(register=lambda name, handler, **kwargs: handlers.setdefault(name, handler)),
+        bridge=SimpleNamespace(register=lambda name, handler, **kwargs: handlers.setdefault(name, handler)),
         register_observer=observers.append,
         register_reset_hooks=lambda **kwargs: hooks.append(kwargs),
         submit=lambda command: None,
@@ -65,7 +65,7 @@ def test_realtime_reset_waits_for_worker_barrier_and_clears_call_identity(tmp_pa
     import asyncio
     from the_framework.agent.runtime.protocol import CommandCompleted
     from the_framework.plugins.realtime import REALTIME
-    from the_framework.server import ApplicationRuntime
+    from the_framework.server import SessionRuntime
 
     async def run():
         events = []
@@ -80,7 +80,7 @@ def test_realtime_reset_waits_for_worker_barrier_and_clears_call_identity(tmp_pa
             await supervisor.outputs.put(CommandCompleted(request_id=command.id, command=command))
 
         supervisor.send = send
-        runtime = ApplicationRuntime(supervisor, reset_transaction_factory=lambda path: None)
+        runtime = SessionRuntime(supervisor, reset_transaction_factory=lambda path: None)
         extension = REALTIME.build_server_extensions(BuildContext())[0]
         api = extension.service_factory(runtime)
         api.call_id = "client-call"

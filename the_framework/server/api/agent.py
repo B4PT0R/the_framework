@@ -4,7 +4,7 @@ import inspect
 
 from fastapi.responses import JSONResponse
 
-from ..runtime.application import InvalidWorkerResult
+from ..runtime.session import InvalidWorkerResult
 
 from .declarations import endpoint
 from ...agent.runtime.protocol import (

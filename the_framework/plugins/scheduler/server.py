@@ -13,7 +13,7 @@ def build_server_extensions(context):
 
     def build(runtime):
         scheduler = SchedulerService(path, runtime.submit)
-        runtime.application.register("scheduler", scheduler.handle)
+        runtime.bridge.register("scheduler", scheduler.handle)
         runtime.register_observer(scheduler.observe)
         runtime.register_reset_hooks(suspend=scheduler.stop, resume=scheduler.start)
         return scheduler

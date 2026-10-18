@@ -7,7 +7,7 @@ import pytest
 
 from the_framework.server.api.transport import CanonicalTransportSockets
 from the_framework.server.composition.runtime import _conversation_extensions
-from the_framework.server.runtime.application import ApplicationRuntime
+from the_framework.server.runtime.session import SessionRuntime
 
 
 class Socket:
@@ -37,7 +37,7 @@ def transport(runtime):
 
 
 def test_composition_exposes_transport_as_a_service(tmp_path):
-    runtime = ApplicationRuntime(SimpleNamespace())
+    runtime = SessionRuntime(SimpleNamespace())
     extensions = _conversation_extensions(
         runtime, data_root=tmp_path, event_handshake=lambda _: None, application_handshake=lambda _: None,
     )
@@ -49,7 +49,7 @@ def test_composition_exposes_transport_as_a_service(tmp_path):
 
 def test_multiple_sockets_release_presence_on_disconnect_and_cancellation():
     async def run():
-        runtime = ApplicationRuntime(SimpleNamespace())
+        runtime = SessionRuntime(SimpleNamespace())
         sockets = transport(runtime)
         internal = runtime.stream()
         waiting = asyncio.create_task(anext(internal))
@@ -79,7 +79,7 @@ def test_multiple_sockets_release_presence_on_disconnect_and_cancellation():
 
 def test_accept_and_send_failure_do_not_leave_presence():
     async def run():
-        runtime = ApplicationRuntime(SimpleNamespace())
+        runtime = SessionRuntime(SimpleNamespace())
         sockets = transport(runtime)
         with pytest.raises(RuntimeError, match="accept failed"):
             await sockets.serve_events(Socket(accept_error=True), {"subprotocol": "events"})
@@ -100,10 +100,10 @@ def test_accept_and_send_failure_do_not_leave_presence():
 
 def test_preview_cannot_claim_the_application_bridge_even_without_a_principal():
     async def run():
-        runtime = ApplicationRuntime(SimpleNamespace())
+        runtime = SessionRuntime(SimpleNamespace())
         sockets = transport(runtime)
         socket = Socket()
         await sockets.serve_application(socket, {'subprotocol': 'app', 'client_role': 'preview'})
         assert socket.closed == 1008
-        assert not runtime.application.connected
+        assert not runtime.bridge.connected
     asyncio.run(run())

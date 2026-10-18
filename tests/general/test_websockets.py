@@ -3,7 +3,7 @@ import asyncio
 from fastapi.testclient import TestClient
 
 from the_framework.agent import AgentSpec
-from the_framework.server.composition.application import ApplicationSpec, ServerExtension, build_application
+from the_framework.server.composition.application import Application, ServerExtension, _assemble_server
 from the_framework.server.api.endpoints import Principal
 from the_framework.server.api.websockets import (
     serve_event_stream_until_disconnect,
@@ -22,7 +22,7 @@ class Security:
 
 
 def application(name, **options):
-    return ApplicationSpec(
+    return Application(
         name=name, version="1", primary_agent=AgentSpec(
             name="primary", description="Primary test agent.", session_mode='durable'
         ),
@@ -38,7 +38,7 @@ async def events(socket):
 
 
 def test_declarative_websocket_uses_the_application_security_policy():
-    app = build_application(application(
+    app = _assemble_server(application(
         "Sockets",
         security=Security(),
         server_extensions=(ServerExtension(name="events", websockets=(events,)),),
@@ -51,7 +51,7 @@ def test_declarative_websocket_uses_the_application_security_policy():
 
 def test_declarative_websocket_rejects_missing_security_and_collisions():
     try:
-        build_application(application(
+        _assemble_server(application(
             "Unsafe",
             server_extensions=(ServerExtension(name="events", websockets=(events,)),),
         ))
@@ -61,7 +61,7 @@ def test_declarative_websocket_rejects_missing_security_and_collisions():
         raise AssertionError("missing WebSocket security was accepted")
 
     try:
-        build_application(application(
+        _assemble_server(application(
             "Duplicate",
             security=Security(),
             server_extensions=(

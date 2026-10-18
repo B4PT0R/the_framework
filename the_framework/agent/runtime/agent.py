@@ -5,7 +5,7 @@ from threading import Lock
 from codex_backend_sdk import OpenAI
 
 from .agentic_loop import AgenticLoop
-from .application import ApplicationClient
+from .bridge import ApplicationClient
 from ..extensions.specialists import AgentTriggers
 from ..extensions.commands import Commands
 from ..context.compaction import Compaction
@@ -42,7 +42,7 @@ class Agent:
     ):
         self._client = client
         self._client_lock = Lock()
-        self.application = ApplicationClient()
+        self.bridge = ApplicationClient()
         self.agents = AgentTriggers(agent=self)
         self.session = Session.open(session_path) if session_path else Session()
         if not isinstance(name, str) or not name.strip():

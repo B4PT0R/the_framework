@@ -4,7 +4,7 @@ import asyncio
 import pytest
 from fastapi.testclient import TestClient
 
-from the_framework import ApplicationSpec, AgentSpec, BuildContext, Plugin, ServerExtension
+from the_framework import Application, AgentSpec, BuildContext, Plugin, ServerExtension
 from the_framework.server.api.endpoints import Principal
 from tests.fixtures.multi_session_app import application as agents
 
@@ -34,15 +34,15 @@ def test_optional_construction_failure_is_visible_and_chat_and_other_sessions_su
         ServerExtension(name='weather', service_factory=weather, critical=False, endpoints='service'),
         ServerExtension(name='weather_view', service_factory=view, critical=False, scope='session', endpoints='service'),
     ))
-    declaration = ApplicationSpec({**agents, 'plugins': (*agents.plugins, plugin)})
-    app = declaration.build_conversation('tests.fixtures.multi_session_app:application',
+    declaration = Application({**agents, 'plugins': (*agents.plugins, plugin)})
+    app = declaration.build('tests.fixtures.multi_session_app:application',
         BuildContext(data_root=tmp_path), security=Security(), handshake=handshake, session_projection='display')
     assert calls == ['weather']
     with TestClient(app) as client:
         client.headers['authorization'] = 'Bearer test'
         assert client.get('/api/v1/session').status_code == 200
         root = app.state.application
-        client.portal.call(root.default_runtime.apply_event, 'record', {'text': 'Chat survives'})
+        client.portal.call(root.primary_session.apply_event, 'record', {'text': 'Chat survives'})
         assert 'Chat survives' in client.get('/api/v1/session').text
         child = client.post('/api/v1/sessions', json={}).json()['id']
         for prefix in ('', f'/sessions/{child}'):
@@ -71,13 +71,13 @@ def test_new_composition_retries_optional_construction_after_resource_recovers()
         if len(attempts)==1:
             raise OSError('offline')
         return Service()
-    spec = ApplicationSpec(name='Example', version='1', primary_agent=AgentSpec(name='agent'),
+    spec = Application(name='Example', version='1', primary_agent=AgentSpec(name='agent'),
                            server_extensions=(ServerExtension(name='resource', critical=False, service_factory=factory),))
     async def run():
-        unavailable = spec.build()
+        unavailable = spec._build_server()
         async with unavailable.router.lifespan_context(unavailable):
             assert (await unavailable.state.application.service_graph.health())['resource']['status']=='error'
-        recovered = spec.build()
+        recovered = spec._build_server()
         async with recovered.router.lifespan_context(recovered):
             assert (await recovered.state.application.service_graph.health())['resource']['status']=='running'
     asyncio.run(run())
@@ -92,7 +92,7 @@ def test_required_resource_failure_remains_fatal(dependent):
     if dependent:
         extensions.append(ServerExtension(name='required_consumer', service_factory=lambda resource: object()))
     with pytest.raises((OSError, RuntimeError), match='offline|dependencies are unavailable'):
-        ApplicationSpec(name='Example', version='1', primary_agent=AgentSpec(name='agent'), server_extensions=extensions).build()
+        Application(name='Example', version='1', primary_agent=AgentSpec(name='agent'), server_extensions=extensions)._build_server()
 
 
 @pytest.mark.parametrize('failure', ['missing_dependency', 'automatic_endpoints', 'async_factory'])
@@ -106,4 +106,4 @@ def test_invalid_optional_service_contract_is_not_downgraded(failure):
     else:
         extension = ServerExtension(name='invalid', critical=False, service_factory=asynchronous)
     with pytest.raises((ValueError, TypeError)):
-        ApplicationSpec(name='Example', version='1', primary_agent=AgentSpec(name='agent'), server_extensions=(extension,)).build()
+        Application(name='Example', version='1', primary_agent=AgentSpec(name='agent'), server_extensions=(extension,))._build_server()

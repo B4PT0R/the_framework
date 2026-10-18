@@ -5,10 +5,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from the_framework.server.runtime.application import ApplicationRuntime
+from the_framework.server.runtime.session import SessionRuntime
 
 
-class ResetRuntime(ApplicationRuntime):
+class ResetRuntime(SessionRuntime):
     def __init__(self, path, events):
         self.supervisor = SimpleNamespace(session_path=path)
         self.reset_transaction_factory = lambda _path: ResetTransaction(

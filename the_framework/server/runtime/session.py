@@ -1,4 +1,4 @@
-"""Generic supervised runtime for one canonical agent application."""
+"""Server-side lifecycle, bridge and event stream for one agent session."""
 
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ class InvalidWorkerResult(RuntimeError):
     """A completed worker command did not return its required result."""
 
 
-class ApplicationRuntime:
+class SessionRuntime:
     """Own worker/fleet lifecycle, IPC correlation, recovery, and event fan-out.
 
     Product services register observers, application capabilities, and specialist
@@ -75,7 +75,7 @@ class ApplicationRuntime:
     ):
         self.supervisor = supervisor
         self.fleet_factory = fleet_factory
-        self.application = ApplicationBridge(
+        self.bridge = ApplicationBridge(
             supervisor,
             subprotocol=application_subprotocol,
         )
@@ -180,7 +180,7 @@ class ApplicationRuntime:
             if getattr(self.fleet, "events", None) is not None:
                 self.fleet_event_task = asyncio.create_task(self.relay_fleet_events(), name="subagent-events")
             self.relay_task = asyncio.create_task(self.relay(), name="agent-worker-relay")
-            await self.application.start()
+            await self.bridge.start()
             await self.broadcast_worker_directory()
         except BaseException as startup_error:
             try:
@@ -211,7 +211,7 @@ class ApplicationRuntime:
         )
         self.fleet_result_task = self.fleet_event_task = self.relay_task = None
         errors = []
-        for service in (self.application, self.fleet, self.supervisor):
+        for service in (self.bridge, self.fleet, self.supervisor):
             if service is None:
                 continue
             try:
@@ -409,12 +409,12 @@ class ApplicationRuntime:
                 response.set_result(output)
                 continue
             if isinstance(output, (ApplicationCall, ApplicationCancel)):
-                await self.application.dispatch(output)
+                await self.bridge.dispatch(output)
                 continue
             await self.publish(output)
 
     async def recover_worker(self):
-        await self.application.stop()
+        await self.bridge.stop()
         delay = 0.25
         while not self.stopping and not self.resetting:
             try:
@@ -432,7 +432,7 @@ class ApplicationRuntime:
             self.activity_label = self.activity_labels["idle"]
             self.activity_started_at = None
             self.activity_updated_at = time.time()
-            await self.application.start()
+            await self.bridge.start()
             await self.broadcast_worker_directory()
             logger.info("canonical worker restarted after unexpected exit")
             return
@@ -531,7 +531,7 @@ class ApplicationRuntime:
                 "protocol": self.ready.protocol if self.ready else None,
             },
             "activity": self.activity_status(),
-            "application": {"connected": self.application.connected},
+            "application": {"connected": self.bridge.connected},
             "auxiliaries": self.fleet.status() if self.fleet else [],
         }
 

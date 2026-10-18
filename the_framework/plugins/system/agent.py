@@ -80,12 +80,12 @@ class SystemExtension(AgentExtension):
     @tool
     async def surfaces(self):
         """Inspect published, previous and preview releases, including running builds."""
-        return await self.agent.application.call("surfaces", "list", {}, timeout_ms=10_000)
+        return await self.agent.bridge.call("surfaces", "list", {}, timeout_ms=10_000)
 
     @tool
     async def build_surface(self, name: str = "main"):
         """Build an isolated immutable candidate for one client surface."""
-        result = await self.agent.application.call(
+        result = await self.agent.bridge.call(
             "surfaces", "build", {"name": name}, timeout_ms=600_000,
         )
         return result
@@ -93,14 +93,14 @@ class SystemExtension(AgentExtension):
     @tool
     async def preview_surface(self, name: str = "main", release: str | None = None):
         """Open an authenticated read-only preview without replacing the desktop."""
-        return await self.agent.application.call(
+        return await self.agent.bridge.call(
             "surfaces", "preview", {"name": name, "release": release}, timeout_ms=60_000,
         )
 
     @tool
     async def publish_surface(self, name: str = "main", release: str | None = None):
         """Publish a verified candidate and refresh connected clients."""
-        return await self.agent.application.call(
+        return await self.agent.bridge.call(
             "surfaces",
             "publish",
             {"name": name, "release": release},
@@ -110,7 +110,7 @@ class SystemExtension(AgentExtension):
     @tool
     async def rollback_surface(self, name: str = "main"):
         """Restore the preceding client-surface release without rebuilding."""
-        return await self.agent.application.call(
+        return await self.agent.bridge.call(
             "surfaces", "rollback", {"name": name}, timeout_ms=60_000,
         )
 
@@ -118,7 +118,7 @@ class SystemExtension(AgentExtension):
     async def reboot_server(self, resume_instruction: str | None = None):
         """Restart the supervised server after this turn, then resume autonomously."""
         action_id = timestamp_id()
-        result = await self.agent.application.call(
+        result = await self.agent.bridge.call(
             "system",
             "reboot_server",
             {
@@ -133,14 +133,14 @@ class SystemExtension(AgentExtension):
     @tool
     async def plugins(self):
         """List installed plugin runtime and agent-binding states."""
-        return await self.agent.application.call(
+        return await self.agent.bridge.call(
             "plugins", "list", {}, timeout_ms=10_000
         )
 
     @tool
     async def set_plugin_binding(self, name: str, enabled: bool):
         """Enable or disable one plugin's tools and context for this agent."""
-        return await self.agent.application.call(
+        return await self.agent.bridge.call(
             "plugins",
             "set_binding",
             {"name": name, "enabled": enabled},

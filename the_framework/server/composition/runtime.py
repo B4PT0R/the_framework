@@ -8,12 +8,12 @@ from ..api.bucket import FileBucket
 from ..api.chat import ChatApi
 from ..api.health import ApplicationHealthApi
 from ..api.transport import CanonicalTransportSockets
-from ..runtime.application import ApplicationRuntime
+from ..runtime.session import SessionRuntime
 from .application import ServerExtension
 
 
 def _conversation_extensions(
-    runtime: ApplicationRuntime, *, data_root: str | Path, event_handshake: Callable,
+    runtime: SessionRuntime, *, data_root: str | Path, event_handshake: Callable,
     application_handshake: Callable, agent_api: CanonicalAgentApi | None = None,
     health_api: ApplicationHealthApi | None = None,
 ) -> tuple[ServerExtension, ...]:

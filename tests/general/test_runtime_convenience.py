@@ -8,7 +8,7 @@ import pytest
 from the_framework.agent.runtime.protocol import (
     AgentConfigUpdated, CommandCompleted, CommandEvent, CommandFailed,
 )
-from the_framework.server.runtime.application import ApplicationRuntime, InvalidWorkerResult
+from the_framework.server.runtime.session import SessionRuntime, InvalidWorkerResult
 
 
 def test_runtime_operations_wait_for_completion_and_preserve_retry_ids():
@@ -28,7 +28,7 @@ def test_runtime_operations_wait_for_completion_and_preserve_retry_ids():
                 await self.outputs.put(CommandCompleted(request_id=command.id, command=command))
 
         supervisor = Supervisor()
-        runtime = ApplicationRuntime(supervisor)
+        runtime = SessionRuntime(supervisor)
         relay = asyncio.create_task(runtime.relay())
         try:
             result = await runtime.update_config({"model": "example"}, id="settings-1")
@@ -59,7 +59,7 @@ def test_config_update_rejects_missing_result_and_preserves_worker_failure(faile
                       if failed else CommandCompleted(request_id=command.id, command=command))
             await runtime.publish(output)
 
-        runtime = ApplicationRuntime(SimpleNamespace(send=send))
+        runtime = SessionRuntime(SimpleNamespace(send=send))
         expected = ValueError if failed else InvalidWorkerResult
         with pytest.raises(expected, match="invalid settings" if failed else "without a result"):
             await runtime.update_config({"model": "example"})
@@ -70,7 +70,7 @@ def test_config_update_rejects_missing_result_and_preserves_worker_failure(faile
 
 @pytest.mark.parametrize("running,ready", [(True, True), (True, False), (False, True)])
 def test_runtime_health_requires_a_running_ready_worker(running, ready):
-    runtime = ApplicationRuntime(SimpleNamespace(running=running))
+    runtime = SessionRuntime(SimpleNamespace(running=running))
     runtime.ready = SimpleNamespace(session_id="primary", protocol=1) if ready else None
     diagnostics = runtime.health()
     assert diagnostics["status"] == ("ok" if running and ready else "degraded")

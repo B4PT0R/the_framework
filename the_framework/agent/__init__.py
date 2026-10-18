@@ -1,6 +1,6 @@
 from .runtime.agent import Agent
 from .runtime.agentic_loop import AgenticLoop
-from .runtime.application import ApplicationClient, ApplicationError
+from .runtime.bridge import ApplicationClient, ApplicationError
 from .extensions.specialists import (
     AgentResult,
     AgentTask,

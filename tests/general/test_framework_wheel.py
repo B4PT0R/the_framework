@@ -52,10 +52,10 @@ def test_wheel_contains_standalone_framework_and_prompt_resources(tmp_path, monk
     check_independence()
     subprocess.run(
         [sys.executable, "-c", (
-            "from the_framework import ApplicationSpec, AgentSpec, ClientSurface, "
+            "from the_framework import Application, AgentSpec, ClientSurface, "
             "ServerExtension, Plugin, QueuePolicy, endpoint, "
             "provider, tool; from the_framework.agent import AgentExtension; "
-            "a = ApplicationSpec(name='Wheel', version='1', primary_agent=AgentSpec("
+            "a = Application(name='Wheel', version='1', primary_agent=AgentSpec("
             "name='main', description='Main agent.', session_mode='durable')); "
             "s = ClientSurface(name='ui', source='.', build=('true',), artifact='dist', routes=('/ui',)); "
             "assert a.compile().primary_agent.name == 'main' and s.name == 'ui'"

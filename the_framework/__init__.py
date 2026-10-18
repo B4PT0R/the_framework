@@ -3,7 +3,7 @@
 from .agent import AgentExtension, AgentResources, AgentSpec, QueuePolicy, provider, tool
 from .server import (
     endpoint,
-    ApplicationSpec,
+    Application,
     BuildContext,
     Capability,
     CapabilityRequirement,
@@ -15,7 +15,7 @@ from .server import (
 __all__ = [
     "AgentExtension",
     "AgentResources",
-    "ApplicationSpec",
+    "Application",
     "AgentSpec",
     "BuildContext",
     "Capability",

@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from the_framework.agent.runtime.protocol import StatusRequest
-from the_framework.server.runtime.application import ApplicationRuntime
+from the_framework.server.runtime.session import SessionRuntime
 from the_framework.server.runtime.supervisor import WorkerExited
 
 
@@ -38,7 +38,7 @@ def test_fleet_failure_does_not_leak_canonical_worker(phase):
             def observe(self, output):
                 pass
 
-        runtime = ApplicationRuntime(Supervisor(), fleet_factory=lambda *_: Fleet())
+        runtime = SessionRuntime(Supervisor(), fleet_factory=lambda *_: Fleet())
         if phase == "start":
             with pytest.raises(RuntimeError, match="fleet start failed"):
                 await runtime.start()
@@ -73,7 +73,7 @@ def test_stop_releases_pending_requests_commands_and_streams():
                 pass
 
         supervisor = Supervisor()
-        runtime = ApplicationRuntime(supervisor)
+        runtime = SessionRuntime(supervisor)
         request = asyncio.create_task(runtime.request(StatusRequest(id="request"), timeout=60))
         command = asyncio.create_task(runtime.command(StatusRequest(id="command"), timeout=60))
         stream = runtime.stream()
@@ -112,7 +112,7 @@ def test_server_call_can_wait_for_worker_without_blocking_reception():
                     await self.outputs.put(WorkerStatus(request_id=request.id))
 
         supervisor = Supervisor()
-        runtime = ApplicationRuntime(supervisor)
+        runtime = SessionRuntime(supervisor)
         entered = asyncio.Event()
         cancelled = asyncio.Event()
 
@@ -126,7 +126,7 @@ def test_server_call_can_wait_for_worker_without_blocking_reception():
             finally:
                 cancelled.set()
 
-        runtime.application.register("control", handler)
+        runtime.bridge.register("control", handler)
         relay = asyncio.create_task(runtime.relay())
         try:
             await supervisor.outputs.put(ApplicationCall(request=ApplicationRequest(
@@ -146,7 +146,7 @@ def test_server_call_can_wait_for_worker_without_blocking_reception():
         finally:
             relay.cancel()
             await asyncio.gather(relay, return_exceptions=True)
-            await runtime.application.stop()
+            await runtime.bridge.stop()
 
     asyncio.run(run())
 
@@ -162,7 +162,7 @@ def test_failed_observer_does_not_lose_worker_response(caplog):
             async def send(self, request):
                 await self.outputs.put(WorkerStatus(request_id=request.id))
 
-        runtime = ApplicationRuntime(Supervisor())
+        runtime = SessionRuntime(Supervisor())
 
         def failed(_output):
             raise RuntimeError("observer broke")

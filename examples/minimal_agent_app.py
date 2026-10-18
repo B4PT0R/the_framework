@@ -1,6 +1,6 @@
-"""Small standalone application built only from the_framework."""
+"""Service-only Application; add primary_agent to host a conversation."""
 
-from the_framework import ApplicationSpec, AgentSpec, ServerExtension, Plugin, endpoint
+from the_framework import Application, ServerExtension, Plugin, endpoint
 from the_framework.server import ApplicationHealthApi
 from the_framework.server.api.endpoints import Principal
 from modict import modict
@@ -60,19 +60,15 @@ class CounterService:
         return {"value": self.value}
 
 
-counter = CounterService()
 health_api = ApplicationHealthApi()
 
-application = ApplicationSpec(
+application = Application(
     name="Minimal Agent Application",
     version="1.0",
-    primary_agent=AgentSpec(
-        name="example",
-        description="Minimal example agent.",
-        session_mode="durable",
-    ),
     security=BearerSecurity(),
-    plugins=(Plugin(name="counter", server_extension=counter),),
+    plugins=(Plugin(name="counter", server_extension=ServerExtension(
+        name="counter", service_factory=CounterService, endpoints="service",
+    )),),
     server_extensions=(
         ServerExtension(name="health", endpoints=(health_api.health,), requires_services=("counter",)),
     ),

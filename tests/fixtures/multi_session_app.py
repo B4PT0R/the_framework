@@ -1,5 +1,5 @@
 """Deterministic agents for real multi-worker session contracts."""
-from the_framework import ApplicationSpec, AgentSpec, AgentExtension, Plugin
+from the_framework import Application, AgentSpec, AgentExtension, Plugin
 from the_framework.agent import Config, State, Worker, hook
 
 
@@ -22,7 +22,7 @@ class Feature(AgentExtension):
         self.persist_state(count=self.plugin_state.count + 1)
 
 
-application = ApplicationSpec(
+application = Application(
     name="Concurrent sessions", version="1",
     primary_agent=AgentSpec(name="first", session_mode="durable", projections={"display": Worker.conversation_projection}),
     agents=(AgentSpec(name="second", session_mode="durable", projections={"display": Worker.conversation_projection}),),

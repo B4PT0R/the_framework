@@ -6,12 +6,12 @@ from .endpoints import HttpError
 
 
 class PluginHostApi:
-    def __init__(self, application_context):
-        self.application_context = application_context
+    def __init__(self, application_host):
+        self.application_host = application_host
 
     @property
     def host(self):
-        return self.application_context.plugin_host
+        return self.application_host.plugin_host
 
     @endpoint(
         "get",

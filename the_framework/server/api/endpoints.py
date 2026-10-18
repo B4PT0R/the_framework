@@ -214,7 +214,7 @@ class EndpointRegistry:
         security: SecurityPolicy | None = None,
         validate_responses: bool = True,
         error_types=(RuntimeError, TimeoutError, httpx.HTTPError),
-        application_context=None,
+        application_host=None,
         occupied=(),
         reserved_prefixes=(),
     ):
@@ -222,7 +222,7 @@ class EndpointRegistry:
         self.security = security
         self.validate_responses = validate_responses
         self.error_types = error_types
-        self.application_context = application_context
+        self.application_host = application_host
         self._entries = []
         self._occupied = {
             (method.upper(), route.path)
@@ -411,7 +411,7 @@ class EndpointRegistry:
                 payload[context_parameter] = EndpointContext(
                     request=request,
                     principal=principal,
-                    application=self.application_context,
+                    application=self.application_host,
                 )
             result = endpoint(**payload)
             if inspect.isawaitable(result):

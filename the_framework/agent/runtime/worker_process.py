@@ -35,7 +35,7 @@ def load_application(reference):
         raise ValueError("application reference must use module:attribute") from error
     application = getattr(import_module(module_name), attribute)
     if not callable(getattr(application, "compile", None)):
-        raise TypeError("application reference did not resolve to ApplicationSpec")
+        raise TypeError("application reference did not resolve to Application")
     return application
 
 
@@ -55,6 +55,8 @@ async def _run(
     identity = None
     if application_reference is not None:
         plan = load_application(application_reference).compile()
+        if agent_name is None and plan.primary_agent is None:
+            raise ValueError("application has no primary agent; select a declared agent explicitly")
         identity = agent_name or plan.primary_agent.name
         try:
             spec = plan.agents[identity]

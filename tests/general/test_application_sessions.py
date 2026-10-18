@@ -24,7 +24,7 @@ async def handshake(socket):
 
 
 def build(root):
-    return application.build_conversation(
+    return application.build(
         "tests.fixtures.multi_session_app:application", BuildContext(data_root=root),
         security=Security(), handshake=handshake, session_projection="display",
     )
@@ -129,12 +129,12 @@ def test_another_worker_cannot_claim_the_same_session(tmp_path):
             with pytest.raises(RuntimeError, match="worker exited before ready"):
                 await duplicate.start()
             assert any("already has an active worker" in line for line in duplicate.stderr)
-            assert app.state.application.default_runtime.supervisor.running
+            assert app.state.application.primary_session.supervisor.running
     asyncio.run(asyncio.wait_for(run(), 15))
 
 
 def test_service_scopes_share_only_application_resources_and_fan_out_surface_events(tmp_path):
-    from the_framework import ApplicationSpec, ServerExtension
+    from the_framework import Application, ServerExtension
     from the_framework.plugins.realtime import REALTIME
 
     changes = []
@@ -147,7 +147,7 @@ def test_service_scopes_share_only_application_resources_and_fan_out_surface_eve
             changes.append("stop")
 
     shared = Shared()
-    spec = ApplicationSpec({**application,
+    spec = Application({**application,
         "plugins": (*application.plugins, REALTIME),
         "server_extensions": (
             ServerExtension(name="shared", service=shared),
@@ -156,7 +156,7 @@ def test_service_scopes_share_only_application_resources_and_fan_out_surface_eve
     })
 
     async def run():
-        app = spec.build_conversation(
+        app = spec.build(
             "tests.fixtures.multi_session_app:application", BuildContext(data_root=tmp_path),
             security=Security(), handshake=handshake,
         )
@@ -170,7 +170,7 @@ def test_service_scopes_share_only_application_resources_and_fan_out_surface_eve
             assert child_app.service("realtime").controller.runtime is child
             assert changes == ["start"]
             from contextlib import aclosing
-            async with aclosing(host.default_runtime.stream()) as primary_events, aclosing(child.stream()) as child_events:
+            async with aclosing(host.primary_session.stream()) as primary_events, aclosing(child.stream()) as child_events:
                 first = asyncio.create_task(anext(primary_events))
                 second = asyncio.create_task(anext(child_events))
                 await asyncio.sleep(0)
@@ -224,17 +224,17 @@ def test_resetting_an_additional_session_preserves_its_route_and_settings(tmp_pa
 def test_cancelling_session_start_reaps_its_worker_and_removes_partial_data(tmp_path):
     import sys
     import pytest
-    from the_framework.server.runtime.application import ApplicationRuntime
+    from the_framework.server.runtime.session import SessionRuntime
     supervisors = []
-    def runtime_factory(supervisor, context):
+    def session_factory(supervisor, context):
         if context.get("session_owner") is not None:
             supervisor.command = [sys.executable, "-c", "import time; time.sleep(30)"]
             supervisors.append(supervisor)
-        return ApplicationRuntime(supervisor)
+        return SessionRuntime(supervisor)
     async def run():
-        app = application.build_conversation(
+        app = application.build(
             "tests.fixtures.multi_session_app:application", BuildContext(data_root=tmp_path),
-            security=Security(), handshake=handshake, runtime_factory=runtime_factory,
+            security=Security(), handshake=handshake, session_factory=session_factory,
         )
         host = app.state.application
         async with app.router.lifespan_context(app):
@@ -247,7 +247,7 @@ def test_cancelling_session_start_reaps_its_worker_and_removes_partial_data(tmp_
             assert supervisors[0].process.returncode is not None
             assert not (tmp_path / "sessions/cancelled").exists()
             assert not host.session_apps
-            assert host.default_runtime.supervisor.running
+            assert host.primary_session.supervisor.running
         with pytest.raises(RuntimeError, match="not running"):
             await host.open_session()
     asyncio.run(asyncio.wait_for(run(), 15))

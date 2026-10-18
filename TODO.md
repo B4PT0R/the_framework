@@ -51,6 +51,39 @@ pas les noms ni le nombre d'objets de la cible.
   la continuité texte/voix et les scopes multi-session. Les modèles de payloads
   restent exclus du refactor. Pas de couches de compatibilité expérimentales.
 
+### Première tranche API livrée — Application et propriétaires
+
+Baptiste a choisi une définition réutilisable `Application(...)`, suivie de
+`application.build(...)` pour chaque instance serveur indépendante, plutôt qu'un
+objet vivant unique configuré progressivement.
+
+- `Application` remplace ApplicationSpec. `build(reference, context, ...)` intègre
+  la conversation ; build_conversation et le helper public build_application sont
+  retirés, sans alias. Le constructeur/compile ne démarrent rien ; le lifespan
+  ASGI démarre et arrête les ressources construites.
+- Une définition sans primary_agent construit explicitement des services/surfaces
+  sans conversation. Une définition avec agent exige sa référence importable et
+  ses entrées de construction : pas de fallback silencieux vers un serveur vide.
+- L'hôte expose definition (source réutilisable), security (politique effective),
+  primary_session et les opérations open/list/close_session. SessionRuntime vit
+  dans server.runtime.session ; le client agent dans agent.runtime.bridge.
+- session_factory et session_extensions sont invoqués par session, contrairement
+  aux services de portée application partagés. Le Harness personnalise ce pilote
+  via HarnessSession. Le nom de service interne runtime et les protocoles clients
+  restent inchangés. Aucune migration ou modification des modèles de payloads.
+- Starter, Harness, exemples et documentation adaptés ensemble. Les exemples à
+  plusieurs builds utilisent des factories pour obtenir des services distincts ;
+  les instances fournies directement ne sont pas clonées implicitement.
+- Validation : 694 tests Framework réussis (3 skips), 157 Harness, Ruff critique
+  et diff vérifiés. Contrats publics de réutilisation, démarrage différé et absence
+  de conversation implicite ; wheel/starter, sessions et texte/voix couverts.
+  Installation redémarrée : JSON de session strictement identique, même PID du
+  navigateur, catalogue de plugins et aperçu authentifié fonctionnels.
+
+La prochaine tranche reste Plugin / AgentExtension / ServerExtension / BuildContext.
+Ne pas confondre cette première clarification des propriétaires avec la refonte
+encore à faire des contributions, des options et de l'injection de construction.
+
 ### Secteurs à revoir
 
 - Minimiser le vocabulaire nécessaire aux cas simples et réutiliser les mêmes
@@ -62,8 +95,10 @@ pas les noms ni le nombre d'objets de la cible.
   Le nombre de types de protocole n'est pas une mesure de complexité de l'API.
   L'héritage `modict` seul ne classe pas un objet : Session et BrowserSession
   mêlent actuellement données et responsabilités runtime.
-- [ ] Clarifier les propriétaires derrière ApplicationSpec, ApplicationContext,
-  ApplicationRuntime et les attributs `application` du worker et du serveur.
+- [x] Clarifier les propriétaires : Application est la définition réutilisable,
+  ApplicationHost l'hôte ASGI construit, SessionRuntime le pilote d'une session.
+  Les canaux d'appels sont nommés bridge côté agent et serveur ; les payloads
+  conservent leurs noms/schémas.
 - [ ] Revoir ensemble Plugin, AgentExtension, ServerExtension et BuildContext :
   formes de déclaration, configuration, dépendances et contributions.
 - [ ] Examiner les frontières Session / Context / Compaction et la place des

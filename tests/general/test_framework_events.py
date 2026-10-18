@@ -178,13 +178,13 @@ def test_voice_delegation_consumes_framework_stream_and_ignores_reasoning():
 
 
 def test_transport_rejection_fails_the_waiting_command_with_a_clear_error(tmp_path):
-    from the_framework.server.runtime.application import ApplicationRuntime
+    from the_framework.server.runtime.session import SessionRuntime
     from the_framework.server.runtime.supervisor import WorkerTransportError
     from the_framework.agent.runtime.protocol import PromptRequest
     async def run():
         async def send(_):
             await runtime.publish(WorkerTransportError(error="undeclared backend event"))
-        runtime = ApplicationRuntime(SimpleNamespace(send=send, session_path=tmp_path / "session.json"))
+        runtime = SessionRuntime(SimpleNamespace(send=send, session_path=tmp_path / "session.json"))
         with pytest.raises(RuntimeError, match="worker transport failed: undeclared backend event"):
             await runtime.command(PromptRequest(id="command", prompt="request"))
     asyncio.run(run())

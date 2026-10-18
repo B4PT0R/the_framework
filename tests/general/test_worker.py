@@ -3,7 +3,7 @@ import asyncio
 from types import SimpleNamespace
 
 from the_framework.agent import Agent as RuntimeAgent
-from the_framework.agent.runtime.application import ApplicationClient
+from the_framework.agent.runtime.bridge import ApplicationClient
 from the_framework.agent.extensions.specialists import AgentTriggers, agent_trigger
 from the_framework.agent.runtime.event_loop import EventLoop
 from the_framework.agent.models.events import Event
@@ -35,7 +35,7 @@ class Agent:
         self.name = "test-agent"
         self.description = "Agent used by worker development tests."
         self.agents = AgentTriggers()
-        self.application = ApplicationClient()
+        self.bridge = ApplicationClient()
         self.events = EventLoop(self)
         self.prompts = []
         self.prompt_options = []
@@ -826,7 +826,7 @@ def test_active_tool_can_await_an_application_result_while_worker_receives():
             self.result = None
 
         async def astream(self, prompt):
-            self.result = await self.application.call(
+            self.result = await self.bridge.call(
                 "example",
                 "echo",
                 {"value": prompt},

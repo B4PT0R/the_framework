@@ -27,7 +27,7 @@ from ..api.endpoints import EndpointRegistry, SecurityPolicy, endpoint_declarati
 from ..api.plugins import PluginHostApi
 from .plugins import PluginHost
 from .controls import _bind_application_controls
-from ..runtime.application import ApplicationRuntime
+from ..runtime.session import SessionRuntime
 from .dependencies import dependency_order
 from .services import ServiceContext, ServiceGraph
 from ..api.websockets import WebSocketRegistry
@@ -328,21 +328,26 @@ class ApplicationPlan(modict):
 
     _config = modict.config(frozen=True, strict=True, extra="forbid", auto_convert=False)
 
-    application: ApplicationSpec
-    primary_agent: AgentSpec
+    application: Application
+    primary_agent: AgentSpec | None
     agents: Mapping[str, AgentSpec]
     plugins: Mapping[str, Plugin]
     capabilities: Mapping[str, Capability]
 
 
-class ApplicationSpec(modict):
-    """Complete declaration of an agent, its runtime and client surfaces."""
+class Application(modict):
+    """Reusable definition of services, client surfaces and optional agents.
+
+    Importing or compiling the definition starts nothing. ``build()`` creates
+    an independent ASGI server; its lifespan owns service/worker startup and stop.
+    Supply service factories when builds must own distinct service instances.
+    """
 
     _config = modict.config(frozen=True, strict=True, extra="forbid", auto_convert=False)
 
     name: str
     version: str
-    primary_agent: AgentSpec
+    primary_agent: AgentSpec | None = None
     agents: tuple[AgentSpec, ...] = ()
     plugins: tuple[Plugin, ...] = ()
     server_extensions: tuple[ServerExtension, ...] = ()
@@ -359,6 +364,8 @@ class ApplicationSpec(modict):
             raise ValueError("application name is required")
         if not self.version.strip():
             raise ValueError("application version is required")
+        if self.agents and self.primary_agent is None:
+            raise ValueError("additional agents require a primary_agent")
 
     def with_server_extensions(self, *extensions):
         return type(self)({**self, "server_extensions": (*self.server_extensions, *extensions)})
@@ -379,32 +386,47 @@ class ApplicationSpec(modict):
     def compile(self):
         return _compile_application(self)
 
-    def build(self, context: BuildContext | None = None):
-        return build_application(self, context=context)
+    def _build_server(self, context: BuildContext | None = None):
+        return _assemble_server(self, context=context)
 
-    def build_conversation(
-        self, reference: str, context: BuildContext, *,
+    def build(
+        self, reference: str | None = None, context: BuildContext | None = None, *,
         security: SecurityPolicy | None = None,
         handshake: Callable | None = None,
         event_handshake: Callable | None = None,
         application_handshake: Callable | None = None,
         supervisor: object | None = None,
-        runtime_factory: Callable | None = None,
+        session_factory: Callable | None = None,
         session_projection: str = "full",
         health_projection: Callable | None = None,
         reset_handler: Callable | None = None,
-        extensions: tuple[ServerExtension, ...] | Callable = (),
+        session_extensions: tuple[ServerExtension, ...] | Callable = (),
     ):
-        """Assemble the default session and a host for independent agent sessions.
+        """Build an independent ASGI server; its lifespan starts live resources.
 
-        Text and attachment ingress is always included and shares the installed
+        With no primary_agent, build only the declared services/surfaces. With
+        a primary agent, require reference/context/security/handshakes and include
+        the canonical conversation and independently hosted sessions. Text and attachment ingress is always included and shares the installed
         realtime service’s transition lock when voice is available.
         ``reference`` is the importable ``module:application`` used by workers.
         ``handshake`` authenticates both sockets unless individually overridden.
-        Advanced applications can supply a supervisor or a runtime factory,
-        project health/history, and declare extra extensions from the runtime.
+        Advanced applications can supply a supervisor or session_factory,
+        project health/history, and declare session_extensions(runtime). The
+        factory and extension callback run separately for every hosted session.
         ``reset_handler(runtime)`` owns the application's selective reset policy.
         """
+        if self.primary_agent is None:
+            if reference is not None or any(value is not None for value in (
+                handshake, event_handshake, application_handshake, supervisor,
+                session_factory, health_projection, reset_handler,
+            )) or session_extensions:
+                raise ValueError("conversation inputs require a primary_agent")
+            definition = self if security is None else type(self)({**self, "security": security})
+            return definition._build_server(context)
+        if reference is None:
+            raise ValueError("an application with a primary_agent requires its module:application reference")
+        if context is None:
+            raise ValueError("an application with a primary_agent requires BuildContext(data_root=...)")
         from ..runtime.supervisor import WorkerSupervisor
         from ..api.agent import CanonicalAgentApi
         from ..api.health import ApplicationHealthApi
@@ -439,10 +461,10 @@ class ApplicationSpec(modict):
             if worker_reference is not None and worker_reference != reference:
                 raise ValueError("supervisor and conversation must use the same application reference")
         runtime = (
-            runtime_factory(supervisor, context) if runtime_factory is not None
-            else ApplicationRuntime(supervisor, restart=context.get("restart"))
+            session_factory(supervisor, context) if session_factory is not None
+            else SessionRuntime(supervisor, restart=context.get("restart"))
         )
-        extra = extensions(runtime) if callable(extensions) else extensions
+        extra = session_extensions(runtime) if callable(session_extensions) else session_extensions
         definition = type(self)({
             **self, "security": security,
             "server_extensions": (
@@ -460,8 +482,9 @@ class ApplicationSpec(modict):
                 *_tuple(extra),
             ),
         })
-        app = definition.build(context)
+        app = definition._build_server(context)
         owner = app.state.application
+        owner.definition = self
         if context.get("session_owner") is None:
             owner.session_root = Path(context.require("data_root")) / "sessions"
             owner.event_handshake = event_handshake
@@ -477,12 +500,12 @@ class ApplicationSpec(modict):
                               session_mode="durable" if durable else "resident",
                               session_owner=owner)
                 inputs["plugins"] = {name: dict(options) for name, options in context._plugin_options.items()}
-                return child.build_conversation(
+                return child.build(
                     reference, BuildContext(inputs), security=security,
                     event_handshake=event_handshake, application_handshake=application_handshake,
-                    runtime_factory=runtime_factory, session_projection=session_projection,
+                    session_factory=session_factory, session_projection=session_projection,
                     health_projection=health_projection, reset_handler=reset_handler,
-                    extensions=extensions,
+                    session_extensions=session_extensions,
                 )
 
             owner.session_builder = build_session
@@ -495,11 +518,17 @@ class ApplicationSpec(modict):
         return app
 
 
-class ApplicationContext:
-    """Single process-local access point for a compiled application."""
+class ApplicationHost:
+    """Own one assembled server's services, surfaces and live agent sessions.
+
+    The reusable Application remains in ``definition``. The host and its services
+    belong to this server build; lifespan starts/stops them. Each SessionRuntime
+    owns one worker and its event stream, not the whole server.
+    """
 
     def __init__(self, plan, server_extensions, *, services):
-        self.spec = plan.application
+        self.definition = plan.application
+        self.security = plan.application.security
         self.plan = plan
         self.services = services
         self.server_extensions = MappingProxyType(server_extensions)
@@ -513,31 +542,31 @@ class ApplicationContext:
         self.session_apps = {}
         self.accepting_sessions = False
         self.event_handshake = None
-        self.default_runtime = None
+        self.primary_session = None
         self.app = None
 
     def service(self, name):
         return self.services.require(name)
 
-    def agent_runtimes(self):
-        if self.default_runtime is not None:
-            yield self.default_runtime
+    def session_runtimes(self):
+        if self.primary_session is not None:
+            yield self.primary_session
         for app, _ in tuple(self.session_apps.values()):
             yield app.state.application.service("runtime")
 
     async def surface_notify(self, payload):
-        for runtime in self.agent_runtimes():
+        for runtime in self.session_runtimes():
             await runtime.surface_notify(payload)
 
     async def surface_progress(self, payload):
-        for runtime in self.agent_runtimes():
+        for runtime in self.session_runtimes():
             await runtime.surface_progress(payload)
 
     def list_sessions(self):
         active = {key: app.state.application.service("runtime") for key, (app, _) in self.session_apps.items()}
         records = {}
-        if self.default_runtime is not None and self.default_runtime.ready is not None:
-            runtime = self.default_runtime
+        if self.primary_session is not None and self.primary_session.ready is not None:
+            runtime = self.primary_session
             records[runtime.ready.session_id] = {
                 "id": runtime.ready.session_id, "agent": runtime.ready.name,
                 "durable": Path(runtime.supervisor.session_path).is_file(),
@@ -564,10 +593,10 @@ class ApplicationContext:
         async with self.session_lock:
             if not self.accepting_sessions:
                 raise RuntimeError("application session host is not running")
-            if self.default_runtime is not None and self.default_runtime.ready is not None and key == self.default_runtime.ready.session_id:
-                if agent is not None and agent != self.default_runtime.ready.name:
+            if self.primary_session is not None and self.primary_session.ready is not None and key == self.primary_session.ready.session_id:
+                if agent is not None and agent != self.primary_session.ready.name:
                     raise ValueError("session belongs to another agent")
-                return self.default_runtime
+                return self.primary_session
             if key in self.session_apps:
                 app, _ = self.session_apps[key]
                 runtime = app.state.application.service("runtime")
@@ -581,12 +610,12 @@ class ApplicationContext:
                     raise ValueError("session identity or persistence mode differs")
                 agent = saved.agent_name
             else:
-                agent = agent or self.spec.primary_agent.name
+                agent = agent or self.definition.primary_agent.name
             created = not path.exists()
             app = self.session_builder(path, agent, key, durable)
             runtime = app.state.application.server_extensions["runtime"].service
             if runtime is self.server_extensions["runtime"].service:
-                raise ValueError("runtime_factory must create an independent runtime for each session")
+                raise ValueError("session_factory must create an independent runtime for each session")
             if durable and created:
                 session = Session(id=key, agent_name=agent)
                 session.set_attr("path", path)
@@ -635,8 +664,8 @@ class ApplicationContext:
             authenticated = await self.event_handshake(WebSocket(scope, receive, send))
         else:
             request = Request(scope, receive)
-            principal = await self.spec.security.authenticate(request)
-            authenticated = principal is not None and await self.spec.security.authorize(
+            principal = await self.security.authenticate(request)
+            authenticated = principal is not None and await self.security.authorize(
                 principal, {"scope": "session:read"}, request,
             )
         if not authenticated:
@@ -645,7 +674,7 @@ class ApplicationContext:
             else:
                 await JSONResponse({"error": "unauthorized"}, status_code=401)(scope, receive, send)
             return
-        default = self.default_runtime is not None and self.default_runtime.ready is not None and key == self.default_runtime.ready.session_id
+        default = self.primary_session is not None and self.primary_session.ready is not None and key == self.primary_session.ready.session_id
         if re.fullmatch(r"[a-zA-Z0-9_-]{1,128}", key) is None or (
             not default and key not in self.session_apps and not (self.session_root / key / "session.json").is_file()
         ):
@@ -694,7 +723,7 @@ def _compile_application(application):
                     f"private agents for plugin {plugin.name} must be AgentSpec instances"
                 )
             identity = f"{plugin.name}.{private_agent.name}"
-            if identity == application.primary_agent.name or identity in private_identities:
+            if (application.primary_agent is not None and identity == application.primary_agent.name) or identity in private_identities:
                 raise ValueError(f"duplicate private agent identity: {identity}")
             private_identities.add(identity)
             compiled_agent = AgentSpec({**private_agent, "name": identity})
@@ -779,10 +808,12 @@ def _compile_application(application):
             "client surface route collides with application mount: "
             + ", ".join(sorted(collisions))
         )
-    primary_agent = application.primary_agent.with_extensions(
-        *agent_contributions
-    ).with_specialist_profiles(*specialist_profiles)
-    agents[primary_agent.name] = primary_agent
+    primary_agent = None
+    if application.primary_agent is not None:
+        primary_agent = application.primary_agent.with_extensions(
+            *agent_contributions
+        ).with_specialist_profiles(*specialist_profiles)
+        agents[primary_agent.name] = primary_agent
     for declaration in application.agents:
         if declaration.name in agents:
             raise ValueError(f"duplicate agent identity: {declaration.name}")
@@ -964,14 +995,14 @@ def _construct_extension_service(extension, services, construction_errors):
     })
 
 
-def build_application(
-    application: ApplicationSpec,
+def _assemble_server(
+    application: Application,
     *,
     context: BuildContext | None = None,
 ) -> FastAPI:
     """Compile the complete declaration, then build its FastAPI runtime."""
-    if not isinstance(application, ApplicationSpec):
-        raise TypeError("build_application expects an ApplicationSpec")
+    if not isinstance(application, Application):
+        raise TypeError("server assembly expects an Application")
     plan = application.compile()
     build_context = context if context is not None else BuildContext()
     build_context._begin(plan.capabilities)
@@ -1016,15 +1047,15 @@ def build_application(
         resolved_extensions[name] = extension
         if extension.service is not None:
             resolved_services[name] = extension.service
-    runtime = ApplicationContext(plan, resolved_extensions, services=build_context._services)
+    runtime = ApplicationHost(plan, resolved_extensions, services=build_context._services)
     owner = build_context.get("session_owner")
     if owner is not None:
         runtime.surface_service = owner.surface_service
-    agent_runtimes = [service for service in resolved_services.values() if isinstance(service, ApplicationRuntime)]
-    if len(agent_runtimes) > 1:
+    session_runtimes = [service for service in resolved_services.values() if isinstance(service, SessionRuntime)]
+    if len(session_runtimes) > 1:
         raise ValueError("an application may install only one primary agent runtime")
-    agent_runtime = agent_runtimes[0] if agent_runtimes else None
-    runtime.default_runtime = agent_runtime
+    agent_runtime = session_runtimes[0] if session_runtimes else None
+    runtime.primary_session = agent_runtime
 
     services = []
     for name in startup_order:
@@ -1105,7 +1136,7 @@ def build_application(
         app,
         security=application.security,
         validate_responses=application.validate_responses,
-        application_context=runtime,
+        application_host=runtime,
         reserved_prefixes=mount_prefixes,
     )
     socket_registry = WebSocketRegistry(app, security=application.security)
@@ -1209,7 +1240,7 @@ def build_application(
 
 
 __all__ = [
-    "ApplicationSpec",
+    "Application",
     "ApplicationPlan",
     "BuildContext",
     "Capability",
@@ -1217,5 +1248,4 @@ __all__ = [
     "ClientSurface",
     "ServerExtension",
     "Plugin",
-    "build_application",
 ]

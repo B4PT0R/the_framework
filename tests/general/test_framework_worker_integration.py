@@ -8,13 +8,13 @@ from the_framework.agent import AgentSpec
 from the_framework.agent.models.responses import Message
 from the_framework.agent.context.session import Session
 from the_framework.server import (
-    ApplicationSpec,
+    Application,
     CanonicalAgentApi,
     ServerExtension,
     WorkerSupervisor,
-    build_application,
 )
-from the_framework.server.runtime.application import ApplicationRuntime
+from the_framework.server.composition.application import _assemble_server
+from the_framework.server.runtime.session import SessionRuntime
 from the_framework.server.api.endpoints import Principal
 
 
@@ -37,9 +37,9 @@ def test_independent_application_preserves_session_across_server_recreation(tmp_
         histories = []
         processes = []
         for iteration in range(2):
-            runtime = ApplicationRuntime(WorkerSupervisor(path))
+            runtime = SessionRuntime(WorkerSupervisor(path))
             api = CanonicalAgentApi(runtime)
-            app = build_application(ApplicationSpec(
+            app = _assemble_server(Application(
                 name="Independent Test", version="1",
                 primary_agent=AgentSpec(
                     name="primary", description="Primary test agent.",
@@ -103,7 +103,7 @@ def test_generic_worker_builds_a_declared_private_agent(tmp_path):
 
 def test_default_fleet_uses_the_primary_application_declaration(tmp_path):
     async def run():
-        runtime = ApplicationRuntime(WorkerSupervisor(
+        runtime = SessionRuntime(WorkerSupervisor(
             tmp_path / "session.json",
             application_reference="starter.application:application",
         ))

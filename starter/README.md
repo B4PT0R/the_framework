@@ -96,7 +96,7 @@ and changes to the backend remain external prerequisites.
 
 General plugins include Bash, registry, web search, memory, artifacts, scheduler,
 system, browser and realtime declarations. The host owns prompt and attachment
-HTTP routes through `build_conversation()`; chat is not a plugin or a settings
+HTTP routes through `build()`; chat is not a plugin or a settings
 toggle. **Loaded** describes plugin runtime state,
 not confirmation of external-service availability. Inference, hosted search and
 memory embeddings require a usable backend account and supported capabilities.
@@ -122,19 +122,19 @@ Voice control disappears when that runtime is absent.
 | `application.py` | Agent identity, plugin composition, persistence and UI surface |
 | `instructions.md` | Main agent's editable instructions |
 | `memory.md` | Private memory curator's instructions |
-| `server.py` | One `build_conversation` call with local security and storage inputs |
+| `server.py` | One `build` call with local security and storage inputs |
 | `security.py` | Exact host/origin checks and private local authentication |
 | `desktop.py` | Parent-owned browser/socket and supervised server replacement |
 | `ui/src/main.jsx` | Chat, composer and connection lifecycle |
 | `ui/src/settings.jsx` | Model, plugin activation and editable configuration |
 | `ui/src/session.js` | Display projection of canonical items and streaming events |
 
-Import a complete framework plugin and add it to `ApplicationSpec.plugins`:
+Import a complete framework plugin and add it to `Application.plugins`:
 `SCHEDULER`, `SYSTEM` and `REALTIME` own their agent bindings, server services,
 routes and lifecycle. Their server implementations are deferred so the worker
 can compile the same application declaration without constructing server services.
 `server.py` supplies the data directory, plugin options and restart callback to
-`build_conversation`; the framework constructs the worker, text/file ingress and canonical transport.
+`build`; the framework constructs the worker, text/file ingress and canonical transport.
 The memory declaration shows an explicit specialization of the complete `MEMORY`
 plugin with application-owned curator instructions. Text/file ingress is always
 available, with optional realtime coordination through the shared voice lock.

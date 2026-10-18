@@ -5,7 +5,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from the_framework import (
-    ApplicationSpec,
+    Application,
     AgentSpec,
     BuildContext,
     ClientSurface,
@@ -60,7 +60,7 @@ content = Path("content.txt").read_text(encoding="utf-8")
 
 
 def declaration(source, *, timeout=10, retain=3):
-    return ApplicationSpec(
+    return Application(
         name="Surface test",
         version="1",
         primary_agent=AgentSpec(
@@ -87,7 +87,7 @@ def test_surface_build_preview_publish_rollback_and_restore(tmp_path):
             "surface_root": tmp_path / "runtime",
             "surface_notify": notifications.append,
         })
-        app = declaration(source).build(context)
+        app = declaration(source)._build_server(context)
         service = app.state.application.surface_service
         headers = {"Authorization": "Bearer secret"}
         async with AsyncClient(
@@ -140,7 +140,7 @@ def test_surface_build_preview_publish_rollback_and_restore(tmp_path):
             "surface_published", "surface_published", "surface_rolled_back",
         ]
 
-        restored = declaration(source).build(BuildContext({
+        restored = declaration(source)._build_server(BuildContext({
             "surface_root": tmp_path / "runtime",
         }))
         assert restored.state.application.surface_service.active_path("main").name == first_id
@@ -156,7 +156,7 @@ def test_surface_build_preview_publish_rollback_and_restore(tmp_path):
 def test_failed_and_timed_out_builds_do_not_replace_the_active_release(tmp_path):
     async def scenario():
         source = source_tree(tmp_path)
-        app = declaration(source, timeout=0.1).build(BuildContext({
+        app = declaration(source, timeout=0.1)._build_server(BuildContext({
             "surface_root": tmp_path / "runtime",
         }))
         service = app.state.application.surface_service
@@ -180,7 +180,7 @@ def test_build_can_be_cancelled_and_bootstrap_adopts_existing_artifact(tmp_path)
     async def scenario():
         source = source_tree(tmp_path)
         (source / "behavior.txt").write_text("sleep", encoding="utf-8")
-        app = declaration(source).build(BuildContext({
+        app = declaration(source)._build_server(BuildContext({
             "surface_root": tmp_path / "runtime",
         }))
         service = app.state.application.surface_service
@@ -208,7 +208,7 @@ def test_build_can_be_cancelled_and_bootstrap_adopts_existing_artifact(tmp_path)
 def test_surface_retention_keeps_active_and_rollback_releases(tmp_path):
     async def scenario():
         source = source_tree(tmp_path)
-        app = declaration(source, retain=2).build(BuildContext({
+        app = declaration(source, retain=2)._build_server(BuildContext({
             "surface_root": tmp_path / "runtime",
         }))
         service = app.state.application.surface_service
@@ -228,7 +228,7 @@ def test_surface_retention_keeps_active_and_rollback_releases(tmp_path):
 def test_surface_api_returns_controlled_errors(tmp_path):
     async def scenario():
         source = source_tree(tmp_path)
-        app = declaration(source).build(BuildContext({
+        app = declaration(source)._build_server(BuildContext({
             "surface_root": tmp_path / "runtime",
         }))
         headers = {"Authorization": "Bearer secret"}
@@ -258,7 +258,7 @@ def test_surface_mounts_reject_nested_routes_and_shadowed_plugin_endpoints(tmp_p
         name="nested", source=source, build=("true",), artifact="build", routes=("/ui/plugin",),
     )
     with pytest.raises(ValueError, match="overlapping client surface route"):
-        ApplicationSpec(
+        Application(
             name="Nested", version="1",
             primary_agent=AgentSpec(
                 name="primary", description="Primary.", session_mode='durable',
@@ -268,7 +268,7 @@ def test_surface_mounts_reject_nested_routes_and_shadowed_plugin_endpoints(tmp_p
         ).compile()
 
     with pytest.raises(ValueError, match="shadowed by a mount"):
-        ApplicationSpec(
+        Application(
             name="Shadowed", version="1",
             primary_agent=AgentSpec(
                 name="primary", description="Primary.", session_mode='durable',
@@ -281,7 +281,7 @@ def test_surface_mounts_reject_nested_routes_and_shadowed_plugin_endpoints(tmp_p
             ),),
             surfaces=(first,),
             security=Security(),
-        ).build(BuildContext({"surface_root": tmp_path / "runtime"}))
+        )._build_server(BuildContext({"surface_root": tmp_path / "runtime"}))
 
 
 def test_declared_plugin_bootstrap_endpoint_may_precede_its_surface_mount(tmp_path):
@@ -290,7 +290,7 @@ def test_declared_plugin_bootstrap_endpoint_may_precede_its_surface_mount(tmp_pa
         return {"ready": True}
 
     source = source_tree(tmp_path)
-    specification = ApplicationSpec(
+    specification = Application(
         name="Surface bootstrap", version="1",
         primary_agent=AgentSpec(name="primary", session_mode='durable'),
         plugins=(Plugin(
@@ -304,7 +304,7 @@ def test_declared_plugin_bootstrap_endpoint_may_precede_its_surface_mount(tmp_pa
         ),),
         security=Security(),
     )
-    app = specification.build(BuildContext({
+    app = specification._build_server(BuildContext({
         "surface_root": tmp_path / "runtime",
     }))
 
@@ -338,12 +338,12 @@ def test_initial_artifacts_are_adopted_without_an_agent_runtime_and_never_replac
     (compiled / "index.html").write_text("Initial bundle")
     specification = declaration(source)
     context = BuildContext(surface_root=tmp_path / "runtime")
-    app = specification.build(context)
+    app = specification._build_server(context)
     with TestClient(app) as client:
         assert client.get("/ui/").text == "Initial bundle"
         selected = app.state.application.surface_service.active_path("main").name
     (compiled / "index.html").write_text("Unreviewed replacement")
-    restored = specification.build(BuildContext(surface_root=tmp_path / "runtime"))
+    restored = specification._build_server(BuildContext(surface_root=tmp_path / "runtime"))
     with TestClient(restored) as client:
         assert client.get("/ui/").text == "Initial bundle"
         assert restored.state.application.surface_service.active_path("main").name == selected
@@ -352,7 +352,7 @@ def test_initial_artifacts_are_adopted_without_an_agent_runtime_and_never_replac
 def test_missing_initial_artifact_leaves_server_available_and_can_be_repaired(tmp_path):
     from fastapi.testclient import TestClient
 
-    app = declaration(source_tree(tmp_path)).build(BuildContext(surface_root=tmp_path / "runtime"))
+    app = declaration(source_tree(tmp_path))._build_server(BuildContext(surface_root=tmp_path / "runtime"))
     with TestClient(app) as client:
         assert client.get("/openapi.json").status_code == 200
         assert client.get("/ui/").status_code == 503
@@ -366,7 +366,7 @@ def test_preview_survives_restart_and_failure_without_becoming_published(tmp_pat
     async def scenario():
         source = source_tree(tmp_path)
         specification = declaration(source)
-        service = specification.build(BuildContext(surface_root=tmp_path / "runtime")).state.application.surface_service
+        service = specification._build_server(BuildContext(surface_root=tmp_path / "runtime")).state.application.surface_service
         first = await service.build("main")
         await service.publish("main")
         (source / "content.txt").write_text("Reviewed later")
@@ -374,7 +374,7 @@ def test_preview_survives_restart_and_failure_without_becoming_published(tmp_pat
         (source / "behavior.txt").write_text("fail")
         with pytest.raises(RuntimeError, match="build failed"):
             await service.build("main")
-        restored = specification.build(BuildContext(surface_root=tmp_path / "runtime")).state.application.surface_service
+        restored = specification._build_server(BuildContext(surface_root=tmp_path / "runtime")).state.application.surface_service
         assert restored.status()["surfaces"][0]["candidate"] == candidate.release
         assert restored.active_path("main").name == first.release
         assert (restored.preview_path("main") / "index.html").read_text() == "<main>Reviewed later</main>"
@@ -392,7 +392,7 @@ def test_interrupted_release_copy_is_not_visible_and_build_can_be_retried(tmp_pa
 
     async def scenario():
         source = source_tree(tmp_path)
-        service = declaration(source).build(BuildContext(surface_root=tmp_path / "runtime")).state.application.surface_service
+        service = declaration(source)._build_server(BuildContext(surface_root=tmp_path / "runtime")).state.application.surface_service
         copy = shutil.copytree
 
         def interrupted(source, target, *args, **kwargs):
@@ -419,7 +419,7 @@ def test_interrupted_release_copy_is_not_visible_and_build_can_be_retried(tmp_pa
 
 def test_failed_build_preparation_releases_the_build_slot(tmp_path):
     async def scenario():
-        service = declaration(source_tree(tmp_path)).build(BuildContext(surface_root=tmp_path / "runtime")).state.application.surface_service
+        service = declaration(source_tree(tmp_path))._build_server(BuildContext(surface_root=tmp_path / "runtime")).state.application.surface_service
 
         def fail(_payload):
             raise RuntimeError("progress unavailable")
@@ -440,7 +440,7 @@ def test_missing_active_release_recovers_previous_before_any_source_bundle(tmp_p
     async def scenario():
         source = source_tree(tmp_path)
         specification = declaration(source)
-        service = specification.build(BuildContext(surface_root=tmp_path / "runtime")).state.application.surface_service
+        service = specification._build_server(BuildContext(surface_root=tmp_path / "runtime")).state.application.surface_service
         first = await service.build("main")
         await service.publish("main")
         (source / "content.txt").write_text("second")
@@ -450,7 +450,7 @@ def test_missing_active_release_recovers_previous_before_any_source_bundle(tmp_p
         compiled = source / "build"
         compiled.mkdir()
         (compiled / "index.html").write_text("Unreviewed bundle")
-        restored = specification.build(BuildContext(surface_root=tmp_path / "runtime")).state.application.surface_service
+        restored = specification._build_server(BuildContext(surface_root=tmp_path / "runtime")).state.application.surface_service
         await restored.initialize()
         assert restored.active_path("main").name == first.release
         assert restored.state["main"]["previous"] is None
@@ -473,12 +473,12 @@ def test_device_surfaces_have_independent_initial_bundles_previews_and_rollbacks
             name=name, source=source, build=(sys.executable, "builder.py", "{artifact}"),
             artifact="build", routes=(f"/{name}",),
         ))
-    specification = ApplicationSpec(
+    specification = Application(
         name="Multiple devices", version="1",
         primary_agent=AgentSpec(name="primary", session_mode="durable"),
         surfaces=surfaces, security=Security(),
     )
-    app = specification.build(BuildContext(surface_root=tmp_path / "runtime"))
+    app = specification._build_server(BuildContext(surface_root=tmp_path / "runtime"))
     headers = {"Authorization": "Bearer secret"}
     with TestClient(app) as client:
         for name in ("desktop", "mobile", "quest"):
@@ -496,7 +496,7 @@ def test_device_surfaces_have_independent_initial_bundles_previews_and_rollbacks
         for name in ("desktop", "quest"):
             assert next(item for item in after if item["name"] == name) == next(item for item in before if item["name"] == name)
             assert client.get(f"/{name}/").text == f"Initial {name}"
-    restored = specification.build(BuildContext(surface_root=tmp_path / "runtime"))
+    restored = specification._build_server(BuildContext(surface_root=tmp_path / "runtime"))
     with TestClient(restored) as client:
         assert client.get("/mobile/").text == "Initial mobile"
         assert client.get("/quest/").text == "Initial quest"

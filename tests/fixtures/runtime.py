@@ -10,7 +10,7 @@ class FakeRuntime:
 
     def __init__(self):
         from the_framework.server.runtime.bridge import ApplicationBridge
-        self.application = ApplicationBridge(None)
+        self.bridge = ApplicationBridge(None)
         self.submitted = []
         from types import SimpleNamespace
         self.supervisor = SimpleNamespace(send=self.submit)

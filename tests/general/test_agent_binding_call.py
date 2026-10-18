@@ -6,7 +6,7 @@ import pytest
 
 from the_framework import (
     AgentSpec,
-    ApplicationSpec,
+    Application,
     BuildContext,
     Plugin,
     ServerExtension,
@@ -17,7 +17,7 @@ from the_framework.agent.runtime.protocol import PromptRequest, ShutdownRequest
 from the_framework.agent.runtime.worker import Worker
 from the_framework.plugins.realtime import REALTIME
 from the_framework.plugins.system import SystemExtension
-from the_framework.server.runtime.application import ApplicationRuntime
+from the_framework.server.runtime.session import SessionRuntime
 
 
 @pytest.mark.parametrize("external_first", [False, True])
@@ -34,7 +34,7 @@ def test_agent_tool_changes_binding_without_ending_its_turn(tmp_path, external_f
             async def authorize(self, principal, requirement, request):
                 return False
 
-        spec = ApplicationSpec(
+        spec = Application(
             name="Binding test", version="1", security=Security(),
             primary_agent=AgentSpec(name="agent", session_mode='durable'),
             plugins=(Plugin(name="feature", agent_extension=Feature), Plugin(name="system", agent_extension=SystemExtension),
@@ -59,8 +59,8 @@ def test_agent_tool_changes_binding_without_ending_its_turn(tmp_path, external_f
                 await incoming.put(ShutdownRequest(id="stop"))
                 await self.worker_task
 
-        runtime = ApplicationRuntime(Supervisor())
-        app = ApplicationSpec({**spec, "server_extensions": (ServerExtension(name="runtime", service=runtime),)}).build(
+        runtime = SessionRuntime(Supervisor())
+        app = Application({**spec, "server_extensions": (ServerExtension(name="runtime", service=runtime),)})._build_server(
             BuildContext()
         )
         results = []

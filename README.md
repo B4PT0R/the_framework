@@ -36,7 +36,7 @@ these generated dependencies are not bundled in the wheel.
 
 | Part | What it does | What your application decides |
 | --- | --- | --- |
-| `ApplicationSpec` | Validates and assembles one application | Name, version, plugins, server services, security and client surfaces |
+| `Application` | Validates and assembles one application | Name, version, plugins, server services, security and client surfaces |
 | `AgentSpec` | Describes an agent and its session policy | Instructions, model configuration, tools and resources |
 | `AgentExtension` | Contributes to one agent | Tools, instructions, providers, hooks, configuration and state |
 | `Plugin` | Owns one modular feature, including its agent binding, server runtime and dependencies | Which capabilities exist and when they are exposed |
@@ -49,7 +49,7 @@ Bundled plugins are imported as complete features:
 from the_framework.plugins.scheduler import SCHEDULER
 from the_framework.plugins.system import SYSTEM
 
-# In your ApplicationSpec:
+# In your Application:
 # plugins=(SCHEDULER, SYSTEM)
 ```
 
@@ -84,7 +84,7 @@ available when a simple plugin is not enough. More detail is in the
 
 ## Compose conversation features without rebuilding their transport
 
-`build_conversation()` includes text submission, atomic file attachments and the
+`build()` includes text submission, atomic file attachments and the
 text/voice mode barrier as host services. No chat plugin is needed; `REALTIME`
 optionally adds voice:
 
@@ -93,9 +93,9 @@ from the_framework.plugins.memory import MEMORY
 from the_framework.plugins.registry import REGISTRY
 from the_framework.plugins.realtime import REALTIME
 
-# In your ApplicationSpec:
+# In your Application:
 # plugins=(MEMORY, REGISTRY, REALTIME)
-# build_conversation assembles the supervised runtime from BuildContext(data_root=...).
+# build() assembles the supervised runtime from BuildContext(data_root=...).
 ```
 
 When voice is installed, memory and registry contribute their own live context
@@ -117,7 +117,7 @@ The editable starter's server uses one assembly operation:
 ```python
 from the_framework import BuildContext
 
-app = application.build_conversation(
+app = application.build(
     "my_app.application:application",
     BuildContext(data_root=data_dir),
     security=security,
@@ -199,7 +199,7 @@ repository also includes an [expanded version](https://github.com/B4PT0R/the_fra
 with `modict` request/response models and a health endpoint.
 
 ```python
-from the_framework import ApplicationSpec, AgentSpec, Plugin, endpoint
+from the_framework import Application, Plugin, ServerExtension, endpoint
 from the_framework.server.api.endpoints import Principal
 
 
@@ -238,17 +238,13 @@ class Counter:
         return {"value": self.value}
 
 
-counter = Counter()
-application = ApplicationSpec(
-    name="Counter Agent",
+application = Application(
+    name="Counter Service",
     version="0.1",
-    primary_agent=AgentSpec(
-        name="assistant",
-        description="The application's primary agent",
-        session_mode="durable",
-    ),
     security=BearerSecurity(),
-    plugins=(Plugin(name="counter", server_extension=counter),),
+    plugins=(Plugin(name="counter", server_extension=ServerExtension(
+        name="counter", service_factory=Counter, endpoints="service",
+    )),),
 )
 app = application.build()
 ```

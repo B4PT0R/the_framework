@@ -6,12 +6,12 @@ from .endpoints import HttpError
 
 
 class SurfaceApi:
-    def __init__(self, application_context):
-        self.application_context = application_context
+    def __init__(self, application_host):
+        self.application_host = application_host
 
     @property
     def service(self):
-        return self.application_context.surface_service
+        return self.application_host.surface_service
 
     @endpoint(
         "get", "/api/v1/surfaces",

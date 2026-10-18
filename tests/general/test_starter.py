@@ -1,5 +1,5 @@
 from tests.fixtures.runtime import FakeRuntime
-from the_framework import ApplicationSpec, AgentResources
+from the_framework import Application, AgentResources
 from the_framework.agent.context.session import Session
 from starter.application import application, resources
 
@@ -46,7 +46,7 @@ def test_starter_assembles_without_voice_plugin(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
     from starter import server
 
-    text_only = ApplicationSpec({
+    text_only = Application({
         **application,
         "plugins": tuple(
             plugin for plugin in application.plugins
@@ -105,12 +105,12 @@ def test_starter_without_credentials_remains_available_after_inference_failure(t
     from fastapi.testclient import TestClient
 
     from the_framework.agent.runtime.protocol import PromptRequest
-    from the_framework.server.runtime.application import ApplicationRuntime
+    from the_framework.server.runtime.session import SessionRuntime
     from the_framework.server.runtime.supervisor import WorkerSupervisor
     from starter.server import create_app
 
     session = tmp_path / "session.json"
-    runtime = ApplicationRuntime(WorkerSupervisor(session, command=[
+    runtime = SessionRuntime(WorkerSupervisor(session, command=[
         sys.executable, str(Path(__file__).parents[1] / "fixtures/unauthenticated_worker.py"),
         "--session", str(session), "--application", "starter.application:application",
     ]))

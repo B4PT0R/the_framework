@@ -7,7 +7,7 @@ from itertools import permutations
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from the_framework import ApplicationSpec, AgentSpec, BuildContext, Plugin, ServerExtension
+from the_framework import Application, AgentSpec, BuildContext, Plugin, ServerExtension
 from the_framework.agent.context.session import Session
 from the_framework.agent.models.responses import Message
 from the_framework.plugins.realtime import REALTIME
@@ -29,7 +29,7 @@ class Security:
 
 
 def declaration(*plugins):
-    return ApplicationSpec(
+    return Application(
         name="Conversation", version="1", security=Security(),
         primary_agent=AgentSpec(name="primary", session_mode="durable"),
         plugins=plugins,
@@ -40,9 +40,9 @@ def declaration(*plugins):
 def test_assembly_recreates_one_durable_conversation(tmp_path, monkeypatch, voice):
     module = tmp_path / "assembly_fixture.py"
     module.write_text('''
-from the_framework import ApplicationSpec, AgentSpec
+from the_framework import Application, AgentSpec
 from the_framework.plugins.realtime import REALTIME
-application = ApplicationSpec(name="Fixture", version="1",
+application = Application(name="Fixture", version="1",
     primary_agent=AgentSpec(name="primary", session_mode="durable"),
     plugins=(REALTIME,) if VOICE else ())
 '''.replace("VOICE", str(voice)))
@@ -60,7 +60,7 @@ application = ApplicationSpec(name="Fixture", version="1",
     async def run():
         for _ in range(2):
             context = BuildContext(data_root=root)
-            app = fixture.application.build_conversation(
+            app = fixture.application.build(
                 "assembly_fixture:application", context,
                 security=Security(), handshake=lambda socket: None,
             )
@@ -101,7 +101,7 @@ def test_contributions_are_collected_before_factories_in_any_plugin_order(tmp_pa
     contributor = Plugin(name="context", server_extension=producer)
     for plugins in permutations((REALTIME, contributor)):
         context = BuildContext(data_root=tmp_path)
-        app = declaration(*plugins).build_conversation(
+        app = declaration(*plugins).build(
             "example:application", context, handshake=lambda socket: None,
         )
         api = app.state.application.server_extensions["realtime"].service
@@ -118,7 +118,7 @@ def test_service_factory_cannot_change_contributions(tmp_path):
         return ServerExtension(name="late", service_factory=build)
 
     with pytest.raises(RuntimeError, match="sealed before service construction"):
-        declaration(Plugin(name="late", server_extension=declare)).build(BuildContext())
+        declaration(Plugin(name="late", server_extension=declare))._build_server(BuildContext())
 
 
 def test_services_have_one_lifecycle_owner_and_context_cannot_be_reused(tmp_path):
@@ -135,9 +135,9 @@ def test_services_have_one_lifecycle_owner_and_context_cannot_be_reused(tmp_path
     async def run():
         service = Service()
         context = BuildContext(data_root=tmp_path)
-        app = declaration(Plugin(name="feature", server_extension=service)).build(context)
+        app = declaration(Plugin(name="feature", server_extension=service))._build_server(context)
         with pytest.raises(RuntimeError, match="one application build"):
-            declaration().build(context)
+            declaration()._build_server(context)
         assert "feature" not in context.services
         async with app.router.lifespan_context(app):
             assert context.services["feature"] is service
@@ -152,13 +152,13 @@ def test_services_have_one_lifecycle_owner_and_context_cannot_be_reused(tmp_path
 
 def test_injected_supervisor_cannot_point_to_another_conversation(tmp_path):
     with pytest.raises(ValueError, match="same session"):
-        declaration().build_conversation(
+        declaration().build(
             "example:application", BuildContext(data_root=tmp_path),
             handshake=lambda socket: None,
             supervisor=WorkerSupervisor(tmp_path / "other.json"),
         )
     with pytest.raises(ValueError, match="same application reference"):
-        declaration().build_conversation(
+        declaration().build(
             "example:application", BuildContext(data_root=tmp_path),
             handshake=lambda socket: None,
             supervisor=WorkerSupervisor(tmp_path / "session.json", application_reference="other:application"),
@@ -166,11 +166,11 @@ def test_injected_supervisor_cannot_point_to_another_conversation(tmp_path):
 
 
 def test_conversation_requires_explicit_security_and_socket_handshakes(tmp_path):
-    app = ApplicationSpec({**declaration(), "security": None})
+    app = Application({**declaration(), "security": None})
     with pytest.raises(ValueError, match="security policy"):
-        app.build_conversation("example:application", BuildContext(data_root=tmp_path))
+        app.build("example:application", BuildContext(data_root=tmp_path))
     with pytest.raises(ValueError, match="handshakes"):
-        declaration().build_conversation("example:application", BuildContext(data_root=tmp_path))
+        declaration().build("example:application", BuildContext(data_root=tmp_path))
     assert not list(tmp_path.iterdir())
 
 
@@ -179,9 +179,9 @@ def test_minimal_host_accepts_text_and_files_without_plugins(tmp_path):
     from tests.fixtures.runtime import FakeRuntime
 
     runtime = FakeRuntime()
-    app = declaration().build_conversation(
+    app = declaration().build(
         "example:application", BuildContext(data_root=tmp_path),
-        handshake=lambda socket: None, runtime_factory=lambda supervisor, context: runtime,
+        handshake=lambda socket: None, session_factory=lambda supervisor, context: runtime,
     )
     with TestClient(app) as client:
         assert client.post('/api/v1/agent/prompt', json={

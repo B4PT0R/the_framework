@@ -2,7 +2,7 @@ import asyncio
 import inspect
 import time
 
-from .application import ApplicationError
+from .bridge import ApplicationError
 from .command_loop import CommandLoop
 from ..context.projections import SessionProjections
 from .protocol import (
@@ -75,8 +75,8 @@ class Worker:
         self.binding_lock = asyncio.Lock()
         self.quota = {"quota_5h": None, "quota_7d": None, "quota_updated_at": None}
         self.quota_refresh_task = None
-        if hasattr(agent, "application"):
-            agent.application.bind(self.request_application)
+        if hasattr(agent, "bridge"):
+            agent.bridge.bind(self.request_application)
 
     @staticmethod
     def conversation_projection(items):

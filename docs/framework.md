@@ -58,19 +58,59 @@ or `agent_plugins` import aliases. The wheel isolation test extracts only the
 `the_framework` package, blocks product imports, and constructs the general
 plugins using their packaged Markdown resources.
 
-`ApplicationSpec` is the single root declaration. It owns exactly one durable
-primary `AgentSpec`, the plugin specifications, server extensions, security and
-client surfaces. Calling `compile()` produces an immutable, process-neutral
-plan without invoking server runtime factories. This lets a worker reconstruct
-its agent from the same declaration without server-only inputs. `build(context)`
-resolves those factories and validates the complete server graph before any
-service, route or mount is started.
+`Application` is the reusable root definition. It declares services, plugins,
+client surfaces and optionally a primary `AgentSpec` with additional named agents.
+Constructing the definition or calling `compile()` does not construct services,
+launch workers, open a browser or start a server. Workers compile the same
+importable definition without server credentials or server-only resources.
 
-`app.state.application.plan` keeps that compiled recipe. The resolved server
-declarations live in `app.state.application.server_extensions`, an immutable
-mapping in construction order. Use `app.state.application.service(name)` for a
-successfully started service. Building the same declaration again creates a
-separate runtime without rewriting the recipe.
+`application.build(...)` is the public assembly operation. It returns an independent
+FastAPI/ASGI server; it does not run Uvicorn or enter the server lifespan. With a
+primary agent, it assembles the conversation host, authenticated text/attachment
+routes, voice coordination when installed, and independent session hosting.
+Without a primary agent, it assembles only declared services and client surfaces.
+This is a service-only application, not an implicit fallback when an agent reference
+is missing. An agent application must supply its importable reference and data root.
+
+### Definitions, owners and lifetime
+
+| Object | What it represents | What it owns |
+| --- | --- | --- |
+| `Application` | Reusable, immutable application definition | Agent/plugin/service/surface declarations and composition validation. No live workers. |
+| `ApplicationHost` (`app.state.application`) | One constructed server instance | Service graph, plugin host, shared surfaces, primary session and additional session lifespans. It is created by `build()`, not normally constructed by application code. |
+| `SessionRuntime` | One live conversation on the server side | Its worker supervisor, specialist fleet, event subscribers, command correlation and capability bridge. Each concurrent session gets a separate instance. |
+| `Session` | The worker's canonical conversation data | History, configuration, extension state and plugin bindings; memory-backed or atomically persisted according to its policy. It is not the server-side session controller. |
+| `BuildContext` | Inputs for one server build | Paths, process inputs, plugin options and construction contributions; its read-only service view fills during startup. Create a new context for each build. |
+
+`compile()` returns the validated, process-neutral `ApplicationPlan`. It is a
+recipe, not another resource owner. The host keeps its compiled assembly in
+`host.plan`, its effective access policy in `host.security`, and the reusable
+source definition through `host.definition`. `host.server_extensions` contains resolved
+construction declarations; `host.service(name)` returns a successfully started
+service. `host.primary_session` is the primary `SessionRuntime`.
+`await host.open_session(...)`, `host.list_sessions()` and
+`await host.close_session(id)` manage additional independent sessions.
+
+The definition is reusable; instances supplied directly as `service=...` are
+still caller-owned objects and are not cloned. Use `service_factory=...` to obtain
+an independent instance for each build. Application-scoped services are shared
+across sessions within that host; session-scoped services are constructed for
+each session. Distinct hosts do not share their context or factory-created services.
+Distinct concurrent workers must use distinct session storage paths.
+
+`build()` validates composition and invokes synchronous service factories. The
+ASGI lifespan starts services in dependency order, launches workers and starts
+accepting new sessions. Shutdown first closes hosted sessions, then services in
+reverse order. Building at module import does not enter that lifespan; user
+factories should defer work requiring cleanup to their lifecycle methods.
+The desktop process owner separately binds/listens and runs this ASGI server;
+the persistent browser remains independent of server/session replacement.
+
+An agent's `agent.bridge.call(...)` sends a capability request to its server-side
+`session.bridge`. That bridge is a communication channel, not the application's
+definition or host. An HTTP handler's injected `EndpointContext.application` still
+refers to the live `ApplicationHost`. Wire messages and persisted payloads keep
+their current schemas.
 
 Application code supplies identity, plugins, domain services, policies and UI
 surfaces. The core owns process supervision, ordered commands, lifecycle,
@@ -83,8 +123,7 @@ lifecycle callback:
 
 ```python
 from the_framework import (
-    ApplicationSpec,
-    AgentSpec,
+    Application,
     ServerExtension,
     Plugin,
     endpoint,
@@ -96,14 +135,9 @@ def greeting() -> dict[str, str]:
     return {"message": "hello"}
 
 
-application = ApplicationSpec(
+application = Application(
     name="Example",
     version="1.0",
-    primary_agent=AgentSpec(
-        name="example",
-        description="Example primary agent.",
-        session_mode='durable',
-    ),
     plugins=(Plugin(name="greeting", server_extension=ServerExtension(
         name="greeting_api", endpoints=(greeting,),
     )),),
@@ -112,7 +146,7 @@ application = ApplicationSpec(
 app = application.build()
 ```
 
-The declaration is immutable. `build_application` validates the complete
+The declaration is immutable. `Application.build()` validates the complete
 graph before installing routes: duplicate names and paths, missing or cyclic
 dependencies, malformed JSON schemas, missing security policy and duplicate
 mounts fail immediately with a precise composition error.
@@ -122,7 +156,7 @@ named fields or a mapping; runtime declarations can contain non-JSON references
 without converting or copying those objects. Browser execution handles live in
 attributes outside its configuration mapping. For a coordinated change, rebuild
 the complete declaration, for example
-`ApplicationSpec({**application, "plugins": plugins, "server_extensions": server_extensions})`:
+`Application({**application, "plugins": plugins, "server_extensions": server_extensions})`:
 validation then sees the final state, not intermediate per-key assignments.
 
 ## Adding state and lifecycle
@@ -173,9 +207,9 @@ introduced; model metadata is adapted only at the HTTP/OpenAPI boundary.
 
 ### Primary runtime integration
 
-Installing one `ApplicationRuntime` service through a `ServerExtension` automatically
-connects the plugin host's binding updates and startup snapshot to its worker,
-and registers the agent-facing plugin and installed surface controls. Surface
+For a primary agent, `Application.build()` installs one session-scoped
+`SessionRuntime`, connects the plugin host's binding updates and startup snapshot
+to its worker, and registers agent-facing plugin and installed surface controls. Surface
 initialization belongs to the server lifespan and also works without an agent
 runtime. There is no separate post-build control-registration call.
 
@@ -196,7 +230,7 @@ session writes, and confirms application before the server updates its binding c
 
 ### Standard conversation assembly
 
-`ApplicationSpec.build_conversation(reference, context, ...)` assembles the
+`Application.build(reference, context, ...)` assembles the
 supervised primary worker, runtime, agent HTTP API, health endpoint and both
 WebSocket transports. The reference is the importable `module:application`
 resolved by workers. Authentication stays explicit:
@@ -204,7 +238,7 @@ resolved by workers. Authentication stays explicit:
 ```python
 from the_framework import BuildContext
 
-app = application.build_conversation(
+app = application.build(
     "my_app.application:application",
     BuildContext(data_root=data_dir),
     security=security,
@@ -219,13 +253,15 @@ The declared primary agent name is passed to the supervised worker automatically
 The framework owns construction, ordering and cleanup; it does not start inference
 or perform network authentication during declaration/build.
 
-Advanced applications can pass `runtime_factory(supervisor, context)` to specialize the
+Advanced applications can pass `session_factory(supervisor, context)` to specialize the
 runtime, or inject a supervisor for another worker executable. An injected
 supervisor must refer to the same session and, when declared, application reference.
 `session_projection` selects history presentation, `health_projection(payload)`
 selects diagnostics, and `reset_handler(runtime)` owns selective reset policy.
-`extensions(runtime)` returns application-owned server declarations, such as reset
-endpoints and access middleware. The starter and Harness use this same path.
+`session_extensions(runtime)` returns application-owned declarations for each
+session, such as reset endpoints and access middleware. It is invoked once per
+session, alongside `session_factory`; these callbacks must not cache/reuse a live
+controller across independent sessions. The starter and Harness use this same path.
 
 Set the fixed `restart` input on `BuildContext` for the default runtime's supervised
 restart callback. Runtime subclasses may specialize restart and UI notifications
@@ -259,11 +295,10 @@ configured port for every replacement so the existing page can reconnect.
 `serve(..., parent_stream=...)` optionally stops a child when its parent pipe closes.
 Neither requires a new framework-level supervisor or a process-wide task manager.
 
-`ApplicationSpec.build(context)` remains the low-level server composition operation
-for applications that explicitly assemble their own services or do not need a
-conversation runtime. The former public `application_server_extensions` helper
-has been removed; ordinary conversation applications should migrate to
-`build_conversation` rather than recreate its runtime/API/transport wiring.
+A service-only `Application` omits `primary_agent` and uses
+`application.build(context=BuildContext(...))` when it needs paths or plugin inputs.
+It installs no worker, canonical chat or session-management routes. There is no
+second public conversation builder or helper to reproduce the host wiring.
 
 Server services may call `await runtime.update_config(updates, id=command_id)`
 and `await runtime.apply_event(name, payload, id=event_id)`. Both wait for worker
@@ -283,7 +318,7 @@ Optional failures remain visible without degrading the aggregate. A projection
 may adapt the response to an application's existing client contract.
 
 `FileResetTransaction(root, paths)` supplies the filesystem part of a reset.
-Connect it through `ApplicationRuntime.reset_transaction_factory`; the application
+Connect it through `SessionRuntime.reset_transaction_factory`; the application
 selects which relative paths to remove, while the runtime pauses reset-dependent
 services and restarts its workers. Staging restores original files after a failed
 restart, including removing newly created selected paths. Paths cannot overlap
@@ -372,7 +407,7 @@ or shutdown behavior.
 
 A service that depends on the canonical worker may also need to pause while
 that worker's persisted session is reset. Register a `suspend`/`resume` pair on
-`ApplicationRuntime.register_reset_hooks()` when constructing that service.
+`SessionRuntime.register_reset_hooks()` when constructing that service.
 Normal server startup and shutdown still belong to `ServerExtension` lifecycle;
 reset hooks run only around a session reset, suspend in reverse registration
 order, and resume after either a successful reset or restoration of the previous
@@ -449,7 +484,7 @@ whereas a server extension is a declaration describing a service and its surface
 | `Plugin.requires_capabilities` / `optional_capabilities` | Required or optional versioned contracts from other plugins |
 | `Plugin.agent_binding_enabled` / `agent_binding_required` | Initial and mandatory binding to the primary agent; server installation remains fixed |
 | `ServerExtension.requires_services` / `optional_services` | Names of local services supplied to its factory, in dependency order |
-| `ApplicationSpec.server_extensions` | Application-wide server infrastructure |
+| `Application.server_extensions` | Application-wide server infrastructure |
 | `AgentSpec.extensions` | Contributions installed in that agent |
 | `AgentSpec.specialist_profiles` | Compiled worker profiles; application code normally declares specialists on their owning `Plugin` |
 
@@ -461,7 +496,7 @@ from the_framework.plugins.memory import MEMORY
 from the_framework.plugins.scheduler import SCHEDULER
 from the_framework.plugins.system import SYSTEM
 
-application = ApplicationSpec(
+application = Application(
     name="Example", version="1", primary_agent=primary,
     plugins=(BASH, MEMORY, SCHEDULER, SYSTEM),
 )
@@ -567,7 +602,7 @@ the worker should not even import the server module; the reference is resolved
 only by `build(context)`. For example, a media plugin can own a store, an index and
 an HTTP API, while the application supplies only process-local objects through
 `BuildContext` at server build time. Shared core services still live in
-`ApplicationSpec.server_extensions`: for example, the canonical worker supervisor
+`Application.server_extensions`: for example, the canonical worker supervisor
 and the application-wide transport boundary. Optional feature services belong
 to their `Plugin`.
 
@@ -609,7 +644,7 @@ process-local, not agent-session state or a hot runtime registry.
 
 In a larger codebase, keep the `Plugin` declaration in the feature's package
 alongside its agent class and server runtime factory. Export that object and
-list it in `ApplicationSpec.plugins`; the application assembly then chooses
+list it in `Application.plugins`; the application assembly then chooses
 features without repeating their dependencies or import paths. The starter
 keeps small declarations together in `starter/application.py` so the complete
 example remains easy to read in one place.
@@ -644,8 +679,8 @@ the declaration defaults.
 
 ### Independent application sessions
 
-`build_conversation()` keeps the existing `/api/v1/...` API for the default
-session. `ApplicationSpec.agents` optionally declares other selectable agents.
+`build()` keeps the existing `/api/v1/...` API for the default
+session. `Application.agents` optionally declares other selectable agents.
 Authenticated consumers can create or reopen sessions with
 `POST /api/v1/sessions` (`agent`, optional `session_id`, `durable`, default true),
 list them with `GET /api/v1/sessions`, and stop an additional worker with
@@ -872,7 +907,7 @@ dependency order, while collected contributions do not rely on that order.
 Paired-client records are not rewritten by policy composition.
 
 Authenticated endpoints require an explicit application `SecurityPolicy`.
-There is no implicit allow-all policy in `ApplicationSpec`. The registry:
+There is no implicit allow-all policy in `Application`. The registry:
 
 1. authenticates the request;
 2. evaluates the endpoint's authorization requirement;
@@ -985,7 +1020,7 @@ An extension producing a file can use the same service without a second model
 call or an explicit display tool invocation:
 
 ```python
-payload = await self.agent.application.call(
+payload = await self.agent.bridge.call(
     "artifacts", "publish", {"kind": "image", "payload": {"path": result_path}},
 )
 return Artifact(kind="image", payload=payload)
@@ -1041,14 +1076,16 @@ Applications retain their own prompts, defaults and specialized context producer
 No product import is required by these shared mechanisms. Runtime observers use
 `register_observer`/`unregister_observer`.
 
-An `ApplicationRuntime(WorkerSupervisor(session_path))` can be installed as an
-`ServerExtension` service, with `CanonicalAgentApi` endpoints in a dependent extension.
-For a declared application, pass `application_reference="my_app:application"`
-to `WorkerSupervisor`, with optional `agent_name` and process-local `application_root`.
+Use `Application.build(..., session_factory=...)` when a session needs a
+specialized `SessionRuntime`, as the Harness does. The factory receives its worker
+supervisor and build context; return a new controller for every invocation. The
+builder still owns the canonical APIs, transport and lifecycle wiring. Do not add
+a second runtime service manually. For a custom worker executable, the advanced
+`supervisor` input accepts a `WorkerSupervisor(command=...)`; custom commands cannot
+be combined with its declaration-derived application/agent inputs.
 The default fleet uses the same application reference to build private agents;
-no custom worker command or forwarding fleet factory is needed. A custom
-`command` remains available for other worker executables, and cannot be combined
-with these declaration inputs; custom fleet factories remain explicit overrides.
+no forwarding worker command or fleet factory is needed. Custom fleet factories
+remain explicit session-runtime overrides.
 The default generic worker persists history, configuration, plugin state and
 bindings in its canonical session. Declare a
 `resources(session_path) -> AgentResources` factory for initial configuration,
@@ -1066,13 +1103,13 @@ The public `the_framework.server` package exports reusable pieces for common age
   interruption and application-defined atomic reset;
 - `ApplicationHealthApi` for aggregate and per-service lifecycle health;
 - `CanonicalTransportSockets` for ordered agent events and the application
-  capability bridge. `build_conversation()` exposes it as the
+  capability bridge. `build()` exposes it as the
   `canonical_transport` service. Its `event_connection_count` counts accepted
   canonical event sockets, separately from internal stream consumers, the
   application bridge and paired remote connections. Connectivity does not imply
   window visibility or user attention; product presence policy belongs to the app;
-- `ApplicationSpec`, `ServerExtension`, `Plugin`, `WebSocketEndpoint` and
-  `build_application` for composition.
+- `Application`, `ServerExtension`, `Plugin`, `WebSocketEndpoint` and
+  `Application.build()` for composition.
 
 ## Versioned client surfaces
 
@@ -1163,7 +1200,7 @@ validated and installed with the rest of the graph, whether that extension is
 declared directly by the application or owned by a plugin. Mounted ASGI apps
 handle their own request authentication; the framework's `@endpoint` security
 policy does not automatically wrap arbitrary mounts. Product code should not
-add routes, middleware or mounts after `build_application()`.
+add routes, middleware or mounts after `Application.build()`.
 
 ## Standalone example
 
@@ -1178,11 +1215,11 @@ uvicorn examples.minimal_agent_app:app
 
 ## The Harness as a larger application example
 
-The separate The Harness application uses the same `ApplicationSpec` and
+The separate The Harness application uses the same `Application` and
 `Plugin` API as the starter. Its declaration supplies one primary agent,
 product plugins, their versioned dependencies and a multi-device client
 surface. The server entrypoint supplies process-local inputs through
-`BuildContext` and calls `build_conversation`, which owns the canonical runtime
+`BuildContext` and calls `build`, which owns the canonical runtime
 assembly.
 Each installed plugin constructs its own services and routes through the shared
 dependency graph: for example, the Realtime plugin owns its controller-facing
@@ -1199,7 +1236,7 @@ application-specific policy.
 
 The framework follows progressive disclosure:
 
-- **simple:** `ApplicationSpec`, `ServerExtension`, `Plugin`, conventional
+- **simple:** `Application`, `ServerExtension`, `Plugin`, conventional
   service lifecycle;
 - **composable:** capabilities, dependencies, decorated endpoint objects,
   middleware, mounts, named projections and plugin specifications;
@@ -1213,12 +1250,12 @@ the application's extensions.
 
 ## Canonical chat and optional live context
 
-`ApplicationSpec.build_conversation()` installs the host-owned `chat` service,
+For an application declaring a primary agent, `Application.build()` installs the host-owned `chat` service,
 including `POST /api/v1/agent/prompt` and `POST /api/v1/agent/attachments`.
 It is part of the conversation assembly, absent from the plugin catalogue, and
 cannot be disabled through plugin controls. A client can omit the chat UI while
-keeping these APIs available. `ApplicationSpec.build()` remains a lower-level
-assembly without implicit conversation services.
+keeping these APIs available. An application without a declared primary agent
+has no conversation services.
 Both accept a client-generated command `id`; attachments use multipart form data
 with `files` and an optional `prompt`. The service coordinates with the installed
 Realtime API's lock, so attachment acceptance and voice startup cannot race.

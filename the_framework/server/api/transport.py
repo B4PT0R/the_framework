@@ -67,7 +67,7 @@ class CanonicalTransportSockets:
         if connection.get('client_role', 'primary') != 'primary':
             await socket.close(code=1008)
             return
-        await self.runtime.application.serve(
+        await self.runtime.bridge.serve(
             socket, subprotocol=connection["subprotocol"],
         )
 

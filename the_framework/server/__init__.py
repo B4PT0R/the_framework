@@ -1,16 +1,15 @@
 from .api.declarations import Endpoint, endpoint
 from .runtime.reset import FileResetTransaction
-from .runtime.application import ApplicationRuntime, InvalidWorkerResult
+from .runtime.session import SessionRuntime, InvalidWorkerResult
 from .api.agent import CanonicalAgentApi
 from .composition.application import (
-    ApplicationSpec,
+    Application,
     BuildContext,
     Capability,
     CapabilityRequirement,
     ClientSurface,
     ServerExtension,
     Plugin,
-    build_application,
 )
 from .api.health import ApplicationHealthApi
 from .composition.plugins import PluginHost, PluginStatus
@@ -25,10 +24,10 @@ __all__ = [
     "Endpoint",
     "endpoint",
     "ApplicationHealthApi",
-    "ApplicationRuntime",
+    "SessionRuntime",
     "InvalidWorkerResult",
     "FileResetTransaction",
-    "ApplicationSpec",
+    "Application",
     "BuildContext",
     "Capability",
     "CapabilityRequirement",
@@ -47,6 +46,5 @@ __all__ = [
     "SurfaceApi",
     "SurfaceService",
     "WebSocketEndpoint",
-    "build_application",
     "websocket",
 ]

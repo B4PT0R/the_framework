@@ -11,8 +11,16 @@ file records the constraints to preserve when changing the framework.
   features outside `the_framework`. Dependencies point from applications to the
   framework, never the reverse. The starter must depend on `the_framework`, not
   on any particular application.
-- An `ApplicationSpec` declares a default agent and may host independent concurrent
-  sessions. Each session has exactly one worker/history writer and owns its durable
+- `Application` is a reusable immutable definition; `build()` creates an independent
+  ASGI server, whose lifespan owns startup/shutdown. It integrates conversation
+  when a primary agent is declared; a service-only app omits that agent. There is
+  no second public conversation builder. `app.state.application` is its
+  `ApplicationHost`, with `definition`, effective `security`, shared services and
+  `primary_session`. `SessionRuntime` owns one conversation's worker/fleet/events;
+  `Session` remains canonical data. The agent/server capability channel is `bridge`,
+  not another object named application. Advanced `session_factory` and
+  `session_extensions` run for every session and must not reuse a live controller.
+- An application with a default agent may host independent concurrent sessions. Each session has exactly one worker/history writer and owns its durable
   configuration, extension state and plugin bindings. Private specialists are agents
   with their own session; they never write into the caller history. Results return
   as ordered caller input; transient activity is routed only to that caller. The

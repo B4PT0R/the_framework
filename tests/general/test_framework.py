@@ -4,13 +4,13 @@ from fastapi.testclient import TestClient
 
 from the_framework.server import endpoint
 from the_framework.server.composition.application import (
-    ApplicationSpec,
+    Application,
     BuildContext,
     Capability,
     CapabilityRequirement,
     ServerExtension,
     Plugin,
-    build_application,
+    _assemble_server,
 )
 from the_framework.server.api.health import ApplicationHealthApi
 from the_framework.server.api.endpoints import Principal
@@ -39,7 +39,7 @@ class Service:
 
 
 def application(name, version="1", **options):
-    return ApplicationSpec(
+    return Application(
         name=name,
         version=version,
         primary_agent=AgentSpec(
@@ -62,7 +62,7 @@ def test_compile_rejects_shared_service_names_before_construction(application_ow
         ),
     )
     with pytest.raises(ValueError, match="duplicate plugin runtime extension: shared"):
-        spec.build()
+        spec._build_server()
     assert constructed == []
 
 
@@ -98,7 +98,7 @@ def test_plugin_runtime_factories_follow_capability_dependencies():
         ),
     ))
 
-    spec.build()
+    spec._build_server()
     assert built == ["provider", "consumer"]
 
 
@@ -125,7 +125,7 @@ def test_failed_capability_provider_prevents_dependent_service_start():
                 name="provider_service", service=Unavailable(events), critical=False,
             ),
         ),
-    )).build()
+    ))._build_server()
 
     with TestClient(app):
         graph = app.state.application.service_graph
@@ -157,7 +157,7 @@ def test_single_service_plugin_needs_no_extension_boilerplate(factory):
 
     counter = Counter()
     runtime = (lambda _context: counter) if factory else counter
-    app = application("Counter", plugins=(Plugin(name="counter", server_extension=runtime),)).build()
+    app = application("Counter", plugins=(Plugin(name="counter", server_extension=runtime),))._build_server()
     extension = app.state.application.server_extensions["counter"]
     assert extension.name == "counter"
     assert extension.service is counter
@@ -167,11 +167,11 @@ def test_single_service_plugin_needs_no_extension_boilerplate(factory):
     assert events == ["start", "stop"]
 
     with pytest.raises(TypeError, match="must be a server service"):
-        application("Invalid", plugins=(Plugin(name="invalid", server_extension=object()),)).build()
+        application("Invalid", plugins=(Plugin(name="invalid", server_extension=object()),))._build_server()
 
 
 def test_compile_rejects_private_agent_shadowing_primary():
-    spec = ApplicationSpec(
+    spec = Application(
         name="collision", version="1",
         primary_agent=AgentSpec(name="plugin.agent", session_mode='durable'),
         plugins=(Plugin(name="plugin", specialists=(AgentSpec(name="agent"),)),),
@@ -233,7 +233,7 @@ def test_application_spec_builds_a_small_complete_server():
             ),
         ),
     )
-    app = build_application(spec)
+    app = _assemble_server(spec)
 
     with TestClient(app) as client:
         assert events == ["start"]
@@ -270,17 +270,17 @@ def test_application_spec_builds_a_small_complete_server():
 
 def test_composition_errors_are_reported_before_the_server_starts():
     with pytest.raises(ValueError, match="unknown.*missing"):
-        build_application(application(
+        _assemble_server(application(
             "Broken", "1", server_extensions=(ServerExtension(name="api", requires_services=("missing",)),)
         ))
 
     with pytest.raises(ValueError, match="security policy"):
-        build_application(application(
+        _assemble_server(application(
             "Unsafe", "1", server_extensions=(ServerExtension(name="api", endpoints=(echo,)),)
         ))
 
     with pytest.raises(ValueError, match="duplicate application endpoint"):
-        build_application(application(
+        _assemble_server(application(
             "Duplicate",
             "1",
             security=Security(),
@@ -291,7 +291,7 @@ def test_composition_errors_are_reported_before_the_server_starts():
         ))
 
     with pytest.raises(ValueError, match="cyclic application extension"):
-        build_application(application(
+        _assemble_server(application(
             "Cyclic",
             "1",
             server_extensions=(
@@ -313,8 +313,8 @@ def test_server_build_keeps_the_compiled_recipe_and_resolves_independent_instanc
     declaration = ServerExtension(name="service", service_factory=lambda: object())
     spec = application("Independent builds", server_extensions=(declaration,))
     plan = spec.compile()
-    first = spec.build().state.application
-    second = spec.build().state.application
+    first = spec._build_server().state.application
+    second = spec._build_server().state.application
 
     assert first.plan == second.plan == plan
     assert first.plan.application is spec
@@ -329,7 +329,7 @@ def test_server_build_keeps_the_compiled_recipe_and_resolves_independent_instanc
 def test_extension_factory_receives_its_named_service_dependencies():
     events = []
     dependency = Service(events)
-    app = build_application(application(
+    app = _assemble_server(application(
         "Factories",
         server_extensions=(
             ServerExtension(name="dependency", service=dependency),
@@ -362,7 +362,7 @@ def test_factory_injection_separates_inputs_from_additional_ordering_constraints
         ServerExtension(name="barrier", service_factory=lambda: constructed.append("barrier") or object()),
         ServerExtension(name="dependency", service=dependency),
     ))
-    app = spec.build()
+    app = spec._build_server()
     assert constructed == ["barrier", (dependency, "fallback")]
     assert tuple(app.state.application.server_extensions) == ("barrier", "dependency", "consumer")
 
@@ -370,7 +370,7 @@ def test_factory_injection_separates_inputs_from_additional_ordering_constraints
     with pytest.raises(ValueError, match="unknown.*dependency"):
         application("Missing factory input", server_extensions=(
             ServerExtension(name="consumer", service_factory=build),
-        )).build()
+        ))._build_server()
     assert constructed == []
 
 
@@ -380,7 +380,7 @@ def test_factory_injection_keeps_explicit_keyword_dependency_adapter():
         ServerExtension(name="consumer", service_factory=lambda **services: services,
                         requires_services=("dependency",)),
         ServerExtension(name="dependency", service=dependency),
-    )).build()
+    ))._build_server()
     assert app.state.application.server_extensions["consumer"].service == {"dependency": dependency}
 
 
@@ -410,7 +410,7 @@ def test_extension_factory_discovers_its_services_websockets():
                 path="/feature/events", handler=self.handle, authenticated=False,
             ),)
 
-    app = build_application(application(
+    app = _assemble_server(application(
         "Service sockets",
         server_extensions=(ServerExtension(
             name="feature", service_factory=SocketService,
@@ -423,7 +423,7 @@ def test_extension_factory_discovers_its_services_websockets():
             assert socket.receive_json() == {"status": "ready"}
 
     with pytest.raises(ValueError, match="without websocket_declarations"):
-        build_application(application(
+        _assemble_server(application(
             "Missing sockets",
             server_extensions=(ServerExtension(
                 name="feature", service=object(), websockets="service",
@@ -432,7 +432,7 @@ def test_extension_factory_discovers_its_services_websockets():
 
 
 def test_plugin_agent_binding_can_be_disabled_while_runtime_is_installed():
-    app = build_application(application(
+    app = _assemble_server(application(
         "Disabled Bundle",
         "1",
         plugins=(Plugin(
@@ -476,12 +476,12 @@ def test_compiler_keeps_server_factories_out_of_worker_projection():
     assert observed == []
     assert tuple(plan.agents) == ("memory.curator", "primary")
     assert plan.capabilities["memory.curate"].version == 2
-    app = spec.build(BuildContext({"marker": "resolved"}))
+    app = spec._build_server(BuildContext({"marker": "resolved"}))
     assert observed == ["resolved"]
     assert "memory_runtime" in app.state.application.server_extensions
 
 
-def test_importable_runtime_factory_is_resolved_only_for_server_build(monkeypatch):
+def test_importable_session_factory_is_resolved_only_for_server_build(monkeypatch):
     from types import SimpleNamespace
     from the_framework.server.composition import application as composition
 
@@ -499,7 +499,7 @@ def test_importable_runtime_factory_is_resolved_only_for_server_build(monkeypatc
     ),))
     spec.compile()
     assert imported == []
-    app = spec.build(BuildContext({"name": "feature_runtime"}))
+    app = spec._build_server(BuildContext({"name": "feature_runtime"}))
     assert imported == ["feature.server"]
     assert "feature_runtime" in app.state.application.server_extensions
 
@@ -536,7 +536,7 @@ def test_optional_capability_orders_present_provider_without_requiring_installat
     )
     with_provider = application(
         "With optional provider", plugins=(consumer_plugin, provider_plugin),
-    ).build(BuildContext())
+    )._build_server(BuildContext())
     assert observed == [(True, False, prepared)]
     assert tuple(with_provider.state.application.server_extensions) == (
         "provider_runtime", "consumer_runtime",
@@ -544,7 +544,7 @@ def test_optional_capability_orders_present_provider_without_requiring_installat
 
     without_provider = application(
         "Without optional provider", plugins=(consumer_plugin,),
-    ).build(BuildContext())
+    )._build_server(BuildContext())
     assert observed == [(True, False, prepared), (False, False, None)]
     assert "provider_runtime" not in without_provider.state.application.server_extensions
 
@@ -573,13 +573,13 @@ def test_optional_extension_service_is_ordered_and_injected_only_if_installed():
     )
     installed = application("With service", server_extensions=(
         consumer, ServerExtension(name="provider_service", service=provider),
-    )).build()
+    ))._build_server()
     assert tuple(installed.state.application.server_extensions) == (
         "provider_service", "consumer",
     )
     assert observed == [provider]
 
-    absent = application("Without service", server_extensions=(consumer,)).build()
+    absent = application("Without service", server_extensions=(consumer,))._build_server()
     assert tuple(absent.state.application.server_extensions) == ("consumer",)
     assert observed == [provider, None]
 
@@ -587,7 +587,7 @@ def test_optional_extension_service_is_ordered_and_injected_only_if_installed():
         application("Optional cycle", server_extensions=(
             consumer,
             ServerExtension(name="provider_service", requires_services=("consumer",)),
-        )).build()
+        ))._build_server()
     with pytest.raises(ValueError, match="duplicate extension dependency"):
         ServerExtension(name="duplicate", requires_services=("provider_service",),
                   optional_services=("provider_service",))
@@ -600,7 +600,7 @@ def test_extension_discovers_decorated_methods_from_an_object():
             """Read through an endpoint source object."""
             return {"ok": True}
 
-    app = build_application(application(
+    app = _assemble_server(application(
         "Object endpoints",
         server_extensions=(ServerExtension(name="api", endpoints=(Api(),)),),
     ))
@@ -610,7 +610,7 @@ def test_extension_discovers_decorated_methods_from_an_object():
 
 
 def test_application_accepts_an_in_memory_default_agent():
-    application = ApplicationSpec(
+    application = Application(
         name="In-memory application", version="1",
         primary_agent=AgentSpec(name="primary", session_mode="ephemeral"),
     )
@@ -686,7 +686,7 @@ def test_custom_websocket_handshake_injects_protocol_context():
         await socket.accept(subprotocol=connection["subprotocol"])
         await socket.send_json({"client_id": connection["client_id"]})
 
-    app = build_application(application(
+    app = _assemble_server(application(
         "Socket App",
         "1",
         server_extensions=(
