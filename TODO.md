@@ -618,3 +618,69 @@ modifié et aucune intervention sur les processus utilisateur.
   Un scroll livré avant le load ne désactive plus le suivi. Régression durable
   rouge/verte dans le Harness ; 155 tests Harness, 53/25 JS, builds et scénario
   Chromium de récupération du starter réussis.
+
+## Revue après les finitions du chemin nominal — 18 octobre
+
+Revue seulement ; aucun changement de runtime ou de contrat proposé ci-dessous
+n'est encore implémenté. Le socle nominal est désormais compact ; ne pas chercher
+à remplacer Application/AgentSpec/Plugin/ServerExtension/BuildContext par un nouveau
+vocabulaire de managers, ni refondre les modèles de payload.
+
+Priorités proposées :
+
+1. **Clarifier les contributions serveur de Plugin.**
+   `server_extension` accepte une déclaration, un tuple, une référence importable,
+   un builder appelé avec context, et un service brut reconnu par introspection.
+   Ce builder de déclarations n'a pas le même contrat que service_factory, qui
+   reçoit context et ses services par paramètres nommés. Faire des ServerExtension
+   explicites le chemin unique des services ; retirer l'enveloppement implicite des
+   services bruts si aucun besoin concret ne le justifie. Conserver une voie avancée
+   identifiable pour la collecte des contributions et les groupes de services,
+   nécessaire à mémoire/registre/voix : ne pas la remplacer par une factory de service
+   exécutée trop tard. Résoudre les références avant le DAG, compiler les workers
+   sans importer les implémentations serveur et garder l'indépendance de l'ordre.
+   Ne pas ajouter une nouvelle classe de builder pour normaliser ces formes.
+
+2. **Alléger l'héritage des services application dans les sessions.**
+   `_assemble_server` recompile/résout les déclarations pour chaque session puis
+   recopie les extensions partagées avec routes masquées et start/stop remplacés
+   par des callbacks neutres avant de les inclure dans son ServiceGraph. Le contrat
+   public de scope est bon ; c'est cette représentation interne qui mérite un tri.
+   Étudier un lookup des ressources partagées sans les représenter comme services
+   appartenant au cycle de vie local. Réutiliser les parties invariantes du plan
+   seulement après avoir identifié les builders dépendant réellement du contexte
+   de session ; ne pas mettre en cache aveuglément leurs contributions.
+   Garanties : un seul démarrage/arrêt des services application, contexte/voix/
+   bindings privés par session, diagnostics exacts, échec d'ouverture isolé,
+   fermeture d'une session sans effet sur les autres et routes non dupliquées.
+
+3. **Finir le chemin rapide de la CLI.**
+   `run_application` appelle `prepare` ; uv sync et playwright install chromium
+   restent exécutés à chaque appel. Seuls npm ci/build ont actuellement des
+   checkpoints. Étudier une vérification rapide des prérequis réellement présents
+   et des entrées modifiées, avec préparation/reprise si nécessaire. Ne pas déduire
+   la présence d'un environnement ou navigateur d'un simple marqueur périmé ; garder
+   prepare explicite pour réparation et aucun nouveau propriétaire desktop.
+
+4. **Polir le vocabulaire public, sans multiplier les primitives.**
+   La racine exporte tool/provider/endpoint mais pas command/hook/agent_trigger/
+   websocket : rendre le chemin d'import des décorateurs homogène et documenter
+   le niveau avancé, sans réexporter tout le runtime. Le nom de projection `remote`
+   désigne en réalité chat + appels de fonctions, pas une politique de sécurité ni
+   un type de device : envisager un nom décrivant le contenu quand ces vues seront
+   revues. Une interface distante n'exige pas nécessairement cette présentation.
+
+À conserver : scopes application/session, séparation déclaration/construction/
+démarrage, capacités versionnées entre plugins et dépendances de services à
+l'intérieur d'un assemblage. Ces dernières ne sont pas deux API interchangeables :
+la capacité est un contrat fonctionnel, le nom de service organise sa réalisation.
+Garder les politiques de sécurité du produit et ses handshakes explicites ; enlever
+une lambda ne justifie pas de réinventer authentification ou négociation de protocole.
+Conserver aussi les classes de payload et les projections Responses/Realtime.
+
+Ordre recommandé : contributions serveur, puis héritage des ressources partagées ;
+CLI comme tranche indépendante. Les retouches de vocabulaire sont secondaires.
+
+Validation de la revue : 51 tests ciblés service_construction, application_sessions,
+plugin_host, framework_bootstrap et live_context_composition réussis. Aucun changement
+exécutable, aucune relance de l'installation ; suite complète non répétée.
