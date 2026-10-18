@@ -55,6 +55,41 @@ conceptuelle totale. Ces notes ne constituent pas des demandes de refonte imméd
   mais les factories sont exécutées avant le cycle de vie et peuvent interrompre
   l'assemblage complet. Ne pas confondre composition et isolation des pannes.
 
+## Relecture avant refonte — prérequis ciblés, 18 octobre
+
+- [ ] **Navigateur agentique fiable.** Reproduction isolée avec Chromium : après
+  avoir masqué Chat et affiché Retour, le nouvel identifiant de Retour désigne
+  deux nœuds DOM. `SNAPSHOT_SCRIPT` réattribue les numéros sans nettoyer les
+  anciens attributs. Corriger capture/résolution et verrouiller le changement de
+  vue. Diagnostiquer séparément le timeout RPC de fermeture d'aperçu déjà observé
+  dans le Harness ; la cause exacte n'est pas encore établie.
+- [ ] **Finir les frontières des plugins.** Déplacer `_memory_candidates` et la
+  connaissance de `relevant_memory`/du XML mémoire hors de RealtimeExtension, dans
+  le plugin mémoire, en réutilisant les contributions de contexte existantes.
+  Supprimer la migration automatique des références `*Plugin`/`.plugin` dans
+  `AgentSpec.from_profile` et actualiser les fixtures ; ne pas intégrer de migration
+  au runtime. Le profil d'exécution lui-même sera revu avec l'API des agents.
+- [ ] **Décodage indépendant des noms Python.** `TypedBase.type_cls` reconstruit
+  un nom de classe à partir du tag au lieu de résoudre le `type` déclaré. Sonde
+  confirmée : `WeatherReport(type="weather.updated")` ne se reconstruit pas via
+  Event.from_dict. C'est une convention actuelle documentée, mais un couplage à
+  supprimer avant les renommages ; conserver le refus des événements inconnus
+  et des champs non déclarés. Éviter d'ajouter un nouveau vocabulaire de registre.
+- [ ] **Dégradation d'un service optionnel.** Sonde confirmée : une factory qui
+  lève avec `critical=False` interrompt build(), avant le graphe de cycle de vie.
+  Distinguer déclaration invalide (erreur de composition) et service optionnel
+  indisponible (dégradation), avec traitement cohérent des dépendants et maintien
+  du chat. Fixer ce contrat avant de remodeler l'objet Application.
+
+Les propriétaires ApplicationSpec/ApplicationContext/ApplicationRuntime, les scopes
+application/session, les formes Plugin/AgentExtension/ServerExtension et le trajet
+AgentSpec/WorkerProfile relèvent de la refonte elle-même. Ne pas les restructurer
+une première fois au seul titre du nettoyage. Sécurité locale/distante et nouveau
+client mobile restent des sujets dédiés, sans extraction automatique supplémentaire.
+
+Audit : lecture du Framework/Harness, trois sondes ponctuelles, aucun code runtime
+modifié et aucune intervention sur les processus utilisateur.
+
 ## Livré dans cette passe
 
 - [x] **Sessions indépendantes — 18 octobre.** ApplicationContext héberge des
