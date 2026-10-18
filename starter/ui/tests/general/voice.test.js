@@ -299,3 +299,31 @@ test("a failed graceful suspension keeps the old call available instead of forci
   assert.equal(closed, 0);
   await voice.stop();
 });
+
+
+test("agent controls start once and only stop the matching call", async () => {
+  let opened = 0, closed = 0;
+  const requests = [];
+  const voice = voiceSession(
+    async (path, options) => { requests.push([path, options]); return {}; },
+    {}, () => {}, assert.fail,
+    async (transport) => {
+      opened++;
+      await transport.startRealtime("offer");
+      return { close() { closed++; } };
+    },
+  );
+  await voice.control({ action: "start" });
+  await voice.control({ action: "start" });
+  assert.equal(opened, 1);
+  const id = requests[0][1].body.call_id;
+  await voice.control({ action: "stop", call_id: "stale" });
+  assert.equal(closed, 0);
+  await voice.control({ action: "stop", call_id: id });
+  assert.equal(closed, 1);
+  await voice.control({ action: "start" });
+  await voice.control({ action: "stop", call_id: id });
+  assert.equal(closed, 1);
+  await voice.stop();
+  assert.equal(closed, 2);
+});

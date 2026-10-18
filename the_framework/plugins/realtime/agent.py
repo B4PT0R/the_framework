@@ -2,7 +2,7 @@ import hashlib
 
 from modict import modict
 
-from the_framework.agent import Artifact, Config, Image, Message, AgentExtension, hook, token_count
+from the_framework.agent import Artifact, Config, Image, Message, AgentExtension, hook, token_count, tool
 
 class RealtimeConfig(Config):
     model: str = "gpt-live-1-codex"
@@ -49,6 +49,21 @@ class RealtimeExtension(AgentExtension):
     config = RealtimeConfig
     instruction_scope = "vocal"
     instructions_file = None
+
+    @tool
+    async def session_status(self):
+        """Inspect the active voice session and any pending start or graceful stop."""
+        return await self.agent.bridge.call("realtime", "status", {}, timeout_ms=10_000)
+
+    @tool
+    async def start_session(self):
+        """Request voice on the primary interface after this agent turn. Requires user consent to open the microphone; browser permissions still apply. Acceptance is not confirmation that audio is connected."""
+        return await self.agent.bridge.call("realtime", "start", {}, timeout_ms=10_000)
+
+    @tool
+    async def stop_session(self):
+        """Request voice shutdown after this delegated result and its spoken turn finish. Never cuts off the current phrase. Acceptance is not confirmation that the call has ended."""
+        return await self.agent.bridge.call("realtime", "stop", {}, timeout_ms=10_000)
 
     @staticmethod
     def _text(message):

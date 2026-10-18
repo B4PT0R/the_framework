@@ -621,6 +621,14 @@ through `BuildContext(plugins={"system": {"state_path": path}})`. System restart
 uses the runtime's application-owned `restart_server` operation when configured.
 The neutral realtime plugin exposes call creation/readiness/stop endpoints and
 its controller, with an optional `realtime.client_factory` plugin option.
+Its agent tools `start_session`, `stop_session` and `session_status` control the
+same call. Start/stop acknowledge a deferred request, not a completed transition:
+execution waits for the originating agent command to finish. Start targets only
+the primary interface (never previews), subject to browser microphone permission.
+Stop drains the current spoken response, including a delegated tool result,
+before closing the call; it never blocks the tool result needed for that response.
+Status reports the active call and any pending request. Control failures are
+published to clients without claiming the requested transition succeeded.
 The browser uses the process-local `agent.application_root`, where a browser RPC
 host must be running. This application root stays shared when an agent uses a
 separate session directory. `agent.session_root` locates per-session resources,

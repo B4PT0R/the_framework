@@ -107,3 +107,30 @@ def test_preview_cannot_claim_the_application_bridge_even_without_a_principal():
         assert socket.closed == 1008
         assert not runtime.bridge.connected
     asyncio.run(run())
+
+
+def test_direct_control_targets_only_the_primary_socket():
+    async def run():
+        sockets = transport(SessionRuntime(SimpleNamespace()))
+        with pytest.raises(RuntimeError):
+            await sockets.send_primary({"type": "control"})
+        first, preview = Socket(), Socket()
+        sent = []
+        async def record(output):
+            sent.append(output)
+        first.send_json = record
+        tasks = [asyncio.create_task(sockets.serve_events(socket, {
+            "subprotocol": "events", "client_role": role,
+        })) for socket, role in ((first, "primary"), (preview, "preview"))]
+        try:
+            await first.accepted.wait()
+            await preview.accepted.wait()
+            await sockets.send_primary({"type": "control"})
+            assert sent == [{"type": "control"}]
+        finally:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+        with pytest.raises(RuntimeError):
+            await sockets.send_primary({"type": "control"})
+    asyncio.run(run())

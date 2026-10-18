@@ -66,6 +66,13 @@ class CanonicalTransportSockets:
             if self._primary_socket is socket:
                 self._primary_socket = None
 
+    async def send_primary(self, output):
+        """Send a client operation only to the exclusive primary event connection."""
+        socket = self._primary_socket
+        if socket is None:
+            raise RuntimeError("The primary interface is not connected")
+        await socket.send_json(output)
+
     async def stop(self):
         """Close this session's event connections on lifecycle shutdown."""
         for socket in tuple(self._sockets):

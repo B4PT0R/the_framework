@@ -50,3 +50,14 @@ class RealtimeReconnectRequested(LocalEvent):
 class RealtimeRestarting(LocalEvent):
     """The owning client should retain voice intent until the server returns."""
     call_id: str
+
+
+class RealtimeControlRequested(LocalEvent):
+    """A client action: starts target the primary transport, stops a matching call."""
+    action: Literal["start", "stop"]
+    call_id: str | None = None
+
+
+class RealtimeControlFailed(LocalEvent):
+    action: Literal["start", "stop"]
+    error: str

@@ -6,7 +6,7 @@ REALTIME = Plugin(
     server_extensions=ServerExtension(
         name="realtime", scope="session",
         service_factory="the_framework.plugins.realtime.server:build_service",
-        stop=lambda service, _context: service.stop(),
+        stop=lambda service, _context: service.shutdown(),
     ),
     configure="the_framework.plugins.realtime.server:configure",
     provides_capabilities=(Capability(name="realtime.session", version=1),),

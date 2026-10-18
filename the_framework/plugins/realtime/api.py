@@ -4,11 +4,12 @@ import asyncio
 import logging
 
 from the_framework import endpoint
-from the_framework.agent.runtime.protocol import SessionSnapshotRequest, StatusRequest
+from the_framework.agent.runtime.protocol import CommandCompleted, CommandFailed, SessionSnapshotRequest, StatusRequest
 from the_framework.server.api.endpoints import HttpError
 from the_framework.utils.ids import timestamp_id
 
-from .events import RealtimeReconnectRequested, RealtimeRestarting
+from .events import (RealtimeControlFailed, RealtimeControlRequested,
+                     RealtimeReconnectRequested, RealtimeRestarting)
 
 CALL_REQUEST = {"type": "object", "properties": {
     "call_id": {"type": "string", "minLength": 1, "maxLength": 200},
@@ -19,13 +20,85 @@ logger = logging.getLogger(__name__)
 
 
 class RealtimeApi:
-    def __init__(self, runtime, controller):
+    def __init__(self, runtime, controller, transport=None):
         self.runtime = runtime
+        self.transport = transport
+        self.control_request = None
+        self.control_task = None
         self.controller = controller
         self.lock = asyncio.Lock()
         self.call_id = None
         self._reconnect_tasks = set()
         self.restarting = False
+
+    async def handle(self, method, payload, *, command_id=None):
+        if method == "status":
+            return {"active": self.controller.active, "call_id": self.call_id,
+                    "pending": dict(self.control_request) if self.control_request else None}
+        if method not in {"start", "stop"}:
+            raise ValueError(f"unsupported realtime method: {method}")
+        if command_id is None:
+            raise ValueError("voice control requires an active agent command")
+        if self.restarting:
+            raise RuntimeError("The server is restarting")
+        if self.control_request is not None:
+            raise RuntimeError("A voice control request is already pending")
+        if method == "start":
+            if self.controller.active:
+                return {"status": "already_active", "call_id": self.call_id}
+            if self.transport is None or not self.transport.primary_event_connection_count:
+                raise RuntimeError("The primary interface is not connected")
+        elif not self.controller.active:
+            return {"status": "already_stopped"}
+        self.control_request = {
+            "action": method, "command_id": command_id, "call_id": self.call_id,
+        }
+        return {"status": "voice_control_requested", **self.control_request}
+
+    def observe(self, output):
+        request = self.control_request
+        if (request is None or self.control_task is not None
+                or not isinstance(output, (CommandCompleted, CommandFailed))
+                or output.command.id != request["command_id"]):
+            return
+        if isinstance(output, CommandFailed) or output.command.status != "completed":
+            self.control_request = None
+            return
+        # Never wait here: the controller still needs this worker output to
+        # deliver the delegated result whose audible completion we will await.
+        self.control_task = asyncio.create_task(self._apply_control(request))
+
+    async def _apply_control(self, request):
+        try:
+            async with self.lock:
+                if self.restarting:
+                    raise RuntimeError("The server is restarting")
+                if request["action"] == "start":
+                    if not self.controller.active:
+                        await self.transport.send_primary(RealtimeControlRequested(action="start"))
+                elif request["call_id"] == self.call_id and self.controller.active:
+                    await self.controller.finish_call(
+                        activation_timeout=5 if request["command_id"].startswith("realtime-delegation:") else 0,
+                    )
+                    self.call_id = None
+                    await self.runtime.publish(RealtimeControlRequested(
+                        action="stop", call_id=request["call_id"],
+                    ))
+        except Exception as error:
+            logger.exception("Voice control request failed")
+            await self.runtime.publish(RealtimeControlFailed(action=request["action"], error=str(error)))
+        finally:
+            self.control_request = None
+            self.control_task = None
+
+    async def shutdown(self):
+        """Discard ephemeral requests and close the controller on service teardown."""
+        task = self.control_task
+        if task is not None:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        self.control_request = None
+        await self.stop()
 
     async def prepare_restart(self, intent):
         """Finish audible output and persist the call boundary before server exit."""

@@ -93,7 +93,8 @@ def test_realtime_reset_waits_for_worker_barrier_and_clears_call_identity(tmp_pa
         supervisor.send = send
         runtime = SessionRuntime(supervisor, reset_transaction_factory=lambda path: None)
         app = Application(name="Voice reset", version="1", security=Security(), plugins=(REALTIME,),
-            server_extensions=(ServerExtension(name="runtime", service=runtime),))
+            server_extensions=(ServerExtension(name="runtime", service=runtime),
+                               ServerExtension(name="canonical_transport", service=SimpleNamespace())),)
         app = _assemble_server(app, session=runtime)
         api = app.state.application.extensions["realtime"].service
         api.call_id = "client-call"

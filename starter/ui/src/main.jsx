@@ -136,6 +136,10 @@ function App({ artifactRenderers }) {
         const output = JSON.parse(data);
         if (["worker_exited", "worker_transport_error"].includes(output.type)) setSubagents({});
         if (output.type === "subagent_event") setSubagents((items) => subagentActivities(items, output));
+        if (output.type === "realtime_control_requested") {
+          void voice.current?.control(output);
+        }
+        if (output.type === "realtime_control_failed") setError(output.error);
         if (output.type === "realtime_restarting") {
           transportReady = false;
           void voice.current?.suspend(output);

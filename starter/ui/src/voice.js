@@ -160,5 +160,9 @@ export function voiceSession(
     })().finally(() => { reconnecting = null; });
     return reconnecting;
   }
-  return { start, stop, reconnect, suspend, resume, prepareReload, dispose };
+  function control(request) {
+    if (request.action === "start") return start();
+    if (request.action === "stop" && request.call_id === callId) return stop();
+  }
+  return { start, stop, control, reconnect, suspend, resume, prepareReload, dispose };
 }
