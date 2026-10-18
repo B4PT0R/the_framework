@@ -91,12 +91,17 @@ service. `host.primary_session` is the primary `SessionRuntime`.
 `await host.open_session(...)`, `host.list_sessions()` and
 `await host.close_session(id)` manage additional independent sessions.
 
-The design target is one active application server, with potentially several
-concurrent agent sessions and local/remote clients. Running several instances of
-the same application concurrently is not a framework requirement. Construction
-must still support ordinary startup, shutdown and reconstruction after a supervised
-restart. The definition remains importable by workers without launching a server;
-this process boundary is the reason to separate definition and live resources.
+The implementation above currently separates the definition from ApplicationHost.
+The agreed next design is a process-local global `Application` singleton owning
+the unique server's configuration and runtime resources. Merging ApplicationHost
+into that object is under review; singleton ownership is not implemented yet.
+This supersedes the earlier emphasis on reusable definitions/multiple hosts.
+
+Startup and shutdown remain explicit; importing the definition in a worker must
+not launch a server. Worker processes do not share the server's Python singleton.
+Multiple concurrent sessions and clients remain supported, with explicit session
+context and no global mutable current-session pointer. Supervised restart must
+continue to reconstruct application resources and resume canonical sessions.
 
 Use `service_factory=...` for deferred construction and dependency injection.
 An object supplied directly as `service=...` is used as supplied, without cloning.

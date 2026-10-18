@@ -53,15 +53,21 @@ pas les noms ni le nombre d'objets de la cible.
 
 ### Première tranche API livrée — Application et propriétaires
 
-Le choix initial conserve `Application(...)` puis `application.build(...)`.
-Précision ultérieure de Baptiste : plusieurs instances simultanées d'une même
-application ne sont pas un objectif. Viser une seule application active, avec
-plusieurs sessions et clients possibles. La distinction définition/runtime reste
-utile pour l'import côté worker et la reprise après restart ; elle ne doit pas
-imposer de vocabulaire ou de mécanismes publics pour gérer des copies de l'app.
-Ne pas introduire de singleton global pour transformer cette limite de périmètre
-en restriction technique supplémentaire. Réexaminer les couches conservées selon
-ce besoin réel lors de la prochaine tranche.
+Décision cible actualisée de Baptiste : un singleton Application global au
+processus serveur, l'application étant essentiellement un serveur unique. Cela
+remplace le choix initial de déclaration réutilisable construisant plusieurs hôtes
+et l'avis précédent de ne pas introduire de singleton.
+
+- [ ] Faire porter configuration et ressources d'application par ce singleton ;
+  réexaminer la fusion d'ApplicationHost dans Application et l'allègement de
+  BuildContext avec les déclarations de plugins. Cette direction reste à implémenter.
+- Conserver un import inerte pour les workers, un démarrage/arrêt explicite et la
+  reprise après restart. Le singleton du serveur n'est pas une mémoire Python
+  partagée entre processus ; un import worker ne crée pas un autre serveur actif.
+- Plusieurs sessions et clients restent permis. Leurs workers, réglages et routages
+  restent propres à chaque session : pas de pointeur global current_session.
+
+État livré avant cette décision (à faire évoluer, sans couche de compatibilité) :
 
 - `Application` remplace ApplicationSpec. `build(reference, context, ...)` intègre
   la conversation ; build_conversation et le helper public build_application sont
@@ -90,7 +96,7 @@ ce besoin réel lors de la prochaine tranche.
   Installation redémarrée : JSON de session strictement identique, même PID du
   navigateur, catalogue de plugins et aperçu authentifié fonctionnels.
 
-La prochaine tranche reste Plugin / AgentExtension / ServerExtension / BuildContext.
+La prochaine tranche doit intégrer cette cible singleton avec Plugin / AgentExtension / ServerExtension / BuildContext.
 Ne pas confondre cette première clarification des propriétaires avec la refonte
 encore à faire des contributions, des options et de l'injection de construction.
 

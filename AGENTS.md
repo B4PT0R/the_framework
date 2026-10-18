@@ -11,7 +11,7 @@ file records the constraints to preserve when changing the framework.
   features outside `the_framework`. Dependencies point from applications to the
   framework, never the reverse. The starter must depend on `the_framework`, not
   on any particular application.
-- `Application` is an immutable definition; `build()` constructs the application
+- Current implementation: `Application` is an immutable definition; `build()` constructs the application
   ASGI server, whose lifespan owns startup/shutdown. It integrates conversation
   when a primary agent is declared; a service-only app omits that agent. There is
   no second public conversation builder. `app.state.application` is its
@@ -20,12 +20,16 @@ file records the constraints to preserve when changing the framework.
   `Session` remains canonical data. The agent/server capability channel is `bridge`,
   not another object named application. Advanced `session_factory` and
   `session_extensions` run for every session and must not reuse a live controller.
-- Target one active application server. Concurrent instances of the same app are
-  not a design requirement and must not motivate extra factories, contexts or
-  public API vocabulary. Preserve startup/reconstruction after supervised restart
-  and process-neutral worker imports; avoid adding a global singleton mechanism
-  merely to enforce this scope. Keep live host/session internals out of the small
-  public path where possible.
+- Target architecture, explicitly chosen by Baptiste: a process-local global
+  Application singleton for the unique application server. This supersedes the
+  reusable-definition/multiple-host design goal and the earlier advice against a
+  singleton. Let Application own configuration and live application resources;
+  reconsider merging the internal ApplicationHost rather than maintaining separate
+  objects only to support multiple builds. This target is not implemented yet.
+  Preserve explicit startup/shutdown, supervised restart and worker imports that
+  do not launch a server. Worker processes do not share the server's Python object.
+  Only application ownership is global: concurrent session/agent context remains
+  explicit, with no global mutable current-session pointer.
 - An application with a default agent may host independent concurrent sessions. Each session has exactly one worker/history writer and owns its durable
   configuration, extension state and plugin bindings. Private specialists are agents
   with their own session; they never write into the caller history. Results return
