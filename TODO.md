@@ -25,6 +25,34 @@ conceptuelle totale. Ces notes ne constituent pas des demandes de refonte imméd
 
 ## Revue d'ensemble avant refonte de l'API — 18 octobre 2026
 
+### Critère de conception confirmé par Baptiste
+
+Dessiner d'abord l'API que l'on aimerait utiliser, puis confronter cette forme
+aux responsabilités et aux garanties existantes. Le découpage actuel n'impose
+pas les noms ni le nombre d'objets de la cible.
+
+- Concevoir pour un humain découvrant la bibliothèque et pour un agent qui doit
+  l'assimiler rapidement : mêmes termes dans le code, les exemples et la référence.
+- Point d'entrée Application, responsabilités explicites et mécaniques homogènes ;
+  un nom doit permettre de deviner ce que l'objet représente et ce qu'il possède.
+  Ne pas imposer Spec/Context/Runtime comme vocabulaire public par héritage du code.
+- Partir d'un exemple minimal complet de création/lancement, puis l'étendre avec
+  plugins, sessions concurrentes et surfaces clientes sans changer de modèle mental.
+  Peu de concepts, classes utiles et complexité avancée révélée progressivement.
+- Rendre lisibles les effets de l'assemblage : déclaration ou instance vivante,
+  moment de la construction et du démarrage, propriétaire des ressources,
+  portée application/session, persistance, échec et arrêt. Éviter la magie implicite
+  autant que les paramètres purement techniques imposés au démarrage simple.
+- Livrer une documentation détaillée et cohérente : démarrage réellement exécutable,
+  carte des responsabilités, exemples progressifs, référence des options/défauts et
+  des effets de cycle de vie. Un nouvel utilisateur ne doit pas reconstruire
+  l'historique du Framework pour comprendre un assemblage ou le modifier.
+- Évaluer la cible sur le starter et le Harness avant de figer les noms ; préserver
+  la continuité texte/voix et les scopes multi-session. Les modèles de payloads
+  restent exclus du refactor. Pas de couches de compatibilité expérimentales.
+
+### Secteurs à revoir
+
 - Minimiser le vocabulaire nécessaire aux cas simples et réutiliser les mêmes
   concepts pour les cas avancés. Préférer des classes cohérentes portant données,
   invariants et opérations utiles ; éviter les helpers d'assemblage parallèles,
