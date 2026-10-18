@@ -58,13 +58,13 @@ or `agent_plugins` import aliases. The wheel isolation test extracts only the
 `the_framework` package, blocks product imports, and constructs the general
 plugins using their packaged Markdown resources.
 
-`Application` is the reusable root definition. It declares services, plugins,
+`Application` is the root definition. It declares services, plugins,
 client surfaces and optionally a primary `AgentSpec` with additional named agents.
 Constructing the definition or calling `compile()` does not construct services,
 launch workers, open a browser or start a server. Workers compile the same
 importable definition without server credentials or server-only resources.
 
-`application.build(...)` is the public assembly operation. It returns an independent
+`application.build(...)` is the public assembly operation. It returns the application
 FastAPI/ASGI server; it does not run Uvicorn or enter the server lifespan. With a
 primary agent, it assembles the conversation host, authenticated text/attachment
 routes, voice coordination when installed, and independent session hosting.
@@ -76,7 +76,7 @@ is missing. An agent application must supply its importable reference and data r
 
 | Object | What it represents | What it owns |
 | --- | --- | --- |
-| `Application` | Reusable, immutable application definition | Agent/plugin/service/surface declarations and composition validation. No live workers. |
+| `Application` | Immutable application definition | Agent/plugin/service/surface declarations and composition validation. No live workers. |
 | `ApplicationHost` (`app.state.application`) | One constructed server instance | Service graph, plugin host, shared surfaces, primary session and additional session lifespans. It is created by `build()`, not normally constructed by application code. |
 | `SessionRuntime` | One live conversation on the server side | Its worker supervisor, specialist fleet, event subscribers, command correlation and capability bridge. Each concurrent session gets a separate instance. |
 | `Session` | The worker's canonical conversation data | History, configuration, extension state and plugin bindings; memory-backed or atomically persisted according to its policy. It is not the server-side session controller. |
@@ -84,19 +84,25 @@ is missing. An agent application must supply its importable reference and data r
 
 `compile()` returns the validated, process-neutral `ApplicationPlan`. It is a
 recipe, not another resource owner. The host keeps its compiled assembly in
-`host.plan`, its effective access policy in `host.security`, and the reusable
+`host.plan`, its effective access policy in `host.security`, and the
 source definition through `host.definition`. `host.server_extensions` contains resolved
 construction declarations; `host.service(name)` returns a successfully started
 service. `host.primary_session` is the primary `SessionRuntime`.
 `await host.open_session(...)`, `host.list_sessions()` and
 `await host.close_session(id)` manage additional independent sessions.
 
-The definition is reusable; instances supplied directly as `service=...` are
-still caller-owned objects and are not cloned. Use `service_factory=...` to obtain
-an independent instance for each build. Application-scoped services are shared
-across sessions within that host; session-scoped services are constructed for
-each session. Distinct hosts do not share their context or factory-created services.
-Distinct concurrent workers must use distinct session storage paths.
+The design target is one active application server, with potentially several
+concurrent agent sessions and local/remote clients. Running several instances of
+the same application concurrently is not a framework requirement. Construction
+must still support ordinary startup, shutdown and reconstruction after a supervised
+restart. The definition remains importable by workers without launching a server;
+this process boundary is the reason to separate definition and live resources.
+
+Use `service_factory=...` for deferred construction and dependency injection.
+An object supplied directly as `service=...` is used as supplied, without cloning.
+Application-scoped services are shared across this application's sessions;
+session-scoped services are constructed for each session. Distinct concurrent
+workers must use distinct session storage paths.
 
 `build()` validates composition and invokes synchronous service factories. The
 ASGI lifespan starts services in dependency order, launches workers and starts

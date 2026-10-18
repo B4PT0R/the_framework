@@ -53,9 +53,15 @@ pas les noms ni le nombre d'objets de la cible.
 
 ### Première tranche API livrée — Application et propriétaires
 
-Baptiste a choisi une définition réutilisable `Application(...)`, suivie de
-`application.build(...)` pour chaque instance serveur indépendante, plutôt qu'un
-objet vivant unique configuré progressivement.
+Le choix initial conserve `Application(...)` puis `application.build(...)`.
+Précision ultérieure de Baptiste : plusieurs instances simultanées d'une même
+application ne sont pas un objectif. Viser une seule application active, avec
+plusieurs sessions et clients possibles. La distinction définition/runtime reste
+utile pour l'import côté worker et la reprise après restart ; elle ne doit pas
+imposer de vocabulaire ou de mécanismes publics pour gérer des copies de l'app.
+Ne pas introduire de singleton global pour transformer cette limite de périmètre
+en restriction technique supplémentaire. Réexaminer les couches conservées selon
+ce besoin réel lors de la prochaine tranche.
 
 - `Application` remplace ApplicationSpec. `build(reference, context, ...)` intègre
   la conversation ; build_conversation et le helper public build_application sont
@@ -71,12 +77,16 @@ objet vivant unique configuré progressivement.
   aux services de portée application partagés. Le Harness personnalise ce pilote
   via HarnessSession. Le nom de service interne runtime et les protocoles clients
   restent inchangés. Aucune migration ou modification des modèles de payloads.
-- Starter, Harness, exemples et documentation adaptés ensemble. Les exemples à
-  plusieurs builds utilisent des factories pour obtenir des services distincts ;
-  les instances fournies directement ne sont pas clonées implicitement.
+- Starter, Harness, exemples et documentation adaptés ensemble. Les factories
+  servent à la construction et à l'injection ; les instances fournies directement
+  ne sont pas clonées implicitement. La garantie de plusieurs hôtes simultanés
+  retirée des tests généraux ; les tests de démarrage différé, arrêt/reprise,
+  import worker et isolation des sessions sont conservés.
 - Validation : 694 tests Framework réussis (3 skips), 157 Harness, Ruff critique
-  et diff vérifiés. Contrats publics de réutilisation, démarrage différé et absence
-  de conversation implicite ; wheel/starter, sessions et texte/voix couverts.
+  et diff vérifiés. Démarrage différé et absence de conversation implicite ;
+  wheel/starter, sessions et texte/voix couverts. Après précision du périmètre
+  mono-application : assertions multi-hôtes retirées, 50 tests ciblés réussis ;
+  les garanties de reprise et d'isolation des sessions restent couvertes.
   Installation redémarrée : JSON de session strictement identique, même PID du
   navigateur, catalogue de plugins et aperçu authentifié fonctionnels.
 

@@ -1,4 +1,4 @@
-"""Public Application.build: reusable definitions, explicit owners and startup."""
+"""Public Application.build: explicit owners and startup for one application."""
 from fastapi.testclient import TestClient
 import pytest
 
@@ -19,7 +19,7 @@ async def refuse_socket(socket):
     return None
 
 
-def test_service_only_definition_builds_independent_hosts_and_starts_only_in_lifespan():
+def test_service_only_application_starts_and_stops_resources_in_lifespan():
     events = []
 
     class Resource:
@@ -34,33 +34,32 @@ def test_service_only_definition_builds_independent_hosts_and_starts_only_in_lif
     ))
     assert definition.compile().primary_agent is None
     assert events == []
-    first, second = definition.build(), definition.build()
-    a, b = first.state.application, second.state.application
-    assert a is not b and a.definition is b.definition is definition
-    assert a.primary_session is b.primary_session is None
-    assert not a.services.view and not b.services.view and events == []
-    assert a.server_extensions['resource'].service is not b.server_extensions['resource'].service
-    assert all(route.path not in ('/api/v1/agent/prompt', '/api/v1/sessions') for route in first.routes)
-    with TestClient(first), TestClient(second):
-        assert a.service('resource') is not b.service('resource')
-        assert [event for event, _ in events] == ['start', 'start']
-    assert [event for event, _ in events] == ['start', 'start', 'stop', 'stop']
-    assert not a.services.view and not b.services.view
+    server = definition.build()
+    host = server.state.application
+    assert host.definition is definition
+    assert host.primary_session is None
+    assert not host.services.view and events == []
+    resource = host.server_extensions['resource'].service
+    assert all(route.path not in ('/api/v1/agent/prompt', '/api/v1/sessions') for route in server.routes)
+    with TestClient(server):
+        assert host.service('resource') is resource
+        assert events == [('start', resource)]
+    assert events == [('start', resource), ('stop', resource)]
+    assert not host.services.view
 
 
-def test_agent_definition_builds_independent_session_controllers_without_starting_workers(tmp_path):
-    contexts = [BuildContext(data_root=tmp_path/name) for name in ('first', 'second')]
-    servers = [application.build('tests.fixtures.multi_session_app:application', context,
-                                security=Security(), handshake=refuse_socket) for context in contexts]
-    a, b = [server.state.application for server in servers]
-    assert a.definition is b.definition is application
-    assert isinstance(a.primary_session, SessionRuntime)
-    assert a.primary_session is not b.primary_session
-    assert a.primary_session.bridge is not b.primary_session.bridge
-    assert not a.primary_session.supervisor.running and not b.primary_session.supervisor.running
-    assert a.primary_session.supervisor.session_path != b.primary_session.supervisor.session_path
-    assert not any(context.services for context in contexts)
-    assert all(any(route.path == '/api/v1/agent/prompt' for route in server.routes) for server in servers)
+def test_agent_application_constructs_its_session_without_starting_the_worker(tmp_path):
+    context = BuildContext(data_root=tmp_path)
+    server = application.build('tests.fixtures.multi_session_app:application', context,
+                               security=Security(), handshake=refuse_socket)
+    host = server.state.application
+    assert host.definition is application
+    assert isinstance(host.primary_session, SessionRuntime)
+    assert host.primary_session.bridge is not None
+    assert not host.primary_session.supervisor.running
+    assert host.primary_session.supervisor.session_path == context['session_path']
+    assert not context.services
+    assert any(route.path == '/api/v1/agent/prompt' for route in server.routes)
 
 
 def test_agent_application_cannot_silently_build_without_its_conversation():

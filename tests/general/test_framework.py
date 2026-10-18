@@ -309,21 +309,20 @@ def test_specs_are_immutable_and_extend_without_side_effects():
     assert [extension.name for extension in extended.server_extensions] == ["runtime"]
 
 
-def test_server_build_keeps_the_compiled_recipe_and_resolves_independent_instances():
+def test_server_build_preserves_the_definition_when_resolving_services():
     declaration = ServerExtension(name="service", service_factory=lambda: object())
-    spec = application("Independent builds", server_extensions=(declaration,))
+    spec = application("Resolved services", server_extensions=(declaration,))
     plan = spec.compile()
-    first = spec._build_server().state.application
-    second = spec._build_server().state.application
+    host = spec._build_server().state.application
 
-    assert first.plan == second.plan == plan
-    assert first.plan.application is spec
+    assert host.plan == plan
+    assert host.plan.application is spec
     assert spec.server_extensions[0] is declaration
     assert declaration.service is None
-    assert first.server_extensions["service"].service is not second.server_extensions["service"].service
-    assert first.plugins is first.plan.plugins
+    assert host.server_extensions["service"].service is not None
+    assert host.plugins is host.plan.plugins
     with pytest.raises(TypeError):
-        first.server_extensions["extra"] = ServerExtension(name="extra")
+        host.server_extensions["extra"] = ServerExtension(name="extra")
 
 
 def test_extension_factory_receives_its_named_service_dependencies():

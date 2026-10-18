@@ -336,11 +336,11 @@ class ApplicationPlan(modict):
 
 
 class Application(modict):
-    """Reusable definition of services, client surfaces and optional agents.
+    """Definition of services, client surfaces and optional agents.
 
-    Importing or compiling the definition starts nothing. ``build()`` creates
-    an independent ASGI server; its lifespan owns service/worker startup and stop.
-    Supply service factories when builds must own distinct service instances.
+    Importing or compiling the definition starts nothing. ``build()`` constructs
+    the ASGI server; its lifespan owns service/worker startup and stop.
+    Service factories provide deferred construction and dependency injection.
     """
 
     _config = modict.config(frozen=True, strict=True, extra="forbid", auto_convert=False)
@@ -402,7 +402,7 @@ class Application(modict):
         reset_handler: Callable | None = None,
         session_extensions: tuple[ServerExtension, ...] | Callable = (),
     ):
-        """Build an independent ASGI server; its lifespan starts live resources.
+        """Build the application ASGI server; its lifespan starts live resources.
 
         With no primary_agent, build only the declared services/surfaces. With
         a primary agent, require reference/context/security/handshakes and include
@@ -521,7 +521,7 @@ class Application(modict):
 class ApplicationHost:
     """Own one assembled server's services, surfaces and live agent sessions.
 
-    The reusable Application remains in ``definition``. The host and its services
+    The Application definition remains in ``definition``. The host and its services
     belong to this server build; lifespan starts/stops them. Each SessionRuntime
     owns one worker and its event stream, not the whole server.
     """
