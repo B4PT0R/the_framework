@@ -38,6 +38,35 @@ def test_function_tool_schema_resolves_postponed_annotations():
     assert parameters.properties.limit.type == ["integer", "null"]
 
 
+def test_function_tool_can_explicitly_allow_open_json_payloads():
+    def example(payload: dict):
+        """
+        description: Accept application-defined JSON.
+        strict: false
+        """
+        return payload
+
+    declaration = FunctionTool.from_function(example)
+    assert declaration.strict is False
+    payload = {"widget": "weather", "forecast": [{"temperature": 18}]}
+    arguments = {"payload": payload, "user_feedback": "Je présente la météo"}
+    Draft202012Validator(declaration.parameters).validate(arguments)
+    assert declaration(payload) == payload
+
+    def ordinary(value: str):
+        pass
+
+    assert FunctionTool.from_function(ordinary).strict is True
+
+
+def test_function_tool_rejects_non_boolean_strict_metadata():
+    def example():
+        """strict: 'false'"""
+
+    with pytest.raises(ValueError, match="strict must be a boolean"):
+        FunctionTool.from_function(example)
+
+
 def test_tool_decorator_applies_user_feedback_and_reserves_its_argument_name():
     @tool
     def decorated():

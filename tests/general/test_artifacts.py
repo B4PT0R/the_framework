@@ -13,6 +13,23 @@ from the_framework.agent.models.responses import CompactionSummary, FunctionCall
 from the_framework.plugins.realtime import RealtimeExtension
 
 
+def test_show_artifact_allows_custom_json_in_its_tool_schema_and_output():
+    from jsonschema import Draft202012Validator
+    from the_framework.agent.extensions.tools import FunctionTool
+    from the_framework.plugins.artifacts.agent import ArtifactsExtension
+
+    extension = ArtifactsExtension(Agent(client=object()))
+    declaration = FunctionTool.from_function(extension.show_artifact)
+    payload = {"widget": "weather", "forecast": [{"temperature": 18}], "title": "Paris"}
+    Draft202012Validator(declaration.parameters).validate({
+        "kind": "widget", "payload": payload, "user_feedback": "Je présente la météo",
+    })
+    # Open JSON objects cannot be described by the backend's strict schema subset.
+    assert declaration.strict is False
+    artifact = asyncio.run(declaration(kind="widget", payload=payload))
+    assert artifact.kind == "widget" and artifact.payload == payload
+
+
 def test_artifact_roundtrip_projection_and_compaction(tmp_path):
     path = tmp_path / "session.json"
     agent = Agent(session_path=path, client=object())

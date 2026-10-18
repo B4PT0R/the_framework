@@ -17,7 +17,10 @@ class ArtifactsExtension(AgentExtension):
 
     @tool
     async def show_artifact(self, kind: str, payload: dict):
-        """Present a durable artifact: image/file with payload.path, or custom JSON."""
+        """
+        description: Present a durable artifact; image/file with payload.path, or custom JSON.
+        strict: false
+        """
         if kind in {"image", "file"}:
             payload = await self.agent.bridge.call(
                 "artifacts", "publish", {"kind": kind, "payload": payload},

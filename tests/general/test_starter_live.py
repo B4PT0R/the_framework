@@ -16,6 +16,38 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def test_real_backend_accepts_artifact_tool_with_open_json_payload():
+    import asyncio
+    import json
+
+    from the_framework.agent import Agent
+    from the_framework.plugins.artifacts.agent import ArtifactsExtension
+
+    agent = Agent()
+    extension = agent.add_extension(ArtifactsExtension)
+    agent.add_message("user", (
+        'Call show_artifact with kind="widget" and payload='
+        '{"widget":"weather","forecast":[{"temperature":18}],"title":"Paris"}. '
+        'Use exactly this JSON object, not a JSON-encoded string.'
+    ))
+    payload = agent.agentic_loop.generation_payload()
+    payload.update(model="gpt-5.6-luna", tool_choice="required")
+    calls = []
+    for event in agent.client.responses.create(**payload):
+        if event["type"] == "response.output_item.done":
+            item = event["item"]
+            if item.get("type") == "function_call":
+                calls.append(item)
+    assert len(calls) == 1
+    arguments = json.loads(calls[0]["arguments"])
+    arguments.pop("user_feedback")
+    artifact = asyncio.run(extension.show_artifact(**arguments))
+    assert artifact.kind == "widget"
+    assert artifact.payload == {
+        "widget": "weather", "forecast": [{"temperature": 18}], "title": "Paris",
+    }
+
+
 def test_starter_real_inference_with_tool_and_canonical_response(tmp_path):
     app = create_app(tmp_path, token="isolated-test", origin="http://testserver")
     events = []

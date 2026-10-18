@@ -6,6 +6,10 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Honor explicit `strict: false` function-tool metadata. Use it for
+  `artifacts.show_artifact`, whose open JSON payload is incompatible with strict
+  object schemas; preserve strict mode by default for other tools.
+
 - Keep AgentSpec exclusively about reusable agent construction. AgentTrigger owns
   queue, idle shutdown, completion requirements and retries, and compiles the
   execution profile. Remove fleet_profile and recipe orchestration fields. A

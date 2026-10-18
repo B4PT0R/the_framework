@@ -1183,6 +1183,12 @@ files. If it disappears, the artifact remains in history and the UI reports the
 content as unavailable. Vision inputs are encoded only for the outgoing model
 request; that transient API representation is never written back to the session.
 
+`show_artifact` accepts open JSON payloads and explicitly disables strict
+function schemas. Function tools otherwise default to strict mode; a tool
+requiring arbitrary JSON keys can declare `strict: false` in its YAML docstring
+metadata. The generated declaration preserves that choice instead of closing
+an open object and losing application-defined data.
+
 The asset route requires authentication and `session:read`; filenames are not
 credentials. Assets are bytes, with no second conversation or replay registry.
 Image publication validates raster PNG/JPEG/WebP/GIF. Downloads cannot execute

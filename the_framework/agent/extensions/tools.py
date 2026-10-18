@@ -47,6 +47,9 @@ class FunctionTool(Tool):
     @classmethod
     def from_function(cls, func, *, defer_loading=None):
         specs = parse_function_specs(func)
+        strict = specs.get("strict", True)
+        if not isinstance(strict, bool):
+            raise ValueError(f"{specs['name']}: strict must be a boolean")
         parameters = Parameters.from_dict(specs["parameters"])
         if USER_FEEDBACK_PARAMETER in parameters.properties:
             raise ValueError(
@@ -61,6 +64,7 @@ class FunctionTool(Tool):
             name=specs["name"],
             description=specs["description"],
             parameters=parameters,
+            strict=strict,
             defer_loading=defer_loading,
         )
         # Keep the callable out of the payload, since it cannot be serialized.
