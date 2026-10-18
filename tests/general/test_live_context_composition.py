@@ -75,11 +75,27 @@ def test_all_producers_are_released_when_one_cleanup_fails():
 def test_memory_and_registry_reset_between_voice_calls():
     voice = controller((MemoryLiveContext, RegistryLiveContext))
     memory, registry = voice.contexts
-    voice.start_context({"providers": ["relevant_memory", "persistent_registry"], "memory_candidates": [{"id": "one"}]})
+    voice.start_context({"providers": ["relevant_memory", "persistent_registry"], "provider_slots": {"relevant_memory": {"text": '<context_provider><retrieved_memories><memory id="one">One</memory></retrieved_memories></context_provider>'}}})
     assert memory.memory_context_ids == {"one"}
     registry.revision = 42
     asyncio.run(voice.close_context())
     assert memory.memory_context_ids == set()
     assert registry.revision == 0
-    voice.start_context({"providers": ["relevant_memory", "persistent_registry"], "memory_candidates": [{"id": "two"}]})
+    voice.start_context({"providers": ["relevant_memory", "persistent_registry"], "provider_slots": {"relevant_memory": {"text": '<context_provider><retrieved_memories><memory id="two">Two</memory></retrieved_memories></context_provider>'}}})
     assert memory.memory_context_ids == {"two"}
+
+
+def test_memory_live_context_owns_candidate_parsing_from_selected_provider_slots():
+    from types import SimpleNamespace
+    from the_framework.plugins.memory.live import MemoryLiveContext
+    from xml.etree import ElementTree
+    context = MemoryLiveContext(SimpleNamespace())
+    xml = '<context_provider name="relevant_memory"><retrieved_memories><memory id="one">First</memory><memory>No identity</memory><memory id="two">Second</memory></retrieved_memories></context_provider>'
+    context.start({'provider_slots': {'relevant_memory': {'text': xml}}})
+    assert [entry['id'] for entry in context.memory_candidates] == ['one', 'two']
+    assert context.memory_context_ids == {'one', 'two'}
+    assert all(len(ElementTree.fromstring(entry['text']).findall('.//memory')) == 1 for entry in context.memory_candidates)
+    for slots in ({}, {'other_provider': {'text': xml}}, {'relevant_memory': {'text': '<incomplete'}}, {'relevant_memory': {'text': 'ordinary text'}}):
+        context.start({'provider_slots': slots})
+        assert not context.memory_candidates
+        assert not context.memory_context_ids

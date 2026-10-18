@@ -1,6 +1,4 @@
 import hashlib
-from copy import deepcopy
-from xml.etree import ElementTree
 
 from modict import modict
 
@@ -120,44 +118,6 @@ class RealtimeExtension(AgentExtension):
         return slots
 
     @staticmethod
-    def _memory_candidates(provider_slots):
-        """Split the ranked RAG projection into independently appendable entries."""
-        slot = provider_slots.get("relevant_memory") or {}
-        text = slot.get("text")
-        if not isinstance(text, str) or not text.strip():
-            return []
-        try:
-            provider = ElementTree.fromstring(text)
-        except ElementTree.ParseError:
-            return []
-        if provider.tag != "context_provider":
-            return []
-        # Provider strings are wrapped once by the generic provider layer;
-        # memory's own structured XML therefore sits one level deeper.
-        memories = provider.find(".//retrieved_memories")
-        if memories is None:
-            return []
-        candidates = []
-        for memory in memories.findall("memory"):
-            memory_id = str(memory.get("id") or "").strip()
-            if not memory_id:
-                continue
-            candidate_provider = ElementTree.Element(provider.tag, provider.attrib)
-            candidate_memories = ElementTree.SubElement(
-                candidate_provider,
-                "retrieved_memories",
-            )
-            candidate_memories.append(deepcopy(memory))
-            candidates.append({
-                "id": memory_id,
-                "text": ElementTree.tostring(
-                    candidate_provider,
-                    encoding="unicode",
-                ),
-            })
-        return candidates
-
-    @staticmethod
     def _session_instructions(shared_instructions, provider_slots):
         provider_context = "\n\n".join(
             slot["text"] for slot in provider_slots.values()
@@ -200,7 +160,6 @@ class RealtimeExtension(AgentExtension):
         )
         provider_names = self._provider_names()
         provider_slots = self._provider_slots(provider_names)
-        memory_candidates = self._memory_candidates(provider_slots)
         fitted_provider_slots = self._fitted_provider_slots(
             shared_instructions, provider_slots
         )
@@ -231,10 +190,6 @@ class RealtimeExtension(AgentExtension):
             "session": session,
             "providers": list(provider_names),
             "provider_slots": fitted_provider_slots,
-            # Ordered by the memory plugin's thresholded RAG ranking. The live
-            # controller appends at most one previously unseen entry per user
-            # turn, falling back through this list without ever injecting
-            # below-threshold noise.
-            "memory_candidates": memory_candidates,
+
         }
         return snapshot

@@ -40,7 +40,7 @@ def test_voice_snapshot_tracks_disabled_and_reenabled_providers_without_writing_
     assert provider_name not in disabled['provider_slots']
     assert marker not in disabled['session']['instructions']
     if plugin == 'memory':
-        assert disabled['memory_candidates'] == []
+        assert 'relevant_memory' not in disabled['provider_slots']
     agent.activate_extension(plugin)
     restored = projection()
     assert marker in restored['session']['instructions']

@@ -141,11 +141,8 @@ def test_serialized_profile_preserves_session_and_queue_policy(mode, tmp_path):
     assert (agent.session.path is not None) == (mode == "durable")
 
 
-@pytest.mark.parametrize("reference", [
-    "the_framework.plugins.registry:RegistryPlugin",
-    "the_framework.plugins.registry.plugin:RegistryPlugin",
-])
-def test_saved_extension_references_migrate_without_changing_session_bindings(reference, tmp_path):
+def test_current_extension_reference_round_trips_without_changing_session_bindings(tmp_path):
+    reference = "the_framework.plugins.registry.agent:RegistryExtension"
     path = tmp_path / "session.json"
     session = Session.open(path)
     session.set_plugin("registry", False)

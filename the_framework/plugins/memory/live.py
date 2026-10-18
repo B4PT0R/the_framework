@@ -1,6 +1,8 @@
 """Optional live memory retrieval, owned independently from voice transport."""
 
 import asyncio
+from copy import deepcopy
+from xml.etree import ElementTree
 
 from ...agent.runtime.protocol import (
     CommandCompleted,
@@ -26,14 +28,50 @@ class MemoryLiveContext:
         self.memory_cache_refresh_pending = False
 
     def start(self, projection):
-        self.memory_candidates = tuple(
-            projection.get("memory_candidates") or ()
-        )
+        self.memory_candidates = tuple(self._memory_candidates(projection.get("provider_slots") or {}))
         self.memory_context_ids = {
             str(candidate.get("id"))
             for candidate in self.memory_candidates
             if candidate.get("id")
         }
+
+    @staticmethod
+    def _memory_candidates(provider_slots):
+        """Split the ranked RAG projection into independently appendable entries."""
+        slot = provider_slots.get("relevant_memory") or {}
+        text = slot.get("text")
+        if not isinstance(text, str) or not text.strip():
+            return []
+        try:
+            provider = ElementTree.fromstring(text)
+        except ElementTree.ParseError:
+            return []
+        if provider.tag != "context_provider":
+            return []
+        # Provider strings are wrapped once by the generic provider layer;
+        # memory's own structured XML therefore sits one level deeper.
+        memories = provider.find(".//retrieved_memories")
+        if memories is None:
+            return []
+        candidates = []
+        for memory in memories.findall("memory"):
+            memory_id = str(memory.get("id") or "").strip()
+            if not memory_id:
+                continue
+            candidate_provider = ElementTree.Element(provider.tag, provider.attrib)
+            candidate_memories = ElementTree.SubElement(
+                candidate_provider,
+                "retrieved_memories",
+            )
+            candidate_memories.append(deepcopy(memory))
+            candidates.append({
+                "id": memory_id,
+                "text": ElementTree.tostring(
+                    candidate_provider,
+                    encoding="unicode",
+                ),
+            })
+        return candidates
 
     async def handle_worker_output(self, output):
         command_id = getattr(output, "command_id", None)
@@ -161,7 +199,7 @@ class MemoryLiveContext:
                     SessionSnapshotRequest(id=timestamp_id())
                 )
                 extension = snapshot.extensions.get("realtime") or {}
-                candidates = extension.get("memory_candidates") or ()
+                candidates = self._memory_candidates(extension.get("provider_slots") or {})
                 self.memory_candidates = tuple(
                     candidate
                     for candidate in candidates

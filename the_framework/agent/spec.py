@@ -102,22 +102,10 @@ class AgentSpec(modict):
     @classmethod
     def from_profile(cls, profile):
         profile = WorkerProfile(**profile)
-        extensions = []
-        for reference in profile.plugins:
-            # Published pre-harmonization worker profiles stored these Python
-            # references. Migrate the saved recipe, without import aliases or
-            # changes to plugin identities in canonical session history.
-            module, separator, name = reference.partition(":")
-            if module.startswith("the_framework.plugins.") and name.endswith("Plugin"):
-                if module.endswith(".plugin"):
-                    module = module.removesuffix(".plugin") + ".agent"
-                name = name.removesuffix("Plugin") + "Extension"
-                reference = module + separator + name
-            extensions.append(reference)
         return cls(
             name=profile.name,
             description=profile.description or f"Private specialist {profile.name}.",
-            extensions=tuple(extensions),
+            extensions=tuple(profile.plugins),
             instructions=(Instruction(name="specialist_role", content=profile.instructions),),
             session_mode=profile.session_mode,
             queue=QueuePolicy(
