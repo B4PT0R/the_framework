@@ -16,10 +16,10 @@ export async function api(path, { method = "GET", body, signal } = {}) {
   });
   const payload = response.status === 204 ? null : await response.json();
   if (!response.ok)
-    throw new Error(
+    throw Object.assign(new Error(
       payload.error?.message ||
         payload.detail ||
         `Request failed (${response.status})`,
-    );
+    ), { status: response.status, code: payload.error?.code });
   return payload;
 }

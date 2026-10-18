@@ -15,6 +15,10 @@ class FakeRuntime:
         from types import SimpleNamespace
         self.supervisor = SimpleNamespace(send=self.submit)
         self.reset_hooks = []
+        self.restart_hooks = []
+
+    def register_restart_hook(self, hook):
+        self.restart_hooks.append(hook)
 
     def register_reset_hooks(self, *, suspend=None, resume=None):
         self.reset_hooks.append((suspend, resume))

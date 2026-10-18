@@ -27,6 +27,13 @@ class CanonicalAgentApi:
         self.runtime = runtime
         self.session_projection = session_projection
 
+    @endpoint("post", "/api/v1/server/prepare-restart",
+              response={"type": "object"}, authorization={"scope": "server:write"})
+    async def prepare_restart(self):
+        """Drain conversation services before an authenticated supervisor restart."""
+        await self.runtime.prepare_restart()
+        return {"status": "ready"}
+
     @endpoint(
         "get", "/api/v1/status",
         response={"type": "object"},

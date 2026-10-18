@@ -8,7 +8,7 @@ from the_framework.agent.runtime.protocol import SessionSnapshotRequest, StatusR
 from the_framework.server.api.endpoints import HttpError
 from the_framework.utils.ids import timestamp_id
 
-from .events import RealtimeReconnectRequested
+from .events import RealtimeReconnectRequested, RealtimeRestarting
 
 CALL_REQUEST = {"type": "object", "properties": {
     "call_id": {"type": "string", "minLength": 1, "maxLength": 200},
@@ -25,6 +25,36 @@ class RealtimeApi:
         self.lock = asyncio.Lock()
         self.call_id = None
         self._reconnect_tasks = set()
+        self.restarting = False
+
+    async def prepare_restart(self, intent):
+        """Finish audible output and persist the call boundary before server exit."""
+        async with self.lock:
+            self.restarting = True
+            if not self.controller.active:
+                return
+            client_call_id = self.call_id
+            try:
+                await self.controller.finish_call(
+                    activation_timeout=5 if intent.get("resume_route") == "realtime_delegation" else 0,
+                )
+            except BaseException:
+                self.restarting = False
+                raise
+            self.call_id = None
+            if client_call_id is not None:
+                await self.runtime.publish(RealtimeRestarting(call_id=client_call_id))
+
+    @endpoint("post", "/api/v1/realtime/calls/current/suspend",
+              request=CALL_REQUEST, response={"type": "object"},
+              authorization={"scope": "realtime:write"})
+    async def suspend(self, call_id: str):
+        """Drain this client's voice call before its interface reloads."""
+        async with self.lock:
+            if call_id == self.call_id and self.controller.active:
+                await self.controller.finish_call()
+                self.call_id = None
+        return {"status": "ready"}
 
     async def update_plugin_binding(self, name, enabled, *, call=None):
         """Replace live context after a binding change; never reuse stale inputs."""
@@ -63,6 +93,8 @@ class RealtimeApi:
     async def start(self, offer_sdp: str, call_id: str):
         """Join the canonical conversation after any active text turn finishes."""
         async with self.lock:
+            if self.restarting:
+                raise HttpError(503, "server_restarting", "The server is restarting")
             if self.controller.active:
                 raise HttpError(409, "voice_active", "A voice call is already active")
             status = await self.runtime.request(StatusRequest(id=timestamp_id()))

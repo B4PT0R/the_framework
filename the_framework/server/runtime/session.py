@@ -106,6 +106,7 @@ class SessionRuntime:
         self.reset_lock = asyncio.Lock()
         self.resetting = False
         self.reset_hooks = []
+        self.restart_hooks = []
         self.stopping = False
         self.last_worker_output_at = None
         self.last_worker_output_type = None
@@ -123,9 +124,28 @@ class SessionRuntime:
     async def restart_server(self, intent):
         if self.restart is None:
             raise RuntimeError("server restart is not configured")
+        await self.prepare_restart(intent)
         result = self.restart(intent)
         if inspect.isawaitable(result):
             await result
+
+    async def prepare_restart(self, intent=None):
+        """Quiesce live sessions while their workers and client sockets still exist."""
+        intent = intent or {}
+        runtimes = [self]
+        if self.application is not None:
+            runtimes = [app.state.session for app, lifespan in
+                        tuple(self.application.session_apps.values()) if lifespan is not None]
+        for runtime in runtimes:
+            for hook in tuple(runtime.restart_hooks):
+                result = hook(intent)
+                if inspect.isawaitable(result):
+                    await result
+            await runtime.apply_event("server_restart_barrier", {}, timeout=None)
+
+    def register_restart_hook(self, hook):
+        """Drain a session-owned service before the server closes client transports."""
+        self.restart_hooks.append(hook)
 
     async def surface_notify(self, payload):
         await self.publish({**payload, "type": "interface_refresh_requested"})

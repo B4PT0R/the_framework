@@ -19,4 +19,5 @@ def build_service(context, runtime):
     )
     api = RealtimeApi(runtime, controller)
     runtime.register_reset_hooks(suspend=api.stop)
+    runtime.register_restart_hook(api.prepare_restart)
     return api

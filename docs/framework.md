@@ -1540,6 +1540,22 @@ marker. Shutdown drains the worker only after final transport cleanup and marker
 submission; tool-initiated shutdown may queue these writes without waiting for
 its own command to finish.
 
+Supervised server restarts prepare every open session before closing HTTP or
+WebSocket transports. Session services register `register_restart_hook()` callbacks;
+Realtime pauses input, finishes the current spoken turn, closes the call and drains
+canonical writes. A worker barrier then finishes pending conversation work. Local
+supervisors can POST `/api/v1/server/prepare-restart` (scope `server:write`) before
+replacing the server. The system plugin reconnects committed voice delegations
+through the new call rather than resuming them as an unrelated text turn.
+
+The starter's browser retains voice intent and the previous client call id in
+tab-local `sessionStorage`, never credentials or audio. WebSocket loss releases
+local media without clearing that intent. After reconnection, idle canonical
+status permits exactly one new call; explicit stop cancels recovery. Interface
+publication first POSTs `/api/v1/realtime/calls/current/suspend` with the owning
+call id, finishing and persisting its turn before reload. The replacement UI uses
+the same recovery path. A changed or unrelated call id cannot stop another client.
+
 Voice accepts ordinary user prompts only: input items, suppressed prompts,
 custom roles/kinds and per-command reasoning overrides raise `ValueError` rather
 than silently losing text-only semantics. Voice submission failures also raise

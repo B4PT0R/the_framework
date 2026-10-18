@@ -45,3 +45,8 @@ class RealtimeReconnectRequested(LocalEvent):
     """Ask the owning client to renegotiate after canonical history has drained."""
     call_id: str
     error: str | None = None
+
+
+class RealtimeRestarting(LocalEvent):
+    """The owning client should retain voice intent until the server returns."""
+    call_id: str

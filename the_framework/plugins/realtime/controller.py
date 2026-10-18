@@ -859,6 +859,25 @@ class RealtimeController:
         digest = hashlib.sha256(f"{role}\0{transcript}".encode()).hexdigest()[:20]
         return f"content-{digest}"
 
+    async def finish_call(self, *, activation_timeout=0):
+        """Drain the audible turn and canonical writes before replacing this call."""
+        await self._send({"type": "input_audio.pause"})
+        try:
+            if self.delegations:
+                # A UI publication can arrive from inside the delegated tool
+                # turn. Let its result reach voice before closing that call.
+                await self._worker_barrier(self.call_id, timeout=None)
+            if self.pending_delegation_deliveries:
+                activation_timeout = max(activation_timeout, 5)
+            await self.wait_for_voice_turn_completion(activation_timeout=activation_timeout)
+            if self.realtime_response_active or self.pending_delegation_deliveries:
+                raise TimeoutError("The voice turn is still active; transport replacement was cancelled")
+            await self.stop(barrier_timeout=None)
+        except BaseException:
+            if self.call_id is not None:
+                await self._send({"type": "input_audio.resume"})
+            raise
+
     async def stop(self, *, barrier_timeout=5, drain=True):
         async with self.lock:
             self.closing = True

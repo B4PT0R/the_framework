@@ -222,3 +222,80 @@ test("a server reset during a failed handshake can still request the next call",
   assert.deepEqual(errors, ["Call was replaced while connecting"]);
   await voice.stop();
 });
+
+test("server loss preserves voice intent and resumes exactly once after reconciliation", async () => {
+  const calls = [], states = [];
+  let closed = 0;
+  const voice = voiceSession(async (path, options) => {
+    calls.push([path, options]); return {};
+  }, {}, state => states.push(state), assert.fail, async transport => {
+    await transport.startRealtime("offer");
+    return { close() { closed++; } };
+  });
+  await voice.start();
+  const previous = calls[0][1].body.call_id;
+  await voice.suspend();
+  assert.equal(closed, 1);
+  assert.equal(calls.length, 1, "no HTTP cleanup against the unavailable server");
+  await Promise.all([voice.resume(), voice.resume()]);
+  assert.equal(calls[1][0], `realtime/calls/current?call_id=${previous}`);
+  assert.equal(calls.filter(([path]) => path === "realtime/calls").length, 2);
+  assert.equal(states.at(-1), "live");
+  await voice.stop();
+  await voice.suspend();
+  await voice.resume();
+  assert.equal(calls.filter(([path]) => path === "realtime/calls").length, 2);
+});
+
+test("stopping during recovery cancels the pending automatic call", async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  let count = 0;
+  const voice = voiceSession(async (_path, options) => {
+    if (options.method === "DELETE") await gate;
+    return {};
+  }, {}, () => {}, assert.fail, async () => { count++; return { close() {} }; });
+  await voice.start();
+  await voice.suspend();
+  const recovery = voice.resume();
+  await voice.stop();
+  release();
+  await recovery;
+  assert.equal(count, 1);
+});
+
+test("UI publication drains voice and restores its owning tab after reload", async () => {
+  const values = new Map(), calls = [];
+  const storage = { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) };
+  const create = () => voiceSession(async (path, options) => {
+    calls.push([path, options]); return {};
+  }, {}, () => {}, assert.fail, async transport => {
+    await transport.startRealtime("offer"); return { close() {} };
+  }, { storage });
+  const first = create();
+  await first.start();
+  const original = calls[0][1].body.call_id;
+  await first.prepareReload();
+  assert.deepEqual(calls[1], ["realtime/calls/current/suspend", { method: "POST", body: { call_id: original } }]);
+  await first.dispose();
+  const next = create();
+  await Promise.all([next.resume(), next.resume()]);
+  assert.equal(calls.filter(([path]) => path === "realtime/calls").length, 2);
+  await next.stop();
+  const stopped = create();
+  await stopped.resume();
+  assert.equal(calls.filter(([path]) => path === "realtime/calls").length, 2);
+  assert.equal(values.size, 0);
+});
+
+test("a failed graceful suspension keeps the old call available instead of forcing reload", async () => {
+  let closed = 0;
+  const voice = voiceSession(async path => {
+    if (path.endsWith('/suspend')) throw new Error('Turn still active');
+    return {};
+  }, {}, () => {}, assert.fail, async () => ({ close() { closed++; } }));
+  await voice.start();
+  await assert.rejects(voice.prepareReload(), /Turn still active/);
+  assert.equal(closed, 0);
+  await voice.stop();
+});

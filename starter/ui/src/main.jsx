@@ -52,7 +52,7 @@ function App({ artifactRenderers }) {
     return () => controller.abort();
   }, []);
   useEffect(() => {
-    if (!voiceAvailable) return undefined;
+    if (!voiceAvailable || preview) return undefined;
     let mounted = true;
     const session = voiceSession(
       api,
@@ -66,11 +66,18 @@ function App({ artifactRenderers }) {
       (message) => {
         if (mounted) setError(message);
       },
+      undefined,
+      { storage: window.sessionStorage, storageKey: "starter:voice" },
     );
     voice.current = session;
+    if (connection === "Connected") {
+      api("status").then(status => {
+        if (mounted && !conversationBusy(status)) return session.resume();
+      }).catch(cause => { if (mounted) setError(cause.message); });
+    }
     return () => {
       mounted = false;
-      void session.stop();
+      void session.dispose();
       voice.current = null;
     };
   }, [voiceAvailable]);
@@ -87,6 +94,7 @@ function App({ artifactRenderers }) {
   useEffect(() => {
     let disposed = false,
       socket,
+      transportReady = false,
       retry,
       voiceCallId,
       attempts = 0,
@@ -106,6 +114,7 @@ function App({ artifactRenderers }) {
           historyInitialized.current = true;
         }
         setBusy(conversationBusy(status));
+        if (transportReady && !conversationBusy(status)) void voice.current?.resume();
       }
     }
     function connect() {
@@ -117,6 +126,7 @@ function App({ artifactRenderers }) {
       active.onopen = () => {
         if (!current()) return;
         attempts = 0;
+        transportReady = true;
         setSubagents({});
         setConnection("Connected");
         reconcile().catch(fail);
@@ -126,10 +136,15 @@ function App({ artifactRenderers }) {
         const output = JSON.parse(data);
         if (["worker_exited", "worker_transport_error"].includes(output.type)) setSubagents({});
         if (output.type === "subagent_event") setSubagents((items) => subagentActivities(items, output));
+        if (output.type === "realtime_restarting") {
+          transportReady = false;
+          void voice.current?.suspend(output);
+        }
         if (output.type === "realtime_reconnect_requested") {
           void voice.current?.reconnect(output);
         }
         if (output.type === "command_event" && output.event?.type === "agent.plugin.binding.updated" && output.event.plugin === "realtime") {
+          if (!output.event.enabled) void voice.current?.stop();
           setVoiceAvailable(Boolean(output.event.enabled));
         }
         if (output.type === "realtime_event" && output.call_id !== voiceCallId) {
@@ -140,7 +155,7 @@ function App({ artifactRenderers }) {
         const transcript = transcripts.ingest(output);
         if (transcript) setCaptions((current) => voiceCaptions(current, transcript));
         if (output.type === "interface_refresh_requested") {
-          location.reload();
+          Promise.resolve(voice.current?.prepareReload()).then(() => location.reload()).catch(fail);
           return;
         }
         if (output.type === "command_event") {
@@ -149,7 +164,10 @@ function App({ artifactRenderers }) {
           setMessages((items) => eventMessages(items, event));
           if (event.user_feedback) setActivity(event.user_feedback);
         }
-        if (output.type === "worker_status") setBusy(conversationBusy(output));
+        if (output.type === "worker_status") {
+          setBusy(conversationBusy(output));
+          if (transportReady && !conversationBusy(output)) void voice.current?.resume();
+        }
         if (output.type === "command_accepted" && conversationCommand(output))
           setBusy(true);
         if (
@@ -164,8 +182,9 @@ function App({ artifactRenderers }) {
       };
       active.onclose = () => {
         if (!current()) return;
+        transportReady = false;
         setArtifacts([]);
-        void voice.current?.stop();
+        void voice.current?.suspend();
         transcripts.reset();
         setCaptions({});
         revision++;
