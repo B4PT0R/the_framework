@@ -293,6 +293,74 @@ Aucun changement runtime ni redémarrage installé effectué.
   session couverts. Installation relancée sans changer Chromium ni conversation ;
   chat/voix disponibles, catalogue de Jiminy conforme aux réglages mémoire sauvegardés.
 
+### Revue transversale après simplifications — 18 octobre
+
+État relu : façades publiques, recettes starter/Harness, Application.build,
+BuildContext, SessionRuntime, services/surfaces, politiques HTTP/socket et CLI.
+Revue seulement : propositions ci-dessous non implémentées.
+
+Le vocabulaire central est désormais cohérent : Application possède le serveur,
+AgentSpec déclare un agent, Session garde son état canonique, Context prépare
+l'entrée du modèle, SessionRuntime supervise une conversation. Plugin regroupe
+une tranche fonctionnelle à travers les processus ; AgentExtension et ServerExtension
+restent ses contributions respectives. BuildContext sert à construire, pas à
+persister. ClientSurface décrit un client éditable, distinct du navigateur qui
+le présente. Les cartes existantes dans docs/framework.md rendent ces propriétaires
+et les limites de processus explicites ; ne pas créer un nouveau manager/facade.
+
+À conserver :
+- Application / AgentSpec / Plugin / ServerExtension et les frontières
+  serveur-worker-client ; les noms sont utiles et leurs responsabilités distinctes.
+- AgentResources pour clients/initialisation réellement process-locaux, QueuePolicy
+  pour la politique de tâches, scopes application/session et contributions avancées.
+- Références importables explicites nécessaires aux sous-processus ; ne pas les
+  découvrir en inspectant les globals, les piles Python ou le module appelant.
+- Cycle LocalServer / navigateur indépendant et surfaces multiples. Le bootstrap
+  possède déjà prepare/run et reprise de préparation ; pas de seconde API run
+  avec un nouveau propriétaire du serveur ou du navigateur.
+- Données/politiques du produit, y compris choix distants et format de santé du
+  Harness ; ne pas les généraliser pour réduire artificiellement app.py.
+  La taille de application.py ne justifie pas à elle seule de nouvelles abstractions.
+
+Prochaine tranche recommandée : affiner le chemin nominal.
+1. Starter : resources(session_path) ne fait que vérifier le chemin et retourner
+   des valeurs statiques (model et bash.default_cwd). Les mettre dans
+   AgentSpec.configuration ; la construction applicative valide déjà data_root.
+   Retirer cette factory et son import AgentResources du cas de départ. Le Harness
+   garde sa factory utile qui charge l'environnement ; saved Session reste prioritaire.
+2. Projection conversationnelle standard : le starter doit importer Worker pour
+   Worker.conversation_projection, nommer "display" puis passer session_projection
+   à build(). L'hôte fournit déjà le chat, donc faire de cette projection le chemin
+   normal ; garder full comme choix explicite et les projections personnalisées.
+   Ne pas confondre historique client et entrée Responses/Realtime ; préserver
+   messages user/assistant + artefacts, pagination et accès preview authentifié.
+   Ne pas rendre des données internes visibles par défaut pour raccourcir la recette.
+3. Runtime / reset : HarnessSession possède reset_session, mais app.py doit aussi
+   fournir reset_handler=HarnessSession.reset_session ; ce double câblage exprime
+   une seule responsabilité. Faire résoudre ce comportement sur le runtime sans
+   ajouter une classe d'options. Le reset reste indisponible sans politique explicite
+   de transaction ; ne pas transformer un retrait de paramètre en effacement par défaut.
+   Garder les choix produit de session/mémoire et les garanties texte/voix.
+
+Autres observations, moins prioritaires : build() a beaucoup d'options avancées,
+mais supervisor/session_factory/projections/transports ne sont pas tous requis dans
+la recette simple. Ne pas masquer ces possibilités dans un gros conteneur d'options.
+Un éventuel handshake conventionnel de la politique peut retirer du câblage ; vérifier
+le rôle preview/principal, les protocoles distincts et les clients distants avant
+changement. Pas de suppression des règles d'auth ou de choix arbitraires de credentials.
+Les dictionnaires de personnalisation Plugin({**bundled, ...}) sont explicites ;
+aucune nouvelle API de builder/subclass n'est justifiée par leur seule syntaxe.
+
+Vérification empirique de la revue : 31 tests application_api, conversation_assembly,
+live_context_composition, application_sessions et framework_bootstrap réussis.
+Couvre hôte sans agent, chat/fichiers sans plugins, conversation avec/sans voix,
+voix sans producteurs optionnels, contributions indépendantes de l'ordre, services
+partagés/contextes isolés, sessions concurrentes et bootstrap/prepare/run.
+Le test Chromium de reprise existe et a été exécuté lors des suites précédentes ;
+non relancé pour cette revue sans modification runtime. Ajouter/identifier un cas
+isolé mémoire sans voix dans la matrice documentaire plutôt que présumer que la
+recette complète suffit. Les tests live backend/voix restent un axe séparé.
+
 ### Secteurs à revoir
 
 - Minimiser le vocabulaire nécessaire aux cas simples et réutiliser les mêmes
@@ -524,8 +592,10 @@ modifié et aucune intervention sur les processus utilisateur.
 
 ## Documentation et validations ultérieures
 
-- [ ] Écrire une carte courte des propriétaires : agent, worker, serveur, plugin,
-  surface, navigateur. Chaque état mutable doit avoir un propriétaire évident.
+- [x] Carte des propriétaires disponible dans docs/framework.md (responsabilités,
+  Application/session, processus desktop). Relue après les tranches API du 18 octobre.
+- [ ] Affiner la recette nominale : configuration statique du starter, projection
+  conversationnelle standard et résolution du reset sur le runtime (revue ci-dessus).
 - [ ] Ajouter une matrice d'assemblage : texte seul ; voix sans mémoire ; mémoire
   sans voix ; outils sans UI ; navigateur persistant. Ne pas réduire les garanties
   à « le produit démarre ».
