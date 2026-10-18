@@ -10,7 +10,7 @@ from the_framework.agent.runtime.protocol import WorkerStatus
 from the_framework.agent.models.lifecycle import AgentCompactionEnd
 from the_framework.agent.models.responses import Compaction
 from the_framework.agent.context.session import SessionWatermark
-from the_framework.agent.models.events import ResponseOutputItemAdded
+from the_framework.agent.models.lifecycle import AgentOutputItemStarted
 from the_framework.agent.models.responses import Message
 from the_framework.agent.models.worker import WorkerProfile
 from the_framework.agent.models.usage import ResponseUsage, TokenDetails
@@ -119,19 +119,19 @@ def test_usage_keeps_sdk_adapters_and_reconstructs_token_details(adapter):
 @pytest.mark.parametrize("construct", [CommandEvent, WorkerOutput.from_dict])
 def test_event_polymorphism_is_reconstructed_without_mutating_wire_payload(construct):
     payload = {"type": "command_event", "command_id": "turn", "event": {
-        "type": "response.output_item.added", "item": {
+        "type": "agent.output_item.started", "item": {
             "type": "message", "role": "user", "content": [],
         },
     }}
     original = deepcopy(payload)
     event = construct(payload)
-    assert isinstance(event.event, ResponseOutputItemAdded)
+    assert isinstance(event.event, AgentOutputItemStarted)
     assert isinstance(event.event.item, Message)
     assert payload == original
     assert type(payload["event"]) is dict
     assert type(payload["event"]["item"]) is dict
     assert CommandEvent(command_id="other", event=event.event).event is event.event
-    assert ResponseOutputItemAdded(item=event.event.item).item is event.event.item
+    assert AgentOutputItemStarted(item=event.event.item).item is event.event.item
 
 
 @pytest.mark.parametrize("model", [CommandAccepted, CommandCompleted, CommandFailed])

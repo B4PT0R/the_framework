@@ -12,6 +12,6 @@ def chat(agent, *, input=input, output=print, prompt="> "):
             continue
 
         for event in agent.stream(message):
-            if event.type == "response.output_text.delta":
+            if event.type == "agent.text.delta" and event.channel == "output":
                 output(event.delta, end="")
         output("")

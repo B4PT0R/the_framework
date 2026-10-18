@@ -1,4 +1,7 @@
+from typing import Literal
+
 from modict import modict
+from .usage import ResponseUsage
 
 from .events import Event
 from .responses import Artifact, ResponseItem
@@ -31,6 +34,9 @@ class AgentGenerationStart(LocalEvent):
 
 class AgentGenerationEnd(LocalEvent):
     type: str = "agent.generation.end"
+    status: Literal["completed", "incomplete", "interrupted", "failed"] = "completed"
+    usage: ResponseUsage | None = None
+    error: str | None = None
 
 
 class AgentResponseItemAdded(LocalEvent):
@@ -105,3 +111,61 @@ class AgentInterrupted(LocalEvent):
 class AgentError(LocalEvent):
     type: str = "agent.error"
     error: object
+
+
+class AgentOutputItemStarted(LocalEvent):
+    """Provisional output identity/phase; only response_item.added commits it."""
+    type: str = "agent.output_item.started"
+    item: ResponseItem
+
+    @modict.validator("item", mode="before")
+    def reconstruct_item(self, value):
+        return value if isinstance(value, ResponseItem) else ResponseItem.from_dict(dict(value))
+
+
+class AgentTextDelta(LocalEvent):
+    type: str = "agent.text.delta"
+    item_id: str
+    channel: Literal["output", "refusal", "reasoning", "summary"] = "output"
+    part_index: int = 0
+    delta: str
+    sequence: int
+
+
+class AgentTextDone(LocalEvent):
+    type: str = "agent.text.done"
+    item_id: str
+    channel: Literal["output", "refusal", "reasoning", "summary"] = "output"
+    part_index: int = 0
+    text: str
+    sequence: int
+
+
+class AgentToolInputDelta(LocalEvent):
+    type: str = "agent.tool_input.delta"
+    item_id: str
+    delta: str
+    sequence: int
+
+
+class AgentToolInputDone(LocalEvent):
+    type: str = "agent.tool_input.done"
+    item_id: str
+    text: str
+    sequence: int
+
+
+class AgentRemoteToolStatus(LocalEvent):
+    """Execution by the inference service, distinct from local tool execution."""
+    type: str = "agent.remote_tool.status"
+    item_id: str
+    tool: str
+    status: Literal["started", "running", "completed", "failed"]
+
+
+class AgentTaskCompleted(LocalEvent):
+    type: str = "agent.task.completed"
+
+
+class AgentTaskFailed(LocalEvent):
+    type: str = "agent.task.failed"

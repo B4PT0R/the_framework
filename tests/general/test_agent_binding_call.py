@@ -69,14 +69,14 @@ def test_agent_tool_changes_binding_without_ending_its_turn(tmp_path, external_f
 
         async def stream(prompt, **options):
             if prompt == "later":
-                yield Event.from_dict({"type": "unknown"})
+                yield Event.from_dict({"type": "agent.step.start"})
                 return
             entered.set()
             await release.wait()
             result = await agent.extension("system").set_plugin_binding("feature", external_first)
             results.append(result)
             assert agent.extension("feature").activated is external_first
-            yield Event.from_dict({"type": "unknown"})
+            yield Event.from_dict({"type": "agent.step.start"})
 
         agent.astream = stream
         agent.agentic_loop.can_steer = lambda: False

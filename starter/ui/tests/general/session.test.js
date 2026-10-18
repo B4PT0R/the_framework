@@ -63,11 +63,12 @@ const item = (id, text, role = "assistant") => ({
   content: [{ text }],
 });
 const page = (...items) => ({ turns: [{ items }] });
-const delta = (text, sequence_number = 1) => ({
-  type: "response.output_text.delta",
+const delta = (text, sequence = 1) => ({
+  type: "agent.text.delta",
+  channel: "output",
   item_id: "answer",
   delta: text,
-  sequence_number,
+  sequence,
 });
 
 test("late history preserves streamed text and chronological order", () => {
@@ -80,7 +81,7 @@ test("late history preserves streamed text and chronological order", () => {
 test("completion replaces partial content exactly once", () => {
   let messages = eventMessages([], delta("Hello"));
   messages = eventMessages(messages, {
-    type: "response.output_item.done",
+    type: "agent.response_item.added",
     item: item("answer", "Hello there"),
   });
   messages = eventMessages(messages, delta(" there", 2));

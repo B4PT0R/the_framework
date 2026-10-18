@@ -19,7 +19,7 @@ from .protocol import (
     ConfigSnapshotRequest,
     ConfigUpdateRequest,
     PluginBindingRequest,
-    PluginBindingUpdated,
+    AgentPluginBindingUpdated,
     ExternalEventRequest,
     InterruptRequest,
     PromptRequest,
@@ -233,7 +233,7 @@ class Worker:
                 else self.agent.deactivate_extension
             )
             await asyncio.to_thread(operation, command.plugin)
-            yield PluginBindingUpdated(
+            yield AgentPluginBindingUpdated(
                 plugin=command.plugin,
                 enabled=command.enabled,
             )

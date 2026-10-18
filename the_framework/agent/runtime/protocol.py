@@ -250,7 +250,7 @@ class AgentStateUpdated(Event):
     state: dict = modict.factory(dict)
 
 
-class PluginBindingUpdated(Event):
+class AgentPluginBindingUpdated(Event):
     type: str = "agent.plugin.binding.updated"
     plugin: str
     enabled: bool
@@ -285,4 +285,8 @@ class SubagentEvent(WorkerOutput):
     agent: str
     task_id: str
     command_id: str | None = None
-    event: dict
+    event: Event
+
+    @modict.validator("event", mode="before")
+    def reconstruct_event(self, value):
+        return Event.from_dict(value)

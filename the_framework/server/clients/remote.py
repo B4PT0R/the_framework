@@ -487,7 +487,7 @@ class ClientRemoteService:
             return
         if isinstance(output, CommandEvent):
             event = output.event
-            if event.type == "response.output_text.delta":
+            if event.type == "agent.text.delta" and event.channel == "output":
                 if str(getattr(event, "delta", "") or ""):
                     self.notification_buffers[output.command_id] = True
                 return

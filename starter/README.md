@@ -233,3 +233,8 @@ independent sessions via `/api/v1/sessions`; each owns its worker, history, sett
 and bindings. See the Framework's independent application sessions documentation
 for scoped HTTP and WebSocket endpoints. Agent resources supply defaults; the
 canonical session persists changes without separate configuration/state files.
+
+The chat and voice clients consume the Framework's public events, not Responses
+or Live wire signals. Streaming text is provisional; committed session items
+supply replay. Voice captions receive cumulative `voice.transcript.updated` text
+and clear on `voice.turn.completed`. Plugin-specific events belong in the plugin.

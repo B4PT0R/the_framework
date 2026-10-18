@@ -61,9 +61,7 @@ export function snapshot(current, page) {
 
 export function eventMessages(current, event) {
   if (
-    ["agent.response_item.added", "response.output_item.done"].includes(
-      event.type,
-    )
+    event.type === "agent.response_item.added"
   ) {
     const item = message(event.item);
     if (!item) return current;
@@ -74,18 +72,18 @@ export function eventMessages(current, event) {
         )
       : [...current, { ...item, final: true }];
   }
-  if (event.type !== "response.output_text.delta") return current;
+  if (event.type !== "agent.text.delta" || event.channel !== "output") return current;
   const found = current.find((item) => item.id === event.item_id);
   if (
     found?.final ||
-    (found?.sequence !== undefined && event.sequence_number <= found.sequence)
+    (found?.sequence !== undefined && event.sequence <= found.sequence)
   )
     return current;
   const item = {
     id: event.item_id,
     role: "assistant",
     text: (found?.text || "") + event.delta,
-    sequence: event.sequence_number,
+    sequence: event.sequence,
     final: false,
   };
   return found

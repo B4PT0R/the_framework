@@ -70,3 +70,9 @@ not by test technology or authorship. Promote useful agentic tests when their
 contract is intentionally made durable. See [tests/README.md](tests/README.md). For changes to the
 starter UI, also run its npm tests and build as described in
 [starter/README.md](starter/README.md).
+
+Events belong to the component that owns their behavior. The worker core declares
+only events needed for its generic operation. Events used only within a plugin's
+feature lifecycle must be declared and emitted by that plugin. Public consumers
+receive typed Framework/plugin events; backend wire events remain inside their
+respective adapters and must be explicitly converted or filtered.

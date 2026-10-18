@@ -6,11 +6,22 @@ conceptuelle totale. Ces notes ne constituent pas des demandes de refonte imméd
 
 ## Priorité après la tranche sessions — remarque du 18 octobre
 
-- [ ] Définir un vocabulaire d'événements Framework complet et délimité pour les
+- [x] Définir un vocabulaire d'événements Framework complet et délimité pour les
   consommateurs. Convertir ou filtrer les événements Responses reçus en interne,
   au lieu de transmettre les signaux backend verbatim. S'appuyer sur LocalEvent
   et enrichir les événements Framework. Reprendre après validation de la tranche
   sessions ; cette remarque ne change pas la tâche en cours.
+  Livré : conversion Responses et Live, types/attributs bornés dans les enveloppes,
+  séparation flux provisoire/commit canonique, texte/raisonnement/outils, état et
+  transcriptions vocales. Événements propres à Realtime déclarés dans le plugin,
+  sans branche métier dans le worker. Starter/Harness/CLI/clients distants et
+  délégations adaptés, anciennes classes Responses et fallback brut supprimés.
+  Validation : suite Framework 675 succès, 3 skips ; 18 contrats de frontière
+  (deux ajoutés après cette suite), reprise Chromium starter vérifiée ; suite
+  Harness 156 succès et scénario visuel supplémentaire réussi, JS 54/28 et builds.
+  Serveur installé redémarré et candidat publié : même identifiant de session,
+  historique/archives JSON inchangés, desktop existant retrouvé. Aucun chemin de
+  migration ou compatibilité ajouté pour ces événements éphémères.
 
 ## Revue d'ensemble avant refonte de l'API — 18 octobre 2026
 

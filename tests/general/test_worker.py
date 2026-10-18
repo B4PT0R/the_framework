@@ -51,7 +51,7 @@ class Agent:
     async def astream(self, prompt, **options):
         self.prompts.append(prompt)
         self.prompt_options.append(options)
-        yield Event.from_dict({"type": "unknown"})
+        yield Event.from_dict({"type": "agent.step.start"})
 
     def interrupt(self, reason=None):
         pass
@@ -779,7 +779,7 @@ def test_transient_event_is_integrated_while_a_prompt_is_active():
         async def astream(prompt, **_options):
             prompt_started.set()
             await release_prompt.wait()
-            yield Event.from_dict({"type": "unknown"})
+            yield Event.from_dict({"type": "agent.step.start"})
 
         def on_external_haptic_trace(_payload):
             trace_seen.set()
@@ -831,7 +831,7 @@ def test_active_tool_can_await_an_application_result_while_worker_receives():
                 "echo",
                 {"value": prompt},
             )
-            yield Event.from_dict({"type": "unknown"})
+            yield Event.from_dict({"type": "agent.step.start"})
 
     async def test():
         incoming = asyncio.Queue()

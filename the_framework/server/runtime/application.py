@@ -474,7 +474,8 @@ class ApplicationRuntime:
                 label = feedback or self.activity_labels["tool"].format(name=name)
             elif event_type == "agent.tool_call.end":
                 phase, label = "tools", self.activity_labels["tool_result"]
-            elif event_type.startswith("response."):
+            elif event_type in {"agent.text.delta", "agent.text.done", "agent.output_item.started",
+                                "agent.tool_input.delta", "agent.tool_input.done", "agent.remote_tool.status"}:
                 phase, label = "model", self.activity_labels["response"]
             self.active_command_id = output.command_id
             self.activity_phase = phase
@@ -591,6 +592,8 @@ class ApplicationRuntime:
                     output = await queue.get()
                     if output is _STREAM_CLOSED or isinstance(output, WorkerExited):
                         raise RuntimeError("application runtime stopped")
+                    if isinstance(output, WorkerTransportError):
+                        raise RuntimeError(f"worker transport failed: {output.error}")
                     if output.request_id != payload.id:
                         continue
                     if isinstance(output, CommandEvent):

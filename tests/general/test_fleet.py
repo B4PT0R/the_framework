@@ -6,7 +6,8 @@ import pytest
 
 from the_framework.agent.models.worker import WorkerProfile
 from the_framework.agent.models.content import OutputText
-from the_framework.agent.models.events import Event, ResponseOutputItemDone
+from the_framework.agent.models.events import Event
+from the_framework.agent.models.lifecycle import AgentResponseItemAdded
 from the_framework.agent.models.lifecycle import (
     AgentTaskRequested,
     AgentCompactionEnd,
@@ -77,10 +78,8 @@ class FakeSupervisor:
         )
         await self.outputs.put(CommandEvent(
             command_id=request.id,
-            event=ResponseOutputItemDone(
+            event=AgentResponseItemAdded(
                 item=message,
-                output_index=0,
-                sequence_number=1,
             ),
             watermark=SessionWatermark(
                 session_id=self.ready.session_id,
@@ -139,13 +138,11 @@ class CompletionSupervisor(FakeSupervisor):
                     content=[OutputText(text="Verified completion")],
                 ),
             ]
-        for sequence_number, item in enumerate(items, 1):
+        for item in items:
             await self.outputs.put(CommandEvent(
                 command_id=request.id,
-                event=ResponseOutputItemDone(
+                event=AgentResponseItemAdded(
                     item=item,
-                    output_index=sequence_number - 1,
-                    sequence_number=sequence_number,
                 ),
                 watermark=watermark,
             ))

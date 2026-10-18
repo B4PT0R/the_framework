@@ -305,7 +305,7 @@ class Agent:
         return callback
 
     def emit(self, event: Event):
-        return self.events.emit(event)
+        return self.events.emit(Event.from_dict(event))
 
     def stream(self, prompt=None):
         yield from self.events.stream(self.agentic_loop.turn_sync, prompt)

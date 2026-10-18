@@ -60,8 +60,9 @@ def streamed_generation_error(payload):
     elif event_type == "response.failed":
         response = event_field(payload, "response")
         details = event_field(response, "error")
-    if details is None:
+    if details is None and event_type not in {"error", "response.failed"}:
         return None
+    details = details or (payload if event_type == "error" else {})
     code = str(
         event_field(details, "code")
         or event_field(details, "type")
@@ -83,7 +84,8 @@ def streamed_generation_error(payload):
     return StreamGenerationError(f"{code}: {message}", retryable=retryable)
 
 
-from ..models.events import Event, ResponseCompleted, ResponseOutputItemDone
+from .responses_events import ResponsesEvents
+from ..models.lifecycle import AgentResponseItemAdded
 from ..models.lifecycle import (
     AgentGenerationEnd,
     AgentGenerationStart,
@@ -258,9 +260,7 @@ class AgenticLoop:
         return self.agent.emit(AgentInterrupted(reason=reason))
 
     def handle(self, event):
-        if isinstance(event, ResponseCompleted):
-            self.agent.context.record_response_usage(event.response)
-        if isinstance(event, ResponseOutputItemDone):
+        if isinstance(event, AgentResponseItemAdded):
             if self.should_resolve(event.item):
                 self.tool_calls.append(event.item)
             return self.agent.add_response_item(event.item)
@@ -310,9 +310,10 @@ class AgenticLoop:
         self.tool_calls = []
         self.request_next_step = False
         self.agent.emit(AgentGenerationStart())
-        payload = payload or self.generation_payload()
-
+        adapter = ResponsesEvents()
+        status, usage, failure_message = "incomplete", None, None
         try:
+            payload = payload or self.generation_payload()
             for attempt in range(GENERATION_MAX_ATTEMPTS):
                 received_event = False
                 received_output = False
@@ -332,10 +333,17 @@ class AgenticLoop:
                             raise failure
                         if event_field(event_payload, "type") not in _STREAM_LIFECYCLE_EVENTS:
                             received_output = True
-                        event = Event.from_dict(event_payload)
-                        event = self.agent.registry("hooks").run("on_event", event)
-                        self.handle(event)
-                        self.agent.emit(event)
+                        kind = event_field(event_payload, "type")
+                        if kind in {"response.completed", "response.incomplete"}:
+                            response = event_field(event_payload, "response")
+                            usage = self.agent.context.record_response_usage(response)
+                            status = "completed" if kind == "response.completed" else "incomplete"
+                        for event in adapter.convert(event_payload):
+                            event = self.agent.registry("hooks").run("on_event", event)
+                            if isinstance(event, AgentResponseItemAdded):
+                                self.handle(event)
+                            else:
+                                self.agent.emit(event)
                     return
                 except Exception as error:
                     retryable = (
@@ -359,8 +367,14 @@ class AgenticLoop:
                         return
                 finally:
                     self.stream = None
+        except BaseException as error:
+            status, failure_message = "failed", str(error)
+            raise
         finally:
-            self.agent.emit(AgentGenerationEnd())
+            self.agent.emit(AgentGenerationEnd(
+                status="interrupted" if self.end_turn else status,
+                usage=usage, error=failure_message,
+            ))
 
     async def step(self):
         self.agent.emit(AgentStepStart())

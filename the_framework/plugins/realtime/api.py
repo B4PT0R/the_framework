@@ -8,7 +8,7 @@ from the_framework.agent.runtime.protocol import SessionSnapshotRequest, StatusR
 from the_framework.server.api.endpoints import HttpError
 from the_framework.utils.ids import timestamp_id
 
-from ...agent.models.base import TypedBase
+from .events import RealtimeReconnectRequested
 
 CALL_REQUEST = {"type": "object", "properties": {
     "call_id": {"type": "string", "minLength": 1, "maxLength": 200},
@@ -16,13 +16,6 @@ CALL_REQUEST = {"type": "object", "properties": {
 
 
 logger = logging.getLogger(__name__)
-
-
-class RealtimeReconnectRequested(TypedBase):
-    """Ask the owning client to renegotiate after canonical history has drained."""
-
-    call_id: str
-    error: str | None = None
 
 
 class RealtimeApi:

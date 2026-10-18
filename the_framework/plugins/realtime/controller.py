@@ -17,6 +17,10 @@ from ...agent.runtime.protocol import (
 )
 from ...utils.tokens import token_count
 from ...agent.models.base import Base, TypedBase
+from ...agent.models.events import Event
+from modict import modict
+from .events import VoiceError, RealtimeDelegationUpdate
+from .live_events import LiveEvents
 from the_framework.utils.ids import timestamp_id
 
 logger = logging.getLogger(__name__)
@@ -27,14 +31,11 @@ LIVE_APPEND_TOKEN_MODELS = ("gpt-live-1-codex", "gpt-5.4")
 
 class RealtimeEvent(TypedBase):
     call_id: str
-    event: dict
+    event: Event
 
-
-class RealtimeDelegationUpdate(TypedBase):
-    call_id: str
-    delegation_id: str
-    command_id: str
-    state: str
+    @modict.validator("event", mode="before")
+    def reconstruct_event(self, value):
+        return Event.from_dict(value)
 
 
 class _ContextUpdate(Base):
@@ -264,23 +265,22 @@ class RealtimeController:
                 ) from error
 
     async def _read_sideband(self):
+        adapter = LiveEvents()
         try:
             while self.sideband is not None:
                 live_event = await asyncio.to_thread(self.sideband.recv)
                 event = self._live_event_payload(live_event)
                 handled = await self._handle_sideband_event(event)
                 if not handled:
-                    await self.runtime.publish(RealtimeEvent(
-                        call_id=self.call_id,
-                        event=event,
-                    ))
+                    for converted in adapter.convert(event):
+                        await self.runtime.publish(RealtimeEvent(call_id=self.call_id, event=converted))
                 if event.get("type") == "error" and not handled:
                     return
         except Exception as error:
             if self.sideband is not None:
                 await self.runtime.publish(RealtimeEvent(
                     call_id=self.call_id,
-                    event={"type": "error", "error": str(error)},
+                    event=VoiceError(message=str(error)),
                 ))
         finally:
             if self.reader_task is asyncio.current_task():
@@ -463,7 +463,7 @@ class RealtimeController:
                         state="progress",
                     ))
                 return
-            if event.get("type") == "response.output_item.added":
+            if event.get("type") == "agent.output_item.started":
                 item = event.get("item") or {}
                 if item.get("type") == "message" and item.get("role") == "assistant":
                     delegation["items"][str(item.get("id") or "")] = {
@@ -471,7 +471,7 @@ class RealtimeController:
                         "text": "",
                     }
                 return
-            if event.get("type") == "response.output_text.delta":
+            if event.get("type") == "agent.text.delta" and event.get("channel", "output") == "output":
                 delta = str(event.get("delta") or "")
                 item = delegation["items"].get(str(event.get("item_id") or ""))
                 if item is None:
@@ -485,7 +485,7 @@ class RealtimeController:
                 else:
                     delegation["fallback"] += delta
                 return
-            if event.get("type") == "response.output_text.done":
+            if event.get("type") == "agent.text.done":
                 item = delegation["items"].get(str(event.get("item_id") or ""))
                 if item is not None and item["phase"] == "commentary":
                     await self._flush_progress(delegation, item)

@@ -66,6 +66,11 @@ workers own inference and their own sessions; a browser client owns its local
 interface and device/media execution. This separation lets a client reconnect
 or refresh while the main conversation remains intact.
 
+Public streams expose typed Framework events, with backend signals converted or
+filtered at their adapter boundary. Plugins own their feature-specific events;
+the worker core contains only generic lifecycle events. See the
+[public event contract](docs/framework.md#public-event-contract).
+
 To implement agent-side tools and hooks, subclass `AgentExtension` from
 `the_framework.agent` and pass that class as `Plugin(agent_extension=...)`. A plugin may
 have agent-side behavior, server-side behavior, or both. Every plugin declared
