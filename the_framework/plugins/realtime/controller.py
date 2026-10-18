@@ -74,6 +74,7 @@ class RealtimeController:
         self.ephemeral_context_order = deque()
         self.barriers = {}
         self.closing = False
+        self.transport_draining = False
         self.skip_user_turns = 0
         self._realtime_response_active = False
         self.response_started_count = 0
@@ -163,7 +164,7 @@ class RealtimeController:
         completion_timeout=120,
     ):
         baseline = self.response_started_count
-        observed = self.realtime_response_active
+        observed = bool(self.realtime_response_active or self.pending_delegation_deliveries)
         if not observed:
             deadline = asyncio.get_running_loop().time() + activation_timeout
             while self.response_started_count == baseline and not self.realtime_response_active:
@@ -179,9 +180,11 @@ class RealtimeController:
                 except TimeoutError:
                     return False
             observed = True
-        if observed and self.realtime_response_active:
+        if observed:
             deadline = asyncio.get_running_loop().time() + completion_timeout
-            while self.realtime_response_active:
+            # response.done may precede the delegated assistant turn. Only its
+            # turn.done acknowledges delivery of the speakable result.
+            while self.realtime_response_active or self.pending_delegation_deliveries:
                 remaining = deadline - asyncio.get_running_loop().time()
                 if remaining <= 0:
                     logger.warning(
@@ -367,6 +370,7 @@ class RealtimeController:
             # turn has actually finished. Until then, no dynamic provider may
             # alter the vocal model's live context.
             self.pending_delegation_deliveries.clear()
+            self.response_state_changed.set()
             await self._flush_pending_provider_contexts()
             await self.flush_context()
             # Delegated speech can finish with turn.done without a response.*
@@ -589,7 +593,7 @@ class RealtimeController:
             return {"status": "ready", "resume_injected": injected}
 
     async def _resume_restart_input(self, trigger="unknown"):
-        if not self.restart_resume_input_paused:
+        if not self.restart_resume_input_paused or self.transport_draining:
             return False
         sent = await self._send({"type": "input_audio.resume"})
         if sent:
@@ -861,8 +865,9 @@ class RealtimeController:
 
     async def finish_call(self, *, activation_timeout=0):
         """Drain the audible turn and canonical writes before replacing this call."""
-        await self._send({"type": "input_audio.pause"})
+        self.transport_draining = True
         try:
+            await self._send({"type": "input_audio.pause"})
             if self.delegations:
                 # A UI publication can arrive from inside the delegated tool
                 # turn. Let its result reach voice before closing that call.
@@ -877,6 +882,8 @@ class RealtimeController:
             if self.call_id is not None:
                 await self._send({"type": "input_audio.resume"})
             raise
+        finally:
+            self.transport_draining = False
 
     async def stop(self, *, barrier_timeout=5, drain=True):
         async with self.lock:

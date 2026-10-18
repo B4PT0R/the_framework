@@ -127,3 +127,38 @@ def test_voice_drain_waits_for_delegated_results_before_the_spoken_reply():
         await voice.finish_call()
         assert calls == ["delegation-finished", "spoken-result-finished", "canonical-drained"]
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("response_active", [True, False])
+def test_publication_waits_past_response_done_until_delegated_speech_finishes(response_active):
+    from tests.general.test_realtime_context import controller
+
+    async def run():
+        voice = controller()
+        voice.realtime_response_active = response_active
+        voice.pending_delegation_deliveries.add("result")
+        voice.restart_resume_input_paused = True
+        stopped = asyncio.Event()
+        async def stop(**kwargs):
+            stopped.set()
+        voice.stop = stop
+        task = asyncio.create_task(voice.finish_call())
+        try:
+            await asyncio.sleep(0.01)
+            assert not task.done()
+            await voice._handle_sideband_event({"type": "response.done"})
+            await asyncio.sleep(0.01)
+            assert not task.done()
+            assert not stopped.is_set()
+            await voice._handle_sideband_event({"type": "turn.done", "turn": {
+                "role": "assistant", "transcript": "Publication terminée.",
+            }})
+            await asyncio.wait_for(task, timeout=1)
+            assert stopped.is_set()
+            assert not voice.transport_draining
+            assert {"type": "input_audio.resume"} not in voice.sideband.sent
+        finally:
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+    asyncio.run(run())
