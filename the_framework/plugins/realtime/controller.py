@@ -75,7 +75,6 @@ class RealtimeController:
         self.barriers = {}
         self.closing = False
         self.skip_user_turns = 0
-        self.skip_assistant_turns = 0
         self._realtime_response_active = False
         self.response_started_count = 0
         self.response_state_changed = asyncio.Event()
@@ -376,9 +375,8 @@ class RealtimeController:
         if role == "user" and self.skip_user_turns:
             self.skip_user_turns -= 1
             return False
-        if role == "assistant" and self.skip_assistant_turns:
-            self.skip_assistant_turns -= 1
-            return False
+        # Spoken replies have their own provenance, including after delegation.
+        # The backend result is not a substitute for what the user actually heard.
         turn_id = str(turn.get("id") or self._content_id(role, transcript))
         await self.runtime.supervisor.send(ExternalEventRequest(
             id=f"realtime:{self.call_id}:{turn_id}:{role}",
@@ -514,7 +512,6 @@ class RealtimeController:
             answer = (delegation["final"] or delegation["fallback"]).strip()
             if not answer:
                 answer = "La tâche est terminée, sans réponse textuelle."
-            self.skip_assistant_turns += 1
             self.pending_delegation_deliveries.add(delegation["id"])
             await self._send_delegation(delegation["id"], answer)
             await self.runtime.publish(RealtimeDelegationUpdate(
@@ -526,7 +523,6 @@ class RealtimeController:
             self.delegations.pop(command_id, None)
             return
         if isinstance(output, CommandFailed):
-            self.skip_assistant_turns += 1
             self.pending_delegation_deliveries.add(delegation["id"])
             await self._send_delegation(
                 delegation["id"],
@@ -923,7 +919,6 @@ class RealtimeController:
         self.ephemeral_context_inputs.clear()
         self.ephemeral_context_order.clear()
         self.skip_user_turns = 0
-        self.skip_assistant_turns = 0
         self.restart_resume_input_paused = False
         self.realtime_response_active = False
         try:

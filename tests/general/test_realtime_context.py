@@ -139,3 +139,32 @@ def test_updates_during_flush_remain_ordered_and_can_invalidate_queued_state():
         assert texts(voice) == ["delta 1", "delta 2", "delta 3", "new state"]
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("failed", [False, True])
+def test_delegation_preserves_spoken_reply_and_following_voice_turns(failed):
+    from the_framework.agent.runtime.protocol import CommandCompleted, CommandFailed
+
+    async def run():
+        voice = controller()
+        await voice._start_delegation({"item": {
+            "type": "delegation", "target": "client", "id": "question",
+            "content": [{"type": "input_text", "text": "Question"}],
+        }})
+        request, = voice.runtime.supervisor.sent
+        result = (CommandFailed(command=request, error="Simulated failure")
+                  if failed else CommandCompleted(command=request))
+        await voice.handle_worker_output(result)
+        for turn_id, transcript in (("spoken", "Spoken summary"), ("next", "Next reply")):
+            before = len(voice.runtime.supervisor.sent)
+            await voice._handle_sideband_event({"type": "turn.done", "turn": {
+                "id": turn_id, "role": "assistant", "transcript": transcript,
+            }})
+            assert len(voice.runtime.supervisor.sent) == before + 1
+            accepted = voice.runtime.supervisor.sent[-1]
+            assert accepted.name == "realtime_turn"
+            assert accepted.payload["transcript"] == transcript
+            assert accepted.payload["turn_id"] == turn_id
+        assert not voice.pending_delegation_deliveries
+
+    asyncio.run(run())
