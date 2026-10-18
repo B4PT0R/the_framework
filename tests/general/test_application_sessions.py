@@ -330,3 +330,26 @@ def test_saved_default_session_selects_its_own_agent_from_the_catalogue(tmp_path
                               security=Security(), handshake=handshake, agent='first')
 
     asyncio.run(asyncio.wait_for(run(), 20))
+
+
+def test_hosted_session_resumes_saved_history_policy(tmp_path):
+    import pytest
+    async def run():
+        app = build(tmp_path)
+        async with app.router.lifespan_context(app):
+            runtime = await application.open_session(agent="first", retain_history=False)
+            key = runtime.ready.session_id
+            assert runtime.ready.retain_history is False
+            await runtime.update_config({"feature": {"label": "retained"}})
+            await application.close_session(key)
+            resumed = await application.open_session(session_id=key)
+            assert resumed.ready.retain_history is False
+            saved = Session.open(tmp_path / "sessions" / key / "session.json")
+            assert saved.retain_history is False
+            assert saved.configuration["feature"]["label"] == "retained"
+            with pytest.raises(ValueError, match="history policy differs"):
+                await application.open_session(session_id=key, retain_history=True)
+            await application.close_session(key)
+            with pytest.raises(ValueError, match="history policy differs"):
+                await application.open_session(session_id=key, retain_history=True)
+    asyncio.run(asyncio.wait_for(run(), 30))

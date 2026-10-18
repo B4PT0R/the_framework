@@ -122,7 +122,7 @@ class AgentSpec(modict):
 
     def fleet_profile(self, *, identity=None, observes=("agent.task.requested",),
                       item_kinds=(), conversation_roles=(), input_item_field=None,
-                      session_mode="ephemeral"):
+                      durable=False, retain_history=False):
         """Compile scheduling metadata for the server-owned specialist fleet."""
         instruction_text = "\n\n".join(
             value.content if isinstance(value, Instruction) else value["content"]
@@ -136,7 +136,8 @@ class AgentSpec(modict):
             instructions=instruction_text or self.description,
             queue_limit=self.queue.limit,
             queue_policy=self.queue.mode,
-            session_mode=session_mode,
+            durable=durable,
+            retain_history=retain_history,
             durable_tasks=self.queue.durable,
             backlog_limit=self.queue.backlog_limit,
             model=model,

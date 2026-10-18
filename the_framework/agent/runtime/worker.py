@@ -566,6 +566,7 @@ class Worker:
         ]
         await self.send(WorkerReady(
             session_id=self.agent.id,
+            retain_history=self.agent.session.retain_history,
             name=self.agent.name,
             description=self.agent.description,
             specialists=specialists,

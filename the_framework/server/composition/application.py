@@ -499,11 +499,18 @@ class Application(modict):
         saved = Session.open(path) if path.exists() else None
         default_id = saved.id if saved is not None else context.get("session_id") or timestamp_id()
 
-        def build_session(path, agent_name, session_id, durable, *, worker=None):
+        def build_session(path, agent_name, session_id, durable, *, retain_history=None, worker=None):
             self._select_agent(agent_name)
+            if path.exists():
+                saved_retention = Session.open(path).retain_history
+                if retain_history is not None and retain_history != saved_retention:
+                    raise ValueError("session history policy differs from saved session")
+                retain_history = saved_retention
+            elif retain_history is None:
+                retain_history = True
             values = dict(context)
             values.update(session_path=path, session_id=session_id,
-                          session_mode="durable" if durable else "resident", session_owner=self)
+                          durable=durable, retain_history=retain_history, session_owner=self)
             values["plugins"] = {name: dict(options) for name, options in context._plugin_options.items()}
             return self._build_session_server(
                 reference, BuildContext(values), agent_name=agent_name,
@@ -594,7 +601,8 @@ class Application(modict):
                 context.require("session_path"), application_reference=reference,
                 agent_name=agent_name,
                 application_root=context.get("machine_root", context.require("data_root")),
-                session_mode=context.get("session_mode"), session_id=context.get("session_id"),
+                durable=context.get("durable"), retain_history=context.get("retain_history"),
+                session_id=context.get("session_id"),
             )
         else:
             path = getattr(supervisor, "session_path", None)
@@ -657,7 +665,7 @@ class Application(modict):
                             **({"default": True} if key == self.default_session_id else {})}
         return list(records.values())
 
-    async def open_session(self, *, session_id=None, agent=None, durable=True):
+    async def open_session(self, *, session_id=None, agent=None, durable=True, retain_history=None):
         """Open one independent agent worker; its persisted session owns its state."""
         if self.session_builder is None:
             raise RuntimeError("session hosting is not configured")
@@ -674,6 +682,8 @@ class Application(modict):
                 if lifespan is not None:
                     if agent is not None and runtime.ready.name != agent:
                         raise ValueError("session belongs to another agent")
+                    if retain_history is not None and retain_history != runtime.ready.retain_history:
+                        raise ValueError("session history policy differs from running session")
                     return runtime
             path = (Path(self.context.require("session_path")) if key == self.default_session_id
                     else self.session_root / key / "session.json")
@@ -682,7 +692,7 @@ class Application(modict):
             created = not path.exists()
             if pending is None:
                 agent = self._select_agent(agent, path=path)
-                app = self.session_builder(path, agent, key, durable)
+                app = self.session_builder(path, agent, key, durable, retain_history=retain_history)
             elif agent is not None:
                 self._select_agent(agent, path=path)
             lifespan = app.router.lifespan_context(app)

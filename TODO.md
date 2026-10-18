@@ -805,3 +805,24 @@ Critical Ruff and diff checks clean. Fresh starter prepared, connected Chromium
 render verified and supervisor stopped cleanly. Installed Harness restarted with
 the same browser/window and unchanged canonical session; text/voice controls,
 13 plugins and Jiminy's canonical memory configuration verified.
+
+
+## Explicit, persisted session policy — delivery
+
+- [x] retain_history is canonical session data, restored on reopen. The storage
+  path stays runtime metadata. Agent recipes remain independent of both choices.
+- [x] Replace session modes throughout triggers, worker profiles/CLI, supervisor
+  and application assembly with independent durable/retain_history booleans.
+  Public session creation accepts retention; conflicting resume requests fail.
+- [x] WorkerReady announces effective retention, and fleet retries use it rather
+  than launch defaults. Canonical saved behavior wins over changed trigger defaults.
+- [x] Contract tests cover all four combinations, canonical serialization, worker
+  resume and hosted session close/reopen. No runtime migration or old-mode aliases.
+
+Final validation: Framework full suite 728 passed / 3 skipped; focused effective
+retention/reopen suite 35 passed, including 2 additional retry cases (730 distinct
+tests verified overall). Harness 157 passed. Critical Ruff and diff checks clean.
+Fresh starter prepared twice, rendered in connected Chromium and stopped cleanly.
+Installed Harness restarted: same browser/window, canonical history preserved,
+new retain_history field true as intended, text/voice controls and 13 plugins
+available, Jiminy following the saved memory configuration.

@@ -17,11 +17,12 @@ class SessionsApi:
             "session_id": {"type": ["string", "null"]},
             "agent": {"type": ["string", "null"]},
             "durable": {"type": "boolean"},
+            "retain_history": {"type": ["boolean", "null"]},
         }, "additionalProperties": False,
     }, authorization={"scope": "session:write"}, status_code=201)
-    async def open(self, session_id=None, agent=None, durable=True):
+    async def open(self, session_id=None, agent=None, durable=True, retain_history=None):
         try:
-            runtime = await self.application.open_session(session_id=session_id, agent=agent, durable=durable)
+            runtime = await self.application.open_session(session_id=session_id, agent=agent, durable=durable, retain_history=retain_history)
         except ValueError as error:
             raise HttpError(422, "invalid_session", str(error)) from error
         return {"id": runtime.ready.session_id, "agent": runtime.ready.name,

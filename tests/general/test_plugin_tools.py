@@ -215,7 +215,7 @@ def test_plugin_contributes_typed_agent_profiles_only_when_active():
         "item_kinds": [],
         "queue_limit": 4,
         "queue_policy": "latest",
-        "session_mode": "ephemeral",
+        "durable": False, "retain_history": False,
         "plugins": [],
         "agent_config": {},
         "plugin_config": {},

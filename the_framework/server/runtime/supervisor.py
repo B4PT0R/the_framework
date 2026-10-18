@@ -29,12 +29,13 @@ class WorkerSupervisor:
         application_reference: str | None = None,
         agent_name: str | None = None,
         application_root=None,
-        session_mode=None,
+        durable=None,
+        retain_history=None,
         session_id=None,
     ):
         if stream_limit_bytes < 64 * 1024:
             raise ValueError("worker IPC stream limit must be at least 64 KiB")
-        if command is not None and any(value is not None for value in (application_reference, agent_name, application_root, session_mode, session_id)):
+        if command is not None and any(value is not None for value in (application_reference, agent_name, application_root, durable, retain_history, session_id)):
             raise ValueError("a custom worker command cannot also declare application inputs")
         if application_reference is None and agent_name is not None:
             raise ValueError("an agent name requires an application reference")
@@ -42,7 +43,8 @@ class WorkerSupervisor:
         self.application_reference = application_reference
         self.application_root = application_root
         self.session_id = session_id
-        self.session_mode = session_mode
+        self.durable = durable
+        self.retain_history = retain_history
         self.command = command or [
             sys.executable,
             "-m",
@@ -55,9 +57,12 @@ class WorkerSupervisor:
         if agent_name is not None:
             self.command.extend(("--agent", agent_name))
         for flag, value in (("--application-root", application_root),
-                            ("--session-mode", session_mode), ("--session-id", session_id)):
+                            ("--session-id", session_id)):
             if value is not None:
                 self.command.extend((flag, str(value)))
+        for flag, value in (("durable", durable), ("retain-history", retain_history)):
+            if value is not None:
+                self.command.append(f"--{flag}" if value else f"--no-{flag}")
         self.ready_timeout = ready_timeout
         self.stop_timeout = stop_timeout
         self.stream_limit_bytes = stream_limit_bytes

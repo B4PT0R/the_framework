@@ -164,7 +164,7 @@ own. There is no global mutable current-session pointer.
 `compile()` produces a validated `ApplicationPlan` without running factories.
 Configuration fields remain in the mapping; live resources use metadata attributes
 outside that mapping. Worker compilation therefore cannot capture running services
-from the server's Python object. Wire payload models and their schemas are unchanged.
+from the server's Python object. Runtime resources remain outside serialized worker payloads.
 
 `service_factory=...` provides deferred construction and dependency injection.
 Objects supplied directly as `service=...` are used as provided, without cloning.
@@ -933,17 +933,24 @@ worker = agent_spec.build_worker(agent, receive, send)
 
 Session lifetime is independent of the recipe. `Session()` keeps history in memory;
 `Session(retain_history=False)` clears context between worker tasks. `Session.open(path)`
-loads or creates a disk-backed session. Its runtime `path` and `retain_history`
-attributes stay outside the canonical JSON schema. A disk-backed session may also
-use `retain_history=False`, preserving its settings while clearing task context.
+loads or creates a disk-backed session. Its `path` is runtime metadata, while
+`retain_history` is canonical data persisted with the conversation. Reopening a
+session restores that choice; launch defaults never replace saved behavior.
+`Session.open(path, retain_history=...)` explicitly changes the loaded policy;
+save the session to commit that deliberate change. A disk-backed session can
+preserve settings without retaining task context.
 `build_agent()` accepts a Session explicitly, or creates an in-memory one when omitted.
 The same recipe can therefore construct agents with different session lifetimes.
-Hosted application sessions remain durable by default; `open_session(durable=False)`
-creates an in-memory session retaining history for the life of its worker.
+Hosted application sessions are durable and retain history by default.
+`open_session(durable=False)` keeps a session in memory; `retain_history=False`
+independently selects task-local context. On resume, omit retain_history to use the
+saved value; an explicit conflicting value is rejected instead of silently changing it.
 
-The same `AgentSpec` declares a private specialist. Its trigger chooses the session
-lifetime: ephemeral by default, or `@agent_trigger(spec, session_mode="resident")`
-/ `session_mode="durable"` when context should survive tasks or worker restarts. `QueuePolicy` controls bounded FIFO/latest delivery
+The same `AgentSpec` declares a private specialist. Its trigger chooses hosting
+and initial session behavior: `@agent_trigger(spec, durable=False, retain_history=False)`
+by default. Set `retain_history=True` for context across tasks, `durable=True` for
+persistence across worker restarts, or combine disk storage with task-local context.
+`QueuePolicy` controls bounded FIFO/latest delivery
 and durable task journaling. A plugin owns its specialists and calls them
 through `agents.submit(name, prompt)`, which returns a request ID without waiting.
 The worker routes results to `AgentTriggers.dispatch()` and the declared handler;
@@ -953,7 +960,7 @@ contract. The generic worker entrypoint resolves a selected public agent or a
 namespaced specialist from `module:application`.
 
 `@agent_trigger(spec, observes=..., item_kinds=..., conversation_roles=...,
-input_item_field=..., session_mode="ephemeral")` binds an `AgentSpec` to a result handler. The decorator
+input_item_field=..., durable=False, retain_history=False)` binds an `AgentSpec` to a result handler. The decorator
 selects what to observe and the lifetime of the session it launches. Model/plugin settings live in the spec's
 `configuration`, alongside its instructions, plugins, queue policy and
 completion settings. There is no second set of model or queue parameters on the
@@ -971,8 +978,8 @@ selection. Agent construction applies declared configuration, then process-local
 resource defaults, then resolved launch-profile settings when the worker has one.
 Saved Session configuration is restored last. The launch profile is consumed
 without retaining a competing source in AgentSpec; executable factories and
-initializers stay on the application declaration. An explicit session-mode choice
-at the worker entrypoint overrides the launch profile's mode.
+initializers stay on the application declaration. Explicit worker launch flags override profile defaults for newly created sessions;
+a resumed session retains its canonical retain_history value.
 
 Application compilation validates private identities and retains their AgentSpec
 declarations in its plan. AgentSpec has no compiled `specialist_profiles` field.
@@ -984,12 +991,12 @@ execution without losing the configured declaration. Only then are WorkerProfile
 payloads produced for WorkerReady. Worker constructors no longer merge two sets
 of already serialized profiles.
 
-The serialized specialist profile carries `session_mode` explicitly, preserving
-`ephemeral`, `resident` and `durable` across worker construction. Session and
-queue policies have separate owners: the trigger chooses the session mode, while
-AgentSpec owns its task queue policy. Reconstructing a recipe from a profile does
-not attach the old session mode to that recipe. The old
-internal `persistent` boolean is no longer a declaration parameter.
+The serialized specialist profile carries `durable` and `retain_history` defaults
+for creating a session. WorkerReady reports the session's effective retain_history
+value, so fleet completion retries follow saved behavior even when trigger defaults
+have changed. The trigger owns these defaults; AgentSpec owns the queue policy.
+Reconstructing a recipe from a profile does not attach hosting or history policy to it.
+Task journaling (`durable_tasks`) remains independent of conversation persistence.
 
 `AgentSpec` is the public in-process construction recipe; `AgentTrigger` binds a
 specialist's task/result handling to its plugin. `WorkerProfile`, under

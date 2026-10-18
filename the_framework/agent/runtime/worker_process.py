@@ -48,7 +48,8 @@ async def _run(
     agent_name=None,
     profile_path=None,
     application_root=None,
-    session_mode=None,
+    durable=None,
+    retain_history=None,
     session_id=None,
 ):
     transport = JsonLines()
@@ -78,11 +79,15 @@ async def _run(
             profile = WorkerProfile(**json.load(file))
         if spec is None:
             spec = AgentSpec.from_profile(profile)
-    mode = session_mode or (profile.session_mode if profile is not None else "durable")
-    if mode not in {"ephemeral", "resident", "durable"}:
-        raise ValueError("invalid session mode")
-    session = (Session.open(session_path) if mode == "durable"
-               else Session(retain_history=mode != "ephemeral"))
+    durable = (profile.durable if profile is not None else True) if durable is None else durable
+    retain_history = ((profile.retain_history if profile is not None else True)
+                      if retain_history is None else retain_history)
+    if durable:
+        # Saved session behavior wins over launch defaults on every resume.
+        session = (Session.open(session_path) if Path(session_path).exists()
+                   else Session.open(session_path, retain_history=retain_history))
+    else:
+        session = Session(retain_history=retain_history)
     if session_id is not None and (session.path is None or not session.path.exists()):
         session.id = session_id
     if spec is not None:
@@ -113,7 +118,8 @@ def main():
     parser.add_argument("--agent")
     parser.add_argument("--profile")
     parser.add_argument("--application-root")
-    parser.add_argument("--session-mode", choices=("durable", "resident", "ephemeral"))
+    parser.add_argument("--durable", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--retain-history", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--session-id")
     args = parser.parse_args()
     asyncio.run(run(
@@ -122,7 +128,8 @@ def main():
         agent_name=args.agent,
         profile_path=args.profile,
         application_root=args.application_root,
-        session_mode=args.session_mode,
+        durable=args.durable,
+        retain_history=args.retain_history,
         session_id=args.session_id,
     ))
 

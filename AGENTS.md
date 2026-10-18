@@ -78,7 +78,8 @@ separate. SessionProjections owns the standard full/display/activity views; the 
 history defaults to display. Register only application-specific projections.
 SessionRuntime.reset_session is the application reset hook, unavailable by default
 even if a low-level reset transaction factory exists; do not restore reset_handler
-plumbing in Application.build. Keep the Compaction item/response payloads and session schema unchanged.
+plumbing in Application.build. Keep the Compaction item/response payloads unchanged. Session schema changes
+must express an explicitly chosen persistence contract.
 
 ## Service construction
 
@@ -155,8 +156,9 @@ recipe on resume; never silently change it to a different startup choice.
 
 Session lifetime belongs to the concrete Session and its owner, never AgentSpec.
 AgentSpec.build_agent accepts a Session; no argument creates an in-memory session.
-Session.open(path) chooses disk persistence; retain_history is runtime metadata
-controlling context across worker tasks, independent of persistence. AgentTrigger
-chooses the lifetime of its specialist session. Keep the existing WorkerProfile
-mode as process-boundary metadata; do not reimport it into agent recipes or change
-the canonical Session JSON schema for runtime paths/policies.
+Session.open(path) chooses disk persistence; path remains runtime metadata.
+Session.retain_history is canonical, persisted data controlling context across
+worker tasks. Saved policy wins over launch defaults. Triggers/WorkerProfile use
+only durable and retain_history booleans; no three-mode vocabulary or aliases.
+WorkerReady announces effective retention so fleet retries follow saved behavior.
+Task queue journaling remains independent of session persistence.

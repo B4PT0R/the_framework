@@ -9,10 +9,12 @@ Until a stable release, minor versions may revise the public composition API.
 - Remove session lifetime from AgentSpec. Construct it with a Session:
   `Session()` keeps context in memory, `Session(retain_history=False)` clears
   context between tasks, and `Session.open(path)` persists on disk. Retention
-  and storage are independent runtime attributes outside the canonical JSON.
-  Triggers choose their specialist session mode; existing WorkerProfile payloads
-  are converted only at worker launch. Starter and Harness recipes no longer
-  declare a lifetime, and hosted sessions remain durable by default.
+  is canonical session data and survives resume; paths remain runtime metadata.
+  Triggers and WorkerProfile use independent `durable`/`retain_history` booleans,
+  replacing the three-mode vocabulary. WorkerReady announces effective retention
+  so fleet retries follow the resumed session rather than changed launch defaults.
+  Starter and Harness recipes no longer declare a lifetime; hosted sessions remain
+  durable by default. No compatibility aliases or runtime migrations are added.
 
 - Replace `primary_agent` with the sole public `Application.agents` catalogue.
   One recipe is selected implicitly; several require `build(..., agent=...)` for

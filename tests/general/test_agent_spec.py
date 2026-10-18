@@ -130,18 +130,20 @@ def test_agent_resources_reject_unknown_fields_and_do_not_share_defaults():
     assert second.configuration == {}
 
 
-@pytest.mark.parametrize("mode", ["ephemeral", "resident", "durable"])
-def test_trigger_owns_specialist_session_policy_without_changing_recipe(mode):
+@pytest.mark.parametrize("durable", [False, True])
+@pytest.mark.parametrize("retain_history", [False, True])
+def test_trigger_owns_specialist_session_policy_without_changing_recipe(durable, retain_history):
     spec = AgentSpec(name="specialist", queue=QueuePolicy.latest(limit=2, backlog_limit=4))
-    @agent_trigger(spec, session_mode=mode)
+    @agent_trigger(spec, durable=durable, retain_history=retain_history)
     def result(value):
         return value
     trigger = AgentTrigger.from_function(result)
     profile = trigger.profile()
     restored = AgentSpec.from_profile(json.loads(json.dumps(profile)))
-    assert profile.session_mode == mode
+    assert profile.durable == durable
+    assert profile.retain_history == retain_history
     assert restored.queue == spec.queue
-    assert "session_mode" not in spec and "session_mode" not in restored
+    assert "retain_history" not in spec and "durable" not in restored
 
 
 def test_current_extension_reference_round_trips_without_changing_session_bindings(tmp_path):
@@ -188,8 +190,6 @@ def test_profile_instructions_have_one_owner_and_do_not_accumulate():
 def test_policy_rejects_unknown_mode_at_declaration():
     with pytest.raises(TypeError, match="mode"):
         QueuePolicy(mode="typo")
-    with pytest.raises((KeyError, TypeError), match="session_mode"):
-        AgentSpec(name="agent", session_mode="durable")
 
 
 @pytest.mark.parametrize("policy", [QueuePolicy.latest(limit=3)])
@@ -430,7 +430,7 @@ def test_one_agent_recipe_accepts_independent_session_lifetimes(tmp_path):
     assert durable.session.path == tmp_path / "durable.json"
     assert durable.session.retain_history
     assert len({agent.session.id for agent in (ephemeral, resident, durable)}) == 3
-    assert "retain_history" not in durable.session
+    assert durable.session["retain_history"] is True
     assert Session.open(durable.session.path).id == durable.session.id
 
 
@@ -439,4 +439,7 @@ def test_session_can_persist_settings_without_retaining_context_between_tasks(tm
     agent = AgentSpec(name="assistant").build_agent(session)
     assert agent.session is session
     assert not session.retain_history
-    assert Session.open(session.path).configuration == session.configuration
+    resumed = Session.open(session.path)
+    assert resumed.configuration == session.configuration
+    assert resumed.retain_history is False
+    assert json.loads(session.path.read_text())["retain_history"] is False

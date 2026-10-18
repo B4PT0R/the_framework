@@ -1,7 +1,5 @@
 """Private specialist declarations and typed task/result payloads."""
 
-from typing import Literal
-
 from modict import modict
 
 from ..models.responses import ResponseItem
@@ -18,7 +16,8 @@ def agent_trigger(
     item_kinds=(),
     conversation_roles=(),
     input_item_field=None,
-    session_mode="ephemeral",
+    durable=False,
+    retain_history=False,
 ):
     """Declare a private specialist trigger owned by the surrounding plugin."""
     if not isinstance(agent, AgentSpec):
@@ -30,7 +29,8 @@ def agent_trigger(
             "item_kinds": list(item_kinds),
             "conversation_roles": list(conversation_roles),
             "input_item_field": input_item_field,
-            "session_mode": session_mode,
+            "durable": durable,
+            "retain_history": retain_history,
         }
         return func
     return decorator
@@ -87,7 +87,8 @@ class AgentTrigger(Base):
     _config = modict.config(enforce_json=False, auto_convert=False)
     name: str
     spec: AgentSpec
-    session_mode: Literal["ephemeral", "resident", "durable"] = "ephemeral"
+    durable: bool = False
+    retain_history: bool = False
     observes: list[str] = modict.factory(list)
     item_kinds: list[str] = modict.factory(list)
     conversation_roles: list[str] = modict.factory(list)
@@ -118,7 +119,7 @@ class AgentTrigger(Base):
         return self.spec.fleet_profile(
             identity=self.name, observes=self.observes, item_kinds=self.item_kinds,
             conversation_roles=self.conversation_roles, input_item_field=self.input_item_field,
-            session_mode=self.session_mode,
+            durable=self.durable, retain_history=self.retain_history,
         )
 
 

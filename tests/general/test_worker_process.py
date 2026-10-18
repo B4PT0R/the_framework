@@ -108,7 +108,7 @@ def test_resolved_launch_settings_override_defaults_but_not_saved_session(tmp_pa
             previous_id = session.id
         profile = AgentSpec(name="private",  instructions="Resolved role",
             configuration={"model": "resolved-model",
-                "memory_curator": {"store_path": str(root / "resolved.sqlite3")}}).fleet_profile(session_mode="durable")
+                "memory_curator": {"store_path": str(root / "resolved.sqlite3")}}).fleet_profile(durable=True, retain_history=True)
         profile_path = root / "profile.json"
         profile_path.write_text(json.dumps(profile))
         monkeypatch.setattr(worker_process, "load_application", lambda _: SimpleNamespace(
@@ -131,16 +131,37 @@ def test_resolved_launch_settings_override_defaults_but_not_saved_session(tmp_pa
             assert agent.session.id == previous_id
 
 
-def test_worker_entrypoint_explicit_session_mode_overrides_launch_profile(tmp_path, monkeypatch):
+def test_worker_entrypoint_explicit_session_policy_overrides_launch_profile(tmp_path, monkeypatch):
     from the_framework import AgentSpec
     from the_framework.agent.runtime import worker_process
-    profile = AgentSpec(name="private").fleet_profile(session_mode="durable")
+    profile = AgentSpec(name="private").fleet_profile(durable=True, retain_history=True)
     path = tmp_path / "profile.json"
     path.write_text(json.dumps(profile))
     constructed = []
     async def capture(worker):
         constructed.append(worker.agent)
     monkeypatch.setattr(worker_process.Worker, "run", capture)
-    asyncio.run(worker_process.run(tmp_path / "session.json", profile_path=path, session_mode="ephemeral"))
+    asyncio.run(worker_process.run(tmp_path / "session.json", profile_path=path, durable=False, retain_history=False))
     assert constructed[0].session.path is None
     assert constructed[0].session.retain_history is False
+
+
+def test_saved_session_retention_wins_over_worker_launch_defaults(tmp_path, monkeypatch):
+    from the_framework import AgentSpec
+    from the_framework.agent import Session
+    from the_framework.agent.runtime import worker_process
+    path = tmp_path / "session.json"
+    saved = Session.open(path, retain_history=False)
+    saved.agent_name = "private"
+    saved.save()
+    profile_path = tmp_path / "profile.json"
+    profile_path.write_text(json.dumps(AgentSpec(name="private").fleet_profile(
+        durable=True, retain_history=True)))
+    constructed = []
+    async def capture(worker):
+        constructed.append(worker.agent)
+    monkeypatch.setattr(worker_process.Worker, "run", capture)
+    asyncio.run(worker_process.run(path, profile_path=profile_path, retain_history=True))
+    assert constructed[0].session.id == saved.id
+    assert constructed[0].session.retain_history is False
+    assert Session.open(path).retain_history is False

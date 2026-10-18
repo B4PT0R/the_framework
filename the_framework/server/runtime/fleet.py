@@ -317,7 +317,7 @@ class AgentRunner:
                 prompt=f"{task.prompt}{continuation}",
                 input_items=(
                     []
-                    if pass_index and self.profile.session_mode != "ephemeral"
+                    if pass_index and self.ready.retain_history
                     else task.input_items
                 ),
             ))

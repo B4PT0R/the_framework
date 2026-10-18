@@ -50,7 +50,7 @@ class CommandReceipt(Base):
 
 class Session(Base):
     path = modict.attr(None)
-    retain_history = modict.attr(True)
+    retain_history: bool = True
     id: str = modict.factory(timestamp_id)
     history: list[ResponseItem] = modict.factory(list)
     archive: list[ResponseItem] = modict.factory(list)
@@ -64,10 +64,6 @@ class Session(Base):
     agent_name: str | None = None
     configuration: dict = modict.factory(dict)
     state: dict = modict.factory(dict)
-
-    def __init__(self, *args, retain_history=True, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.set_attr("retain_history", bool(retain_history))
 
     @staticmethod
     @contextmanager
@@ -258,7 +254,7 @@ class Session(Base):
         }
 
     @classmethod
-    def open(cls, path, *, retain_history=True):
+    def open(cls, path, *, retain_history=None):
         path = Path(path)
         if path.exists():
             payload = json.loads(path.read_text())
@@ -278,9 +274,11 @@ class Session(Base):
                 payload["context_usage"] = ResponseUsage.from_dict(
                     payload["context_usage"]
                 )
-            session = cls(**payload, retain_history=retain_history)
+            session = cls(**payload)
+            if retain_history is not None:
+                session.retain_history = retain_history
         else:
-            session = cls(retain_history=retain_history)
+            session = cls(retain_history=True if retain_history is None else retain_history)
         session.set_attr("path", path)
         return session
 

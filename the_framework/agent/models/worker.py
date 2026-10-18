@@ -18,7 +18,8 @@ class WorkerProfile(Base):
     item_kinds: list[str] = modict.factory(list)
     queue_limit: int = 8
     queue_policy: str = "fifo"
-    session_mode: str = "ephemeral"
+    durable: bool = False
+    retain_history: bool = False
     plugins: list[str] = modict.factory(list)
     agent_config: dict = modict.factory(dict)
     plugin_config: dict = modict.factory(dict)
@@ -49,8 +50,6 @@ class WorkerProfile(Base):
             raise ValueError("invalid specialist queue limits")
         if self.queue_policy not in QUEUE_POLICIES:
             raise ValueError("invalid specialist queue policy")
-        if self.session_mode not in {"ephemeral", "resident", "durable"}:
-            raise ValueError("invalid specialist session mode")
         if self.idle_timeout_seconds is not None and self.idle_timeout_seconds <= 0:
             raise ValueError("idle_timeout_seconds must be positive")
         if self.completion_retry_limit < 0:

@@ -59,7 +59,8 @@ class FakeSupervisor:
         self.command = command
         self.outputs = asyncio.Queue()
         self.running = False
-        self.ready = WorkerReady(session_id=f"session-{len(self.instances)}")
+        self.ready = WorkerReady(session_id=f"session-{len(self.instances)}",
+                                 retain_history=json.loads((session_path.parent / "profile.json").read_text())["retain_history"])
         self.sent = []
         self.instances.append(self)
 
@@ -389,7 +390,7 @@ def test_stateless_nondurable_auxiliary_does_not_persist_pending_tasks(tmp_path)
         path = tmp_path / "session.json"
         fleet = FleetSupervisor(
             path,
-            [profile(name="video_eyes_1", session_mode="ephemeral", durable_tasks=False)],
+            [profile(name="video_eyes_1", durable=False, retain_history=False, durable_tasks=False)],
             supervisor_factory=FakeSupervisor,
         )
 
@@ -400,7 +401,7 @@ def test_stateless_nondurable_auxiliary_does_not_persist_pending_tasks(tmp_path)
 
         restored = FleetSupervisor(
             path,
-            [profile(name="video_eyes_1", session_mode="ephemeral", durable_tasks=False)],
+            [profile(name="video_eyes_1", durable=False, retain_history=False, durable_tasks=False)],
             supervisor_factory=FakeSupervisor,
         )
         assert restored.runners["video_eyes_1"].pending == []
@@ -464,7 +465,7 @@ def test_auxiliary_requires_successful_completion_tool_before_finishing(tmp_path
         fleet = FleetSupervisor(
             tmp_path / "session.json",
             [profile(
-                session_mode="ephemeral",
+                durable=False, retain_history=False,
                 completion_tool="complete_curation",
                 completion_retry_limit=2,
             )],
@@ -491,7 +492,7 @@ def test_auxiliary_completion_retries_are_bounded(tmp_path):
         fleet = FleetSupervisor(
             tmp_path / "session.json",
             [profile(
-                session_mode="ephemeral",
+                durable=False, retain_history=False,
                 durable_tasks=False,
                 completion_tool="complete_curation",
                 completion_retry_limit=1,
@@ -687,3 +688,32 @@ def test_subagent_activity_returns_only_to_its_calling_session(tmp_path):
             for fleet in fleets:
                 await fleet.stop()
     asyncio.run(asyncio.wait_for(run(), 10))
+
+
+@pytest.mark.parametrize("saved_retention", [False, True])
+def test_completion_retry_follows_effective_session_retention(tmp_path, saved_retention):
+    class ResumedSupervisor(CompletionSupervisor):
+        async def start(self):
+            self.ready.retain_history = saved_retention
+            return await super().start()
+
+    async def run():
+        fleet = FleetSupervisor(
+            tmp_path / "session.json",
+            [profile(durable=True, retain_history=not saved_retention,
+                     completion_tool="complete_curation", completion_retry_limit=1)],
+            supervisor_factory=ResumedSupervisor,
+        )
+        await fleet.start()
+        try:
+            items = [Message(role="user", content=[OutputText(text="Evidence")])]
+            assert await fleet.submit("jiminy", prompt="Review evidence", input_items=items,
+                                      watermark=canonical_event().watermark, observation_type="requested")
+            result = await asyncio.wait_for(fleet.results.get(), 2)
+            assert result.status == "completed"
+            sent = fleet.runners["jiminy"].supervisor.sent
+            assert sent[0].input_items == items
+            assert sent[1].input_items == ([] if saved_retention else items)
+        finally:
+            await fleet.stop()
+    asyncio.run(run())

@@ -125,6 +125,7 @@ class TransientEventCompleted(WorkerOutput):
 
 
 class WorkerReady(WorkerOutput):
+    retain_history: bool = True
     protocol: int = 1
     session_id: str
     name: str = "agent"

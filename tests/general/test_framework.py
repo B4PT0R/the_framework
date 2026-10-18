@@ -614,7 +614,7 @@ def test_application_agent_recipe_does_not_declare_session_lifetime():
         name="In-memory application", version="1",
         agents=(AgentSpec(name="primary"),),
     )
-    assert "session_mode" not in application.compile().agents["primary"]
+    assert "retain_history" not in application.compile().agents["primary"]
 
 
 @pytest.mark.parametrize("short_form", [False, True])
@@ -639,7 +639,7 @@ def test_plugin_private_agent_identities_are_namespaced_and_ephemeral_by_default
     ).compile()
 
     assert "owner.observer" in plan.agents
-    assert plan.agents["owner.observer"].fleet_profile().session_mode == "ephemeral"
+    assert not plan.agents["owner.observer"].fleet_profile().retain_history
     assert plan.agents["owner.observer"].queue.mode == "fifo"
     assert [profile.name for profile in plan.specialists] == [
         "owner.observer",
