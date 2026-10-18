@@ -898,7 +898,14 @@ def _plugin_dependency_order(plugins):
     }, kind="plugin")
 
 
-def _construct_extension_service(extension, services):
+def _unavailable_extension(extension):
+    """Retain lifecycle identity/dependencies without exposing an absent service."""
+    return ServerExtension({key: extension[key] for key in (
+        "name", "scope", "critical", "requires_services", "optional_services",
+    )})
+
+
+def _construct_extension_service(extension, services, construction_errors):
     service = extension.service
     if extension.service_factory is not None:
         dependencies = {
@@ -909,8 +916,19 @@ def _construct_extension_service(extension, services):
         parameters = inspect.signature(extension.service_factory).parameters
         if not any(item.kind == item.VAR_KEYWORD for item in parameters.values()):
             dependencies = {name: value for name, value in dependencies.items() if name in parameters}
-        service = extension.service_factory(**dependencies)
+        # Argument/declaration errors remain composition errors. Only exceptions
+        # from the user's factory body participate in optional-service degradation.
+        inspect.signature(extension.service_factory).bind(**dependencies)
+        try:
+            service = extension.service_factory(**dependencies)
+        except Exception as error:
+            if extension.critical:
+                raise
+            construction_errors[extension.name] = str(error)
+            return _unavailable_extension(extension)
         if inspect.isawaitable(service):
+            if inspect.iscoroutine(service):
+                service.close()
             raise TypeError(
                 f"extension factory must be synchronous: {extension.name}"
             )
@@ -970,6 +988,7 @@ def build_application(
     startup_order = dependency_order(extension_dependencies, kind="application extension")
     resolved_services = {}
     resolved_extensions = {}
+    construction_errors = {}
     for name in startup_order:
         declaration = declarations[name]
         owner = build_context.get("session_owner")
@@ -977,11 +996,23 @@ def build_application(
             shared = owner.server_extensions.get(name)
             if shared is None:
                 raise ValueError(f"application service is unavailable: {name}")
+            if name in owner.service_graph.errors:
+                construction_errors[name] = owner.service_graph.errors[name]
             declaration = ServerExtension({
                 **shared, "endpoints": (), "websockets": (), "mounts": (), "middleware": (),
                 "start": lambda *_: None, "stop": lambda *_: None,
             })
-        extension = _construct_extension_service(declaration, resolved_services)
+        unavailable = [dependency for dependency in extension_dependencies[name]
+                       if dependency in construction_errors]
+        if unavailable:
+            error = RuntimeError("application service dependencies are unavailable: " + ", ".join(unavailable))
+            if declaration.critical:
+                raise error
+            construction_errors[name] = str(error)
+        if name in construction_errors:
+            extension = _unavailable_extension(declaration)
+        else:
+            extension = _construct_extension_service(declaration, resolved_services, construction_errors)
         resolved_extensions[name] = extension
         if extension.service is not None:
             resolved_services[name] = extension.service
@@ -998,7 +1029,7 @@ def build_application(
     services = []
     for name in startup_order:
         extension = resolved_extensions[name]
-        if extension.service is None:
+        if extension.service is None and name not in construction_errors:
             if any((extension.start, extension.stop, extension.health)):
                 raise ValueError(
                     f"extension {extension.name} declares lifecycle hooks without a service"
@@ -1007,7 +1038,7 @@ def build_application(
         services.append(extension)
     service_names = {extension.name for extension in services}
     graph = ServiceGraph(
-        services, context=runtime.services,
+        services, context=runtime.services, construction_errors=construction_errors,
         dependencies={
             extension.name: tuple(
                 dependency for dependency in extension_dependencies[extension.name]

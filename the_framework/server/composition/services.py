@@ -70,22 +70,26 @@ class ServiceContext:
 class ServiceGraph:
     """Start services topologically and stop them in exact reverse order."""
 
-    def __init__(self, extensions=(), *, context=None, dependencies=None):
+    def __init__(self, extensions=(), *, context=None, dependencies=None, construction_errors=None):
         from .application import ServerExtension
 
         self.context = context if context is not None else ServiceContext()
         self.specs = {}
         self.order = []
         self.started = []
-        self.errors = {}
+        self._construction_errors = dict(construction_errors or {})
+        self.errors = dict(self._construction_errors)
         for extension in extensions:
             if not isinstance(extension, ServerExtension):
                 raise TypeError("application services must be resolved ServerExtension declarations")
-            if extension.service is None or extension.service_factory is not None:
+            if ((extension.service is None and extension.name not in self._construction_errors)
+                    or extension.service_factory is not None):
                 raise ValueError("service lifecycle requires a resolved service")
             if extension.name in self.specs:
                 raise ValueError(f"duplicate application service: {extension.name}")
             self.specs[extension.name] = extension
+        if not self._construction_errors.keys() <= self.specs.keys():
+            raise ValueError("construction errors must belong to installed services")
         self.dependencies = (
             {name: tuple(values) for name, values in dependencies.items()}
             if dependencies is not None else {
@@ -116,9 +120,14 @@ class ServiceGraph:
         if self.started:
             return self.context
         self.errors.clear()
+        self.errors.update(self._construction_errors)
         try:
             for name in self.resolve_order():
                 spec = self.specs[name]
+                if name in self._construction_errors:
+                    if spec.critical:
+                        raise RuntimeError(self._construction_errors[name])
+                    continue
                 unavailable = [
                     dependency
                     for dependency in self.dependencies[name]
@@ -174,7 +183,11 @@ class ServiceGraph:
             spec = self.specs[name]
             payload = None
             try:
-                payload = await invoke_lifecycle(spec, "health", self.context)
+                payload = (
+                    {"status": "error", "phase": "construction", "error": self._construction_errors[name]}
+                    if name in self._construction_errors
+                    else await invoke_lifecycle(spec, "health", self.context)
+                )
             except Exception as error:
                 payload = {"status": "error", "error": str(error)}
             probe_failed = (

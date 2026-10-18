@@ -354,9 +354,17 @@ media = ServerExtension(
 Services start in dependency order and stop in exact reverse order. A partial
 startup is rolled back, including cancellation; startup and cleanup failures
 are both preserved when rollback fails. A service must release any resources
-acquired by its own unsuccessful `start()`. Optional services can set `critical=False`; their
-failure remains visible in the graph health report without taking down the
-application. Explicit `start`, `stop` and `health` adapters exist for advanced
+acquired by its own unsuccessful `start()`. Services with `critical=False` can
+fail during factory execution or startup without taking down the application.
+The graph health report retains the error. A failed factory contributes no routes,
+WebSockets, mounts or middleware; its dependents are unavailable too, and a
+critical dependent still aborts composition/startup. An optional dependency that
+is installed participates in this ordering; its default is used only when absent.
+Construction failures are retried by building a new application, not by restarting
+the same service graph. Factories must clean up resources acquired before raising.
+Invalid declarations, missing dependencies, incompatible factory signatures and
+asynchronous factories remain composition errors regardless of `critical`.
+Explicit `start`, `stop` and `health` adapters exist for advanced
 or third-party services, but are not required by the common path.
 An `@endpoint` method named `start` or `stop` is an HTTP handler, not a
 lifecycle hook; provide an explicit adapter if that service also needs startup
@@ -481,6 +489,11 @@ loopback. Query and fragment values are excluded from Chromium launch arguments
 and passed through navigation. The isolated UI target/profile `harness_ui` and
 its historical RPC command remain stable for saved sessions and browser processes
 that survive server or worker upgrades.
+Browser DOM handles are opaque and valid only for their latest snapshot; taking a
+new snapshot invalidates all older handles, including hidden/truncated elements.
+If an RPC caller disconnects or times out, the daemon cancels its pending operation
+instead of leaving an orphan task. Cancellation cannot undo an action that Chromium
+has already performed.
 
 Customize a complete declaration explicitly without rebuilding its internals:
 
@@ -813,7 +826,11 @@ reconciliation, not knowledge of memory or registry contents. Applications compo
 when wanted, through `start_context`, `worker_context`, `flush_context` and
 `close_context`. Context producers own their caches, revision tracking and tasks;
 the controller owns the ordered, token-bounded delivery path. Close producers
-before releasing the transport. The Harness demonstrates this composition beside
+before releasing the transport. The memory producer interprets its own
+`relevant_memory` XML from the retained `provider_slots`; Realtime does not parse
+memory or expose a separate memory-candidate projection. The memory candidates
+therefore reflect the provider slots retained after instruction-budget fitting.
+The Harness demonstrates this composition beside
 its own domain context; no general provider manager is required.
 
 ## Shared mechanics, separate ownership
