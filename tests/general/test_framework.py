@@ -44,7 +44,7 @@ def application(name, version="1", **options):
         name=name,
         version=version,
         agents=(AgentSpec(
-            name="primary", description="Primary test agent.", session_mode='durable'
+            name="primary", description="Primary test agent."
         ),),
         **options,
     )
@@ -176,7 +176,7 @@ def test_single_service_plugin_has_explicit_construction_and_lifecycle(factory):
 def test_compile_rejects_private_agent_shadowing_application_agent():
     spec = Application(
         name="collision", version="1",
-        agents=(AgentSpec(name="plugin.agent", session_mode='durable'),),
+        agents=(AgentSpec(name="plugin.agent"),),
         plugins=(Plugin(name="plugin", specialists=(AgentSpec(name="agent"),)),),
     )
     with pytest.raises(ValueError, match="duplicate private agent identity"):
@@ -609,12 +609,12 @@ def test_extension_discovers_decorated_methods_from_an_object():
         assert client.get("/object-endpoint").json() == {"ok": True}
 
 
-def test_application_accepts_an_in_memory_default_agent():
+def test_application_agent_recipe_does_not_declare_session_lifetime():
     application = Application(
         name="In-memory application", version="1",
-        agents=(AgentSpec(name="primary", session_mode="ephemeral"),),
+        agents=(AgentSpec(name="primary"),),
     )
-    assert application.compile().agents["primary"].session_mode == "ephemeral"
+    assert "session_mode" not in application.compile().agents["primary"]
 
 
 @pytest.mark.parametrize("short_form", [False, True])
@@ -639,7 +639,7 @@ def test_plugin_private_agent_identities_are_namespaced_and_ephemeral_by_default
     ).compile()
 
     assert "owner.observer" in plan.agents
-    assert plan.agents["owner.observer"].session_mode == "ephemeral"
+    assert plan.agents["owner.observer"].fleet_profile().session_mode == "ephemeral"
     assert plan.agents["owner.observer"].queue.mode == "fifo"
     assert [profile.name for profile in plan.specialists] == [
         "owner.observer",

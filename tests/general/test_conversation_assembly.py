@@ -31,7 +31,7 @@ class Security:
 def declaration(*plugins):
     return Application(
         name="Conversation", version="1", security=Security(), surfaces=(),
-        agents=(AgentSpec(name="primary", session_mode="durable"),),
+        agents=(AgentSpec(name="primary"),),
         plugins=plugins,
     )
 
@@ -43,7 +43,7 @@ def test_assembly_recreates_one_durable_conversation(tmp_path, monkeypatch, voic
 from the_framework import Application, AgentSpec
 from the_framework.plugins.realtime import REALTIME
 application = Application(name="Fixture", version="1", surfaces=(),
-    agents=(AgentSpec(name="primary", session_mode="durable"),),
+    agents=(AgentSpec(name="primary"),),
     plugins=(REALTIME,) if VOICE else ())
 '''.replace("VOICE", str(voice)))
     monkeypatch.syspath_prepend(str(tmp_path))

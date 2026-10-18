@@ -32,7 +32,7 @@ from the_framework.plugins.web_search import WEB_SEARCH
 plugins = (BASH, CHROMIUM, MEMORY, REALTIME, REGISTRY, SCHEDULER, SYSTEM, WEB_SEARCH)
 assert all(isinstance(plugin, Plugin) for plugin in plugins)
 plan = Application(name="Example", version="1", plugins=plugins,
-    agents=(AgentSpec(name="primary", session_mode="durable"),)).compile()
+    agents=(AgentSpec(name="primary"),)).compile()
 assert "memory.jiminy" in plan.agents
 assert len(plan.agents["primary"].extensions) == len(plugins)
 for package in ("scheduler", "system", "realtime"):

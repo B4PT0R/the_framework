@@ -152,3 +152,11 @@ to that session rather than owning its services. All sessions, including the
 default, use the same open/close lifecycle and scoped service graphs. Application
 services cannot depend on session services. Saved session.agent_name selects the
 recipe on resume; never silently change it to a different startup choice.
+
+Session lifetime belongs to the concrete Session and its owner, never AgentSpec.
+AgentSpec.build_agent accepts a Session; no argument creates an in-memory session.
+Session.open(path) chooses disk persistence; retain_history is runtime metadata
+controlling context across worker tasks, independent of persistence. AgentTrigger
+chooses the lifetime of its specialist session. Keep the existing WorkerProfile
+mode as process-boundary metadata; do not reimport it into agent recipes or change
+the canonical Session JSON schema for runtime paths/policies.

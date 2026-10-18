@@ -2,6 +2,7 @@ import asyncio
 import pytest
 import json
 
+from the_framework.agent.extensions.specialists import AgentTrigger, agent_trigger
 from the_framework.agent import AgentResources, AgentSpec, Instruction, AgentExtension, QueuePolicy, tool
 from the_framework.agent.runtime.protocol import PluginBindingRequest, PromptRequest
 from the_framework.agent.context.session import Session
@@ -93,7 +94,7 @@ def test_agent_resources_factory_is_resolved_once_at_construction(tmp_path):
     spec = AgentSpec(name="example", resources=load)
     assert calls == []
     path = tmp_path / "session.json"
-    agent = spec.build_agent(path)
+    agent = spec.build_agent(Session.open(path))
     assert calls == [path]
     assert agent.client is client
     assert agent.configs.model == "resource-model"
@@ -130,15 +131,17 @@ def test_agent_resources_reject_unknown_fields_and_do_not_share_defaults():
 
 
 @pytest.mark.parametrize("mode", ["ephemeral", "resident", "durable"])
-def test_serialized_profile_preserves_session_and_queue_policy(mode, tmp_path):
-    spec = AgentSpec(name="specialist", session_mode=mode,
-                     queue=QueuePolicy.latest(limit=2, backlog_limit=4))
-    restored = AgentSpec.from_profile(json.loads(json.dumps(spec.fleet_profile())))
-    assert restored.session_mode == spec.session_mode
+def test_trigger_owns_specialist_session_policy_without_changing_recipe(mode):
+    spec = AgentSpec(name="specialist", queue=QueuePolicy.latest(limit=2, backlog_limit=4))
+    @agent_trigger(spec, session_mode=mode)
+    def result(value):
+        return value
+    trigger = AgentTrigger.from_function(result)
+    profile = trigger.profile()
+    restored = AgentSpec.from_profile(json.loads(json.dumps(profile)))
+    assert profile.session_mode == mode
     assert restored.queue == spec.queue
-    agent = restored.build_agent(tmp_path / "session.json", resources=AgentResources(client=object()))
-    assert agent.retain_history == (mode != "ephemeral")
-    assert (agent.session.path is not None) == (mode == "durable")
+    assert "session_mode" not in spec and "session_mode" not in restored
 
 
 def test_current_extension_reference_round_trips_without_changing_session_bindings(tmp_path):
@@ -146,9 +149,9 @@ def test_current_extension_reference_round_trips_without_changing_session_bindin
     path = tmp_path / "session.json"
     session = Session.open(path)
     session.set_plugin("registry", False)
-    profile = AgentSpec(name="primary", session_mode="durable", extensions=(reference,)).fleet_profile()
+    profile = AgentSpec(name="primary",  extensions=(reference,)).fleet_profile()
     restored = AgentSpec.from_profile(json.loads(json.dumps(profile)))
-    agent = restored.build_agent(path, resources=AgentResources(client=object()))
+    agent = restored.build_agent(Session.open(path), resources=AgentResources(client=object()))
     assert agent.session.id == session.id
     assert agent.extension("registry").activated is False
     assert dict(agent.session.plugins) == {"registry": False}
@@ -159,11 +162,9 @@ def test_declared_policies_override_the_source_profile():
     initial = AgentSpec(name="specialist").fleet_profile()
     spec = AgentSpec({
         **AgentSpec.from_profile(initial),
-        "session_mode": "resident",
         "queue": QueuePolicy.latest(limit=2, backlog_limit=3),
     })
     restored = AgentSpec.from_profile(spec.fleet_profile())
-    assert restored.session_mode == spec.session_mode
     assert restored.queue == spec.queue
 
 
@@ -187,8 +188,8 @@ def test_profile_instructions_have_one_owner_and_do_not_accumulate():
 def test_policy_rejects_unknown_mode_at_declaration():
     with pytest.raises(TypeError, match="mode"):
         QueuePolicy(mode="typo")
-    with pytest.raises(TypeError, match="session_mode"):
-        AgentSpec(name="agent", session_mode="typo")
+    with pytest.raises((KeyError, TypeError), match="session_mode"):
+        AgentSpec(name="agent", session_mode="durable")
 
 
 @pytest.mark.parametrize("policy", [QueuePolicy.latest(limit=3)])
@@ -232,7 +233,7 @@ def test_agent_spec_builds_identity_instructions_plugins_and_config(tmp_path):
         initializers=(initialize,),
     )
     agent = spec.build_agent(
-        tmp_path / "session.json",
+        Session.open(tmp_path / "session.json"),
         resources=AgentResources(
             client=object(),
             configuration={"model": "example-model"},
@@ -325,13 +326,13 @@ def test_required_plugin_binding_overrides_stale_session_state(tmp_path):
     Session.open(path).set_plugin("example", False)
     spec = AgentSpec(
         name="agent",
-        session_mode='durable',
+
         extensions=(Plugin(
             name="example", agent_extension=ExampleExtension, agent_binding_required=True,
         ),),
     )
 
-    agent = spec.build_agent(path, resources=AgentResources(client=object()))
+    agent = spec.build_agent(Session.open(path), resources=AgentResources(client=object()))
 
     assert agent.extension("example").activated is True
     assert Session.open(path).plugins["example"] is True
@@ -354,12 +355,12 @@ def test_complete_plugin_name_owns_agent_binding_and_resources(tmp_path, intrins
 
     path = tmp_path / "session.json"
     Session.open(path).set_plugin("feature", False)
-    spec = AgentSpec(name="agent", session_mode="durable", extensions=(Plugin(
+    spec = AgentSpec(name="agent",  extensions=(Plugin(
         name="feature", agent_extension=(lambda agent: Feature(agent)) if factory else Feature,
     ),))
     resources = AgentResources(client=object(), configuration={"feature": {"enabled": True}},
                                state={"feature": {"counter": 2}})
-    agent = spec.build_agent(path, resources=resources)
+    agent = spec.build_agent(Session.open(path), resources=resources)
     extension = agent.extension("feature")
     assert Feature.name == intrinsic_name
     assert extension.config.enabled is True
@@ -418,22 +419,24 @@ def test_worker_changes_plugin_binding_through_the_ordered_command_path():
     asyncio.run(scenario())
 
 
-def test_agent_spec_supports_ephemeral_resident_and_durable_sessions(tmp_path):
-    ephemeral_spec = AgentSpec(name="ephemeral")
-    ephemeral = ephemeral_spec.build_agent(
-        tmp_path / "ephemeral.json", resources=AgentResources(client=object())
-    )
-    resident = AgentSpec(
-        name="resident", description="Resident agent.", session_mode='resident'
-    ).build_agent(tmp_path / "resident.json", resources=AgentResources(client=object()))
-    durable = AgentSpec(
-        name="durable", description="Durable agent.", session_mode='durable'
-    ).build_agent(tmp_path / "durable.json", resources=AgentResources(client=object()))
-
-    assert ephemeral.session.path is None
-    assert ephemeral.description == "Agent worker."
-    assert ephemeral.retain_history is False
-    assert resident.session.path is None
-    assert resident.retain_history is True
+def test_one_agent_recipe_accepts_independent_session_lifetimes(tmp_path):
+    spec = AgentSpec(name="assistant")
+    resources = AgentResources(client=object())
+    ephemeral = spec.build_agent(Session(retain_history=False), resources=resources)
+    resident = spec.build_agent(Session(), resources=resources)
+    durable = spec.build_agent(Session.open(tmp_path / "durable.json"), resources=resources)
+    assert ephemeral.session.path is None and not ephemeral.session.retain_history
+    assert resident.session.path is None and resident.session.retain_history
     assert durable.session.path == tmp_path / "durable.json"
-    assert durable.retain_history is True
+    assert durable.session.retain_history
+    assert len({agent.session.id for agent in (ephemeral, resident, durable)}) == 3
+    assert "retain_history" not in durable.session
+    assert Session.open(durable.session.path).id == durable.session.id
+
+
+def test_session_can_persist_settings_without_retaining_context_between_tasks(tmp_path):
+    session = Session.open(tmp_path / "stateless.json", retain_history=False)
+    agent = AgentSpec(name="assistant").build_agent(session)
+    assert agent.session is session
+    assert not session.retain_history
+    assert Session.open(session.path).configuration == session.configuration

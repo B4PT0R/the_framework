@@ -102,7 +102,7 @@ def test_resident_session_is_discarded_on_close_and_does_not_cross_route_boundar
 def test_session_commit_failure_keeps_live_and_saved_settings_consistent(tmp_path, monkeypatch):
     from tests.fixtures.multi_session_app import Feature
     from the_framework import AgentSpec
-    agent = AgentSpec(name="agent", session_mode="durable", extensions=(Feature,)).build_agent(tmp_path / "session.json")
+    agent = AgentSpec(name="agent",  extensions=(Feature,)).build_agent(Session.open(tmp_path / "session.json"))
     before = agent.session.path.read_text()
     def fail(self):
         raise OSError("disk full")

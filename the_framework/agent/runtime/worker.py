@@ -169,7 +169,7 @@ class Worker:
                 async for event in stream:
                     yield event
             finally:
-                if not getattr(self.agent, "retain_history", True):
+                if not self.agent.session.retain_history:
                     await asyncio.to_thread(self.agent.session.clear_context)
             return
         if isinstance(command, ExternalEventRequest):

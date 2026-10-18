@@ -43,7 +43,7 @@ def test_independent_application_preserves_session_across_server_recreation(tmp_
                 name="Independent Test", version="1",
                 agents=(AgentSpec(
                     name="primary", description="Primary test agent.",
-                    session_mode='durable',
+
                 ),),
                 security=Security(), server_extensions=(
                     ServerExtension(name="runtime", service=runtime),

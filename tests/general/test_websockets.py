@@ -24,7 +24,7 @@ class Security:
 def application(name, **options):
     return Application(
         name=name, version="1", agents=(AgentSpec(
-            name="primary", description="Primary test agent.", session_mode='durable'
+            name="primary", description="Primary test agent."
         ),),
         **options,
     )

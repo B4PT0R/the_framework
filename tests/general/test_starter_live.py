@@ -6,6 +6,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
+from the_framework.agent import Session
 from the_framework.agent.runtime.protocol import PromptRequest
 from starter.server import create_app
 
@@ -74,7 +75,7 @@ def test_starter_real_memory_curates_indexes_and_survives_reconstruction(tmp_pat
     from starter.application import application
 
     session = tmp_path / "session.json"
-    agent = application.compile().agents["assistant"].build_agent(session)
+    agent = application.compile().agents["assistant"].build_agent(Session.open(session))
     recalled = agent.extension("memory").search("What language does Copper Finch use?")
     assert recalled["status"] == "found"
     assert any("rust" in entry["content"].lower() for entry in recalled["memories"])

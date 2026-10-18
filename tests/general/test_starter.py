@@ -127,7 +127,7 @@ def test_starter_without_credentials_remains_available_after_inference_failure(t
 def test_starter_builds_without_inference_or_product_configuration(tmp_path):
     session = tmp_path / "session.json"
     agent = application.compile().agents["assistant"].build_agent(
-        session,
+        Session.open(session),
         resources=AgentResources(client=object()),
     )
     assert agent.name == "assistant"

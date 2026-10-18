@@ -68,7 +68,6 @@ class AgentSpec(modict):
     initializers: tuple[object, ...] = ()
     command_middleware: tuple[object, ...] = ()
     projections: Mapping[str, object] = modict.factory(dict)
-    session_mode: Literal["ephemeral", "resident", "durable"] = "ephemeral"
     resources: Callable[[str | Path | None], AgentResources] | None = None
     configuration: Mapping[str, object] = modict.factory(dict)
     idle_timeout_seconds: float | int | None = None
@@ -106,7 +105,6 @@ class AgentSpec(modict):
             description=profile.description or f"Private specialist {profile.name}.",
             extensions=tuple(profile.plugins),
             instructions=(Instruction(name="specialist_role", content=profile.instructions),),
-            session_mode=profile.session_mode,
             queue=QueuePolicy(
                 mode=profile.queue_policy,
                 limit=profile.queue_limit,
@@ -123,7 +121,8 @@ class AgentSpec(modict):
         return type(self)({**self, "extensions": (*self.extensions, *plugins)})
 
     def fleet_profile(self, *, identity=None, observes=("agent.task.requested",),
-                      item_kinds=(), conversation_roles=(), input_item_field=None):
+                      item_kinds=(), conversation_roles=(), input_item_field=None,
+                      session_mode="ephemeral"):
         """Compile scheduling metadata for the server-owned specialist fleet."""
         instruction_text = "\n\n".join(
             value.content if isinstance(value, Instruction) else value["content"]
@@ -137,7 +136,7 @@ class AgentSpec(modict):
             instructions=instruction_text or self.description,
             queue_limit=self.queue.limit,
             queue_policy=self.queue.mode,
-            session_mode=self.session_mode,
+            session_mode=session_mode,
             durable_tasks=self.queue.durable,
             backlog_limit=self.queue.backlog_limit,
             model=model,
@@ -181,22 +180,31 @@ class AgentSpec(modict):
 
     def build_agent(
         self,
-        session_path=None,
+        session=None,
         *,
+        session_root=None,
         resources: AgentResources | None = None,
         application_root=None,
         profile: WorkerProfile | None = None,
     ):
         """Construct with declaration < resources < launch profile < saved session.
 
+        The Session owns storage and history retention; omission creates an
+        in-memory session. session_root supplies a workspace without persistence.
         A profile is consumed only at the worker boundary, never retained as a
         competing declaration. Executable factories and initializers stay local.
         """
         from .runtime.agent import Agent
+        from .context.session import Session
+        session = Session() if session is None else session
+        if not isinstance(session, Session):
+            raise TypeError("build_agent requires a Session, not a storage path")
+        session_path = session.path
+        if session_path is None and session_root is not None:
+            session_path = Path(session_root) / "session.json"
         resolved = type(self).from_profile(profile) if profile is not None else None
         if resolved is not None and resolved.name != self.name:
             raise ValueError("execution profile belongs to another agent declaration")
-        mode = resolved.session_mode if resolved is not None else self.session_mode
         # Explicit resources replace the factory as a whole; there is no hidden
         # merge or fallback between independently supplied construction inputs.
         if resources is None:
@@ -210,12 +218,11 @@ class AgentSpec(modict):
         if resources.client is not None:
             options["client"] = resources.client
         agent = Agent(
-            session_path=session_path if mode == "durable" else None,
+            session=session,
             name=self.name,
             application_root=application_root,
             session_root=Path(session_path).parent if session_path is not None else None,
             description=self.description,
-            retain_history=mode != "ephemeral",
             state=resources.state,
             **options,
         )

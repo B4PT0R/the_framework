@@ -95,7 +95,7 @@ def test_resolved_launch_settings_override_defaults_but_not_saved_session(tmp_pa
                 "model": "resource-default",
                 "memory_curator": {"store_path": str(root / "resource.sqlite3")},
             })
-        spec = AgentSpec(name="private", session_mode="durable", resources=resources,
+        spec = AgentSpec(name="private",  resources=resources,
             configuration={"model": "declared-default"},
             extensions=(lambda agent: MemoryCuratorExtension(agent),),
             initializers=(lambda agent: setattr(agent, "application_initializer", True),))
@@ -106,9 +106,9 @@ def test_resolved_launch_settings_override_defaults_but_not_saved_session(tmp_pa
             session.update_agent(configuration={"model": "saved-model",
                 "memory_curator": {"store_path": str(root / "saved.sqlite3")}})
             previous_id = session.id
-        profile = AgentSpec(name="private", session_mode="durable", instructions="Resolved role",
+        profile = AgentSpec(name="private",  instructions="Resolved role",
             configuration={"model": "resolved-model",
-                "memory_curator": {"store_path": str(root / "resolved.sqlite3")}}).fleet_profile()
+                "memory_curator": {"store_path": str(root / "resolved.sqlite3")}}).fleet_profile(session_mode="durable")
         profile_path = root / "profile.json"
         profile_path.write_text(json.dumps(profile))
         monkeypatch.setattr(worker_process, "load_application", lambda _: SimpleNamespace(
@@ -134,7 +134,7 @@ def test_resolved_launch_settings_override_defaults_but_not_saved_session(tmp_pa
 def test_worker_entrypoint_explicit_session_mode_overrides_launch_profile(tmp_path, monkeypatch):
     from the_framework import AgentSpec
     from the_framework.agent.runtime import worker_process
-    profile = AgentSpec(name="private", session_mode="durable").fleet_profile()
+    profile = AgentSpec(name="private").fleet_profile(session_mode="durable")
     path = tmp_path / "profile.json"
     path.write_text(json.dumps(profile))
     constructed = []
@@ -143,4 +143,4 @@ def test_worker_entrypoint_explicit_session_mode_overrides_launch_profile(tmp_pa
     monkeypatch.setattr(worker_process.Worker, "run", capture)
     asyncio.run(worker_process.run(tmp_path / "session.json", profile_path=path, session_mode="ephemeral"))
     assert constructed[0].session.path is None
-    assert constructed[0].retain_history is False
+    assert constructed[0].session.retain_history is False

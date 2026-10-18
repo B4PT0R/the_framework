@@ -318,7 +318,7 @@ def test_non_retained_auxiliary_context_is_cleared_after_each_prompt():
         incoming = asyncio.Queue()
         outgoing = []
         agent = Agent()
-        agent.retain_history = False
+        agent.session.set_attr("retain_history", False)
 
         async def send(message):
             outgoing.append(message)

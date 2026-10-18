@@ -53,7 +53,7 @@ def declaration(service, **plugin_options):
         name="Plugin host",
         version="1",
         agents=(AgentSpec(
-            name="primary", description="Primary test agent.", session_mode='durable'
+            name="primary", description="Primary test agent."
         ),),
         plugins=(Plugin(
             name="example",
@@ -186,7 +186,7 @@ def test_plugin_owns_multiple_ordered_server_components_and_static_routes():
             name="Vertical feature",
             version="1",
             agents=(AgentSpec(
-                name="primary", session_mode='durable'
+                name="primary"
             ),),
             plugins=(Plugin(name="feature", configure=runtime),),
         )
@@ -229,7 +229,7 @@ def test_plugin_runtime_installs_mount_middleware_and_openapi_on_main_app():
 
     app = Application(
         name="Vertical surface", version="1",
-        agents=(AgentSpec(name="primary", session_mode='durable'),),
+        agents=(AgentSpec(name="primary"),),
         plugins=(Plugin(
             name="feature",
             server_extensions=ServerExtension(
@@ -264,7 +264,7 @@ def test_plugin_mount_collision_is_rejected_before_start():
     app = FastAPI()
     declaration = Application(
         name="Mount collision", version="1",
-        agents=(AgentSpec(name="primary", session_mode='durable'),),
+        agents=(AgentSpec(name="primary"),),
         plugins=(Plugin(
             name="feature",
             server_extensions=ServerExtension(
@@ -292,7 +292,7 @@ def test_application_service_can_depend_on_plugin_owned_service():
     app = Application(
         name="Cross-boundary lifecycle",
         version="1",
-        agents=(AgentSpec(name="primary", session_mode='durable'),),
+        agents=(AgentSpec(name="primary"),),
         plugins=(Plugin(
             name="provider",
             server_extensions=ServerExtension(name="provider_service", service=provider),
@@ -332,7 +332,7 @@ def test_capability_dependency_orders_plugin_services_without_extension_edge():
     app = Application(
         name="Capability startup order",
         version="1",
-        agents=(AgentSpec(name="primary", session_mode='durable'),),
+        agents=(AgentSpec(name="primary"),),
         plugins=(
             Plugin(
                 name="consumer",
@@ -433,7 +433,7 @@ def test_plugin_route_collision_fails_before_start():
             name="Collision",
             version="1",
             agents=(AgentSpec(
-                name="primary", description="Primary test agent.", session_mode='durable'
+                name="primary", description="Primary test agent."
             ),),
             plugins=(Plugin(
                 name="example",
@@ -451,7 +451,7 @@ def test_failed_plugin_start_rolls_back_started_runtimes():
             name="Rollback",
             version="1",
             agents=(AgentSpec(
-                name="primary", description="Primary test agent.", session_mode='durable'
+                name="primary", description="Primary test agent."
             ),),
             plugins=(
                 Plugin(
@@ -487,7 +487,7 @@ def test_plugin_service_factory_receives_application_dependency_and_starts():
     app = Application(
         name="Factory",
         version="1",
-        agents=(AgentSpec(name="primary", session_mode='durable'),),
+        agents=(AgentSpec(name="primary"),),
         server_extensions=(ServerExtension(name="dependency", service=dependency),),
         plugins=(Plugin(
             name="feature",
@@ -518,7 +518,7 @@ def test_plugin_service_factory_can_depend_on_another_plugin_capability():
 
     app = Application(
         name="Chained factories", version="1",
-        agents=(AgentSpec(name="primary", session_mode='durable'),),
+        agents=(AgentSpec(name="primary"),),
         plugins=(
             Plugin(
                 name="consumer",
@@ -553,7 +553,7 @@ def test_cross_plugin_service_edge_requires_a_public_capability():
     )
     spec = Application(
         name="Undeclared dependency", version="1",
-        agents=(AgentSpec(name="primary", session_mode='durable'),),
+        agents=(AgentSpec(name="primary"),),
         plugins=(consumer, provider),
     )
     with pytest.raises(ValueError, match="without a versioned capability requirement"):
@@ -573,7 +573,7 @@ def test_declared_plugin_requires_declared_capability_provider():
     declaration = Application(
         name="Dependencies",
         version="1",
-        agents=(AgentSpec(name="primary", session_mode='durable'),),
+        agents=(AgentSpec(name="primary"),),
         plugins=(
             Plugin(
                 name="base", agent_binding_enabled=False,
@@ -638,7 +638,7 @@ def test_factory_service_exposes_its_decorated_routes_without_endpoint_copy():
 
     definition = Application(
         name="Factory routes", version="1",
-        agents=(AgentSpec(name="primary", session_mode='durable'),),
+        agents=(AgentSpec(name="primary"),),
         server_extensions=(ServerExtension(name="dependency", service="ready"),),
         plugins=(Plugin(
             name="feature",
@@ -672,7 +672,7 @@ def test_factory_service_exposes_its_decorated_routes_without_endpoint_copy():
 def test_prebuilt_plugin_service_exposes_decorated_routes_without_endpoint_copy():
     app = Application(
         name="Prebuilt routes", version="1",
-        agents=(AgentSpec(name="primary", session_mode='durable'),),
+        agents=(AgentSpec(name="primary"),),
         plugins=(Plugin(
             name="feature",
             server_extensions=ServerExtension(name="feature_runtime", service=Api()),
@@ -693,7 +693,7 @@ def test_prebuilt_plugin_service_exposes_decorated_routes_without_endpoint_copy(
 def test_service_routes_can_be_explicitly_hidden():
     app = Application(
         name="Private service", version="1",
-        agents=(AgentSpec(name="primary", session_mode='durable'),),
+        agents=(AgentSpec(name="primary"),),
         plugins=(Plugin(
             name="feature",
             server_extensions=ServerExtension(name="feature_runtime", service=Api(), endpoints=()),
@@ -713,7 +713,7 @@ def test_plugin_status_uses_actual_service_lifecycle_and_keeps_failed_routes_ins
         events = []
         app = Application(
             name="Runtime diagnostics", version="1", security=Security(),
-            agents=(AgentSpec(name="primary", session_mode="durable"),),
+            agents=(AgentSpec(name="primary"),),
             plugins=(
                 Plugin(name="failing", server_extensions=ServerExtension(
                     name="failed_service", service=Service(events, fail=True),
@@ -752,7 +752,7 @@ def test_plugin_status_requires_all_of_its_services_and_ignores_other_owners():
     async def run():
         app = Application(
             name="Composite diagnostics", version="1",
-            agents=(AgentSpec(name="primary", session_mode="durable"),),
+            agents=(AgentSpec(name="primary"),),
             plugins=(
                 Plugin(name="partial", server_extensions=(
                     ServerExtension(name="store", service=Service([])),

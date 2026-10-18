@@ -11,6 +11,7 @@ from the_framework import (
     Plugin,
     ServerExtension,
 )
+from the_framework.agent import Session
 from the_framework.agent.extensions.extension import AgentExtension
 from the_framework.agent.models.events import Event
 from the_framework.agent.runtime.protocol import PromptRequest, ShutdownRequest
@@ -36,11 +37,11 @@ def test_agent_tool_changes_binding_without_ending_its_turn(tmp_path, external_f
 
         spec = Application(
             name="Binding test", version="1", security=Security(),
-            agents=(AgentSpec(name="agent", session_mode='durable'),),
+            agents=(AgentSpec(name="agent"),),
             plugins=(Plugin(name="feature", agent_extension=Feature), Plugin(name="system", agent_extension=SystemExtension),
                      *((REALTIME,) if with_voice else ())),
         )
-        agent = spec.compile().agents["agent"].build_agent(tmp_path / "session.json")
+        agent = spec.compile().agents["agent"].build_agent(Session.open(tmp_path / "session.json"))
         agent.client = object()
         incoming = asyncio.Queue()
 
@@ -126,7 +127,7 @@ def test_agent_tool_changes_binding_without_ending_its_turn(tmp_path, external_f
                 assert not voice.controller.active
                 assert not runtime.active_command_id
                 assert voice.call_id is None
-        restored = spec.compile().agents["agent"].build_agent(tmp_path / "session.json")
+        restored = spec.compile().agents["agent"].build_agent(Session.open(tmp_path / "session.json"))
         assert restored.extension("feature").activated is external_first
 
     asyncio.run(run())

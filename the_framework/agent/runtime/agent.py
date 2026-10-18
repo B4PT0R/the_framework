@@ -33,7 +33,7 @@ class Agent:
         client=None,
         name="agent",
         description="General-purpose agent worker.",
-        retain_history=True,
+        session=None,
         application_root=None,
         session_root=None,
         state=None,
@@ -43,7 +43,11 @@ class Agent:
         self._client_lock = Lock()
         self.bridge = ApplicationClient()
         self.agents = AgentTriggers(agent=self)
-        self.session = Session.open(session_path) if session_path else Session()
+        if session is not None and session_path is not None:
+            raise ValueError("provide a Session or session_path, not both")
+        if session is not None and not isinstance(session, Session):
+            raise TypeError("session must be a Session")
+        self.session = session if session is not None else Session.open(session_path) if session_path else Session()
         if not isinstance(name, str) or not name.strip():
             raise ValueError("agent name must not be empty")
         if not isinstance(description, str) or not description.strip():
@@ -53,8 +57,7 @@ class Agent:
         self.session_root = Path(root).resolve() if root is not None else None
         self.name = name
         self.description = description
-        self.retain_history = bool(retain_history)
-        if not self.retain_history and (self.session.history or self.session.archive):
+        if not self.session.retain_history and (self.session.history or self.session.archive):
             self.session.clear_context()
         self.configs = Configs(**kwargs)
         self.configs.merge(self.session.configuration)

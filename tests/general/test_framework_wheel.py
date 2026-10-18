@@ -56,7 +56,7 @@ def test_wheel_contains_standalone_framework_and_prompt_resources(tmp_path, monk
             "ServerExtension, Plugin, QueuePolicy, endpoint, "
             "provider, tool; from the_framework.agent import AgentExtension; "
             "a = Application(name='Wheel', version='1', agents=(AgentSpec("
-            "name='main', description='Main agent.', session_mode='durable'),)); "
+            "name='main', description='Main agent.'),)); "
             "s = ClientSurface(name='ui', source='.', build=('true',), artifact='dist', routes=('/ui',)); "
             "assert a.compile().agents['main'].name == 'main' and s.name == 'ui'"
         )],

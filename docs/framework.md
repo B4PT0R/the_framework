@@ -914,7 +914,7 @@ loading environment settings or creating an inference client. The generic worker
 owns construction. Use explicit resources when constructing an agent directly.
 
 ```python
-from the_framework.agent import AgentSpec
+from the_framework.agent import AgentSpec, Session
 
 agent_spec = AgentSpec(
     name="companion",
@@ -924,16 +924,26 @@ agent_spec = AgentSpec(
     instructions=(identity_instruction,),
     projections={"mobile": mobile_projection},
     command_middleware=(measure_turns,),
-    session_mode='durable',
 )
 
-agent = agent_spec.build_agent(session_path)
+session = Session.open(session_path)
+agent = agent_spec.build_agent(session)
 worker = agent_spec.build_worker(agent, receive, send)
 ```
 
-The same `AgentSpec` declares a private specialist. Specialists are ephemeral
-by default and can opt into `session_mode="resident"` or
-`session_mode="durable"`. `QueuePolicy` controls bounded FIFO/latest delivery
+Session lifetime is independent of the recipe. `Session()` keeps history in memory;
+`Session(retain_history=False)` clears context between worker tasks. `Session.open(path)`
+loads or creates a disk-backed session. Its runtime `path` and `retain_history`
+attributes stay outside the canonical JSON schema. A disk-backed session may also
+use `retain_history=False`, preserving its settings while clearing task context.
+`build_agent()` accepts a Session explicitly, or creates an in-memory one when omitted.
+The same recipe can therefore construct agents with different session lifetimes.
+Hosted application sessions remain durable by default; `open_session(durable=False)`
+creates an in-memory session retaining history for the life of its worker.
+
+The same `AgentSpec` declares a private specialist. Its trigger chooses the session
+lifetime: ephemeral by default, or `@agent_trigger(spec, session_mode="resident")`
+/ `session_mode="durable"` when context should survive tasks or worker restarts. `QueuePolicy` controls bounded FIFO/latest delivery
 and durable task journaling. A plugin owns its specialists and calls them
 through `agents.submit(name, prompt)`, which returns a request ID without waiting.
 The worker routes results to `AgentTriggers.dispatch()` and the declared handler;
@@ -943,9 +953,9 @@ contract. The generic worker entrypoint resolves a selected public agent or a
 namespaced specialist from `module:application`.
 
 `@agent_trigger(spec, observes=..., item_kinds=..., conversation_roles=...,
-input_item_field=...)` binds an `AgentSpec` to a result handler. The decorator
-only selects when and what to observe. Model/plugin settings live in the spec's
-`configuration`, alongside its instructions, plugins, session/queue policy and
+input_item_field=..., session_mode="ephemeral")` binds an `AgentSpec` to a result handler. The decorator
+selects what to observe and the lifetime of the session it launches. Model/plugin settings live in the spec's
+`configuration`, alongside its instructions, plugins, queue policy and
 completion settings. There is no second set of model or queue parameters on the
 decorator. The spec's name identifies the specialist; a handler docstring fills
 its description when the spec uses the default description.
@@ -976,8 +986,9 @@ of already serialized profiles.
 
 The serialized specialist profile carries `session_mode` explicitly, preserving
 `ephemeral`, `resident` and `durable` across worker construction. Session and
-queue policies on `AgentSpec` remain authoritative when compiling a profile,
-including after modifying a declaration reconstructed from a profile. The old
+queue policies have separate owners: the trigger chooses the session mode, while
+AgentSpec owns its task queue policy. Reconstructing a recipe from a profile does
+not attach the old session mode to that recipe. The old
 internal `persistent` boolean is no longer a declaration parameter.
 
 `AgentSpec` is the public in-process construction recipe; `AgentTrigger` binds a

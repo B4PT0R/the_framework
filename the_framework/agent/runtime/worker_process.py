@@ -8,6 +8,7 @@ from importlib import import_module
 from .agent import Agent
 from .protocol import ShutdownRequest
 from .worker import Worker
+from ..context.session import Session
 
 
 class JsonLines:
@@ -58,7 +59,6 @@ async def _run(
         plan = load_application(application_reference).compile()
         public = {spec.name for spec in plan.application.agents}
         if agent_name is None and Path(session_path).exists():
-            from ..context.session import Session
             agent_name = Session.open(session_path).agent_name
         if agent_name is None:
             if len(public) != 1:
@@ -78,34 +78,30 @@ async def _run(
             profile = WorkerProfile(**json.load(file))
         if spec is None:
             spec = AgentSpec.from_profile(profile)
+    mode = session_mode or (profile.session_mode if profile is not None else "durable")
+    if mode not in {"ephemeral", "resident", "durable"}:
+        raise ValueError("invalid session mode")
+    session = (Session.open(session_path) if mode == "durable"
+               else Session(retain_history=mode != "ephemeral"))
+    if session_id is not None and (session.path is None or not session.path.exists()):
+        session.id = session_id
     if spec is not None:
-        if session_mode is not None:
-            if profile is not None:
-                profile = type(profile)({**profile, "session_mode": session_mode})
-            else:
-                spec = type(spec)({**spec, "session_mode": session_mode})
-        mode = profile.session_mode if profile is not None else spec.session_mode
-        if session_id is not None and mode == "durable" and not Path(session_path).exists():
-            from ..context.session import Session
-            initial = Session(id=session_id, agent_name=spec.name)
-            initial.set_attr("path", Path(session_path))
-            initial.save()
-        agent = spec.build_agent(session_path, application_root=application_root, profile=profile)
+        agent = spec.build_agent(
+            session, session_root=Path(session_path).parent,
+            application_root=application_root, profile=profile,
+        )
         specialists = ()
         if plan is not None and identity in {value.name for value in plan.application.agents}:
             specialists = plan.specialists
         worker = spec.build_worker(agent, transport.receive, transport.send, specialists=specialists)
     else:
-        agent = Agent(session_path=session_path)
+        agent = Agent(session=session)
         agent.session.update_agent(configuration=agent.configs, state=agent.states.snapshot())
         worker = Worker(agent, transport.receive, transport.send)
-    if session_id is not None and agent.session.path is None:
-        agent.session.id = session_id
     await worker.run()
 
 
 async def run(session_path, **options):
-    from ..context.session import Session
     with Session.writer(session_path):
         await _run(session_path, **options)
 

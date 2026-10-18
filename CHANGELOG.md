@@ -6,6 +6,14 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Remove session lifetime from AgentSpec. Construct it with a Session:
+  `Session()` keeps context in memory, `Session(retain_history=False)` clears
+  context between tasks, and `Session.open(path)` persists on disk. Retention
+  and storage are independent runtime attributes outside the canonical JSON.
+  Triggers choose their specialist session mode; existing WorkerProfile payloads
+  are converted only at worker launch. Starter and Harness recipes no longer
+  declare a lifetime, and hosted sessions remain durable by default.
+
 - Replace `primary_agent` with the sole public `Application.agents` catalogue.
   One recipe is selected implicitly; several require `build(..., agent=...)` for
   a new default session. Resume the saved `Session.agent_name` without changing

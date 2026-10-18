@@ -785,3 +785,23 @@ Harness relancée avec même navigateur/fenêtre, conversation canonique conserv
 contrôles texte/voix et 13 plugins disponibles, Jiminy conforme à la configuration
 sauvegardée. Fermeture/reprise de la session par défaut et identité/recette
 sauvegardées couvertes par les tests de contrat.
+
+
+## Session lifetime separate from agent recipes — delivery
+
+- [x] Remove AgentSpec.session_mode; direct construction receives a Session.
+  Session() is memory-backed, Session.open(path) is persisted; retain_history
+  belongs to runtime session metadata and is independent of the storage path.
+- [x] Worker task cleanup consults its session; no duplicate Agent retention flag.
+  Worker launch constructs the Session before applying the reusable agent recipe.
+- [x] Private triggers choose their specialist session lifetime; WorkerProfile wire
+  payloads stay unchanged and modes are interpreted only at worker boundaries.
+  Public hosted sessions remain durable by default, with existing resident option.
+- [x] Starter/Harness recipes, construction examples and contract tests updated.
+  No compatibility aliases, payload schema additions or runtime migrations.
+
+Final validation: Framework 725 passed / 3 skipped; Harness 157 passed.
+Critical Ruff and diff checks clean. Fresh starter prepared, connected Chromium
+render verified and supervisor stopped cleanly. Installed Harness restarted with
+the same browser/window and unchanged canonical session; text/voice controls,
+13 plugins and Jiminy's canonical memory configuration verified.
