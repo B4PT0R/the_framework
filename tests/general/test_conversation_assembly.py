@@ -197,3 +197,49 @@ def test_minimal_host_accepts_text_and_files_without_plugins(tmp_path):
         assert [command.id for command in runtime.submitted] == ['text', 'file']
         assert (tmp_path / 'bucket/notes.txt').read_bytes() == b'Keep this file'
         assert not app.state.application.plugins
+
+
+def test_reset_policy_belongs_to_the_session_runtime(tmp_path):
+    from tests.fixtures.runtime import FakeRuntime
+    from the_framework.server.runtime.session import SessionRuntime
+
+    class ProductRuntime(FakeRuntime):
+        async def reset_session(self):
+            self.resets += 1
+            if self.fail_reset:
+                raise RuntimeError("reset transaction failed")
+            return {"status": "reset", "preserved": ["memory"]}
+
+    async def run():
+        for runtime in (FakeRuntime(), ProductRuntime()):
+            runtime.resets = 0
+            runtime.fail_reset = False
+            app = declaration().build(
+                "example:application", BuildContext(data_root=tmp_path),
+                handshake=lambda socket: None,
+                session_factory=lambda supervisor, context: runtime,
+            )
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                # Even an application-owned reset is unavailable to unauthenticated clients.
+                assert (await client.delete("/api/v1/session")).status_code == 401
+                assert runtime.resets == 0
+                client.headers["Authorization"] = "Bearer test"
+                result = await client.delete("/api/v1/session")
+                if isinstance(runtime, ProductRuntime):
+                    assert result.status_code == 200
+                    assert result.json() == {"status": "reset", "preserved": ["memory"]}
+                    assert runtime.resets == 1
+                    runtime.fail_reset = True
+                    failed = await client.delete("/api/v1/session")
+                    assert failed.status_code == 500
+                    assert "reset transaction failed" in failed.text
+                else:
+                    assert result.status_code == 501
+                    assert "session_reset_unavailable" in result.text
+
+        # A low-level transaction recipe does not implicitly expose an HTTP reset.
+        runtime = SessionRuntime(object(), reset_transaction_factory=lambda path: None)
+        with pytest.raises(NotImplementedError):
+            await runtime.reset_session()
+
+    asyncio.run(run())

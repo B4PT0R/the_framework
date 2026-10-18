@@ -74,7 +74,11 @@ canonical preparation and compaction. Use agent.compact() for the current sessio
 not a separately assembled controller. Context.project is pure; canonical input
 preparation performs recovery before projection. Generation adds ephemeral providers;
 compaction never samples/persists them. Client archive and Realtime projections stay
-separate. Keep the Compaction item/response payloads and session schema unchanged.
+separate. SessionProjections owns the standard full/display/remote views; the HTTP
+history defaults to display. Register only application-specific projections.
+SessionRuntime.reset_session is the application reset hook, unavailable by default
+even if a low-level reset transaction factory exists; do not restore reset_handler
+plumbing in Application.build. Keep the Compaction item/response payloads and session schema unchanged.
 
 ## Service construction
 

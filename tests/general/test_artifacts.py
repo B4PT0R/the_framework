@@ -4,9 +4,10 @@ import json
 import pytest
 
 from the_framework.agent.context.builder import Context
+from the_framework.agent.context.projections import SessionProjections
 
 from the_framework.agent import (
-    Agent, Artifact, Image, ResponseItem, Session, Worker,
+    Agent, Artifact, Image, ResponseItem, Session,
 )
 from the_framework.agent.models.responses import CompactionSummary, FunctionCall
 from the_framework.plugins.realtime import RealtimeExtension
@@ -30,7 +31,7 @@ def test_artifact_roundtrip_projection_and_compaction(tmp_path):
         [CompactionSummary(encrypted_content="summary")], anchor_id="anchor", archive_anchor_limit=10,
     )
     restarted = Session.open(path)
-    assert [item.id for item in Worker.conversation_projection(restarted.archive)] == [
+    assert [item.id for item in SessionProjections().project("display", restarted.archive)] == [
         agent.session.history[0].id, artifact.id,
     ]
     assert restarted.append(artifact) is None  # A provider cannot republish it after compaction.
@@ -62,7 +63,7 @@ def test_tool_and_command_return_native_artifacts_without_display_call(tmp_path)
     assert artifact in agent.session.history
     assert artifact.call_id == "call"
     assert artifact.id in json.loads(output.output)["message_ids"]
-    assert Worker.conversation_projection(agent.session.history) == [artifact]
+    assert SessionProjections().project("display", agent.session.history) == [artifact]
 
     @agent.add_command
     def show():

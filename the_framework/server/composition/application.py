@@ -456,9 +456,8 @@ class Application(modict):
         application_handshake: Callable | None = None,
         supervisor: object | None = None,
         session_factory: Callable | None = None,
-        session_projection: str = "full",
+        session_projection: str = "display",
         health_projection: Callable | None = None,
-        reset_handler: Callable | None = None,
         session_extensions: tuple[ServerExtension, ...] | Callable = (),
     ):
         """Configure the unique application server without starting its resources.
@@ -472,7 +471,7 @@ class Application(modict):
         if self.primary_agent is None:
             if reference is not None or any(value is not None for value in (
                 handshake, event_handshake, application_handshake, supervisor,
-                session_factory, health_projection, reset_handler,
+                session_factory, health_projection,
             )) or session_extensions:
                 raise ValueError("conversation inputs require a primary_agent")
             return _assemble_server(self, context=context, security=security)
@@ -512,7 +511,7 @@ class Application(modict):
                 security=security, event_handshake=event_handshake,
                 application_handshake=application_handshake, supervisor=worker,
                 session_factory=session_factory, session_projection=session_projection,
-                health_projection=health_projection, reset_handler=reset_handler,
+                health_projection=health_projection,
                 session_extensions=session_extensions,
             )
 
@@ -532,7 +531,7 @@ class Application(modict):
     def _build_session_server(
         self, reference, context, *, agent_name, primary, security,
         event_handshake, application_handshake, supervisor, session_factory,
-        session_projection, health_projection, reset_handler, session_extensions,
+        session_projection, health_projection, session_extensions,
     ):
         from ..runtime.supervisor import WorkerSupervisor
         from ..api.agent import CanonicalAgentApi
@@ -564,8 +563,7 @@ class Application(modict):
                 *_conversation_extensions(
                     runtime, data_root=context.require("data_root"),
                     event_handshake=event_handshake, application_handshake=application_handshake,
-                    agent_api=CanonicalAgentApi(runtime, session_projection=session_projection,
-                        reset_handler=(lambda: reset_handler(runtime)) if reset_handler else None),
+                    agent_api=CanonicalAgentApi(runtime, session_projection=session_projection),
                     health_api=ApplicationHealthApi(health_projection, runtime=runtime),
                 ), *_tuple(extra),
             ),

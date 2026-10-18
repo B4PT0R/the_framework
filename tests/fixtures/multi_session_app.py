@@ -1,6 +1,6 @@
 """Deterministic agents for real multi-worker session contracts."""
 from the_framework import Application, AgentSpec, AgentExtension, Plugin
-from the_framework.agent import Config, State, Worker, hook
+from the_framework.agent import Config, State, hook
 
 
 class Settings(Config):
@@ -24,7 +24,7 @@ class Feature(AgentExtension):
 
 application = Application(
     name="Concurrent sessions", version="1",
-    primary_agent=AgentSpec(name="first", session_mode="durable", projections={"display": Worker.conversation_projection}),
-    agents=(AgentSpec(name="second", session_mode="durable", projections={"display": Worker.conversation_projection}),),
+    primary_agent=AgentSpec(name="first", session_mode="durable"),
+    agents=(AgentSpec(name="second", session_mode="durable"),),
     plugins=(Plugin(name="feature", agent_extension=Feature),),
 )

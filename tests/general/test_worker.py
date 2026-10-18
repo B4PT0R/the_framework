@@ -9,7 +9,6 @@ from the_framework.agent.runtime.event_loop import EventLoop
 from the_framework.agent.models.events import Event
 from the_framework.agent.extensions.hooks import Hooks
 from the_framework.agent.models.lifecycle import AgentCompactionEnd, AgentCompactionStart
-from the_framework.agent.context.projections import SessionProjections
 from the_framework.agent.runtime.protocol import (
     ApplicationCall,
     ApplicationResult,
@@ -512,10 +511,6 @@ def test_worker_projects_only_displayable_session_items(tmp_path):
             agent,
             incoming.get,
             send,
-            projections=SessionProjections({
-                "display": Worker.conversation_projection,
-                "remote": Worker.remote_projection,
-            }),
         )
         await incoming.put(SessionPageRequest(
             id="page",
@@ -527,10 +522,19 @@ def test_worker_projects_only_displayable_session_items(tmp_path):
             limit=25,
             projection="remote",
         ))
+        await incoming.put(SessionPageRequest(id="full-page", limit=25, projection="full"))
         await incoming.put(ShutdownRequest(id="stop"))
 
         await worker.run()
 
+        full_page = next(
+            output for output in outgoing
+            if output.type == "session_page" and output.request_id == "full-page"
+        )
+        assert full_page.turns[0]["items"] == list(agent.session.archive)
+        assert [item.get("id") for item in full_page.turns[0]["items"] if item.get("id")] == [
+            "user", "tool", "call", "image", "artifact", "assistant",
+        ]
         page = next(output for output in outgoing if output.type == "session_page")
         assert [item.id for item in page.turns[0]["items"]] == [
             "user",

@@ -36,3 +36,6 @@ class FakeRuntime:
 
     async def publish(self, event):
         pass
+
+    async def reset_session(self):
+        raise NotImplementedError("Canonical session reset is not configured")

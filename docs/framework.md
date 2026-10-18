@@ -308,8 +308,12 @@ or perform network authentication during declaration/build.
 Advanced applications can pass `session_factory(supervisor, context)` to specialize the
 runtime, or inject a supervisor for another worker executable. An injected
 supervisor must refer to the same session and, when declared, application reference.
-`session_projection` selects history presentation, `health_projection(payload)`
-selects diagnostics, and `reset_handler(runtime)` owns selective reset policy.
+`session_projection` defaults to `"display"` (user/assistant messages and artifacts);
+`"full"` is an explicit opt-in to internal history. `health_projection(payload)`
+selects diagnostics. Override the async `SessionRuntime.reset_session()` method
+to provide the application's selective reset policy; no callback is needed in
+`build()`. The default method is unavailable (HTTP 501), even when a low-level
+reset transaction factory exists.
 `session_extensions(runtime)` returns application-owned declarations for each
 session, such as reset endpoints and access middleware. It is invoked once per
 session, alongside `session_factory`; these callbacks must not cache/reuse a live
@@ -872,29 +876,26 @@ session negotiation remains an internal transport concern.
 `AgentSpec` declares what an agent is; `AgentResources` supplies the process-local
 inputs needed to construct it: an inference client and initial configuration/state
 defaults. The session owns subsequent changes and overrides these defaults on resume. It is not another plugin or application
-composition layer. Ordinary applications provide a `resources(session_path)`
-factory so the generic worker owns construction and the application chooses its
-initial process-local resources. Use explicit resources when constructing an agent directly.
+composition layer. Put static defaults directly in `AgentSpec.configuration`.
+Use a `resources(session_path)` factory only for process-local inputs such as
+loading environment settings or creating an inference client. The generic worker
+owns construction. Use explicit resources when constructing an agent directly.
 
 ```python
-from the_framework.agent import AgentResources, AgentSpec
+from the_framework.agent import AgentSpec
 
 agent_spec = AgentSpec(
     name="companion",
     description="Owner of the canonical conversation.",
     extensions=(memory, images, tools),
+    configuration={"model": "your-model"},
     instructions=(identity_instruction,),
     projections={"mobile": mobile_projection},
     command_middleware=(measure_turns,),
     session_mode='durable',
 )
 
-agent = agent_spec.build_agent(
-    session_path,
-    resources=AgentResources(
-        configuration={"model": "your-model"},
-    ),
-)
+agent = agent_spec.build_agent(session_path)
 worker = agent_spec.build_worker(agent, receive, send)
 ```
 
@@ -964,9 +965,14 @@ worker crash can replay the result without losing it or applying it twice.
 
 Middleware has the small async-generator contract
 `middleware(agent, command, call_next)`. It adds cross-cutting behavior such as
-timing or tracing without subclassing the worker. Session projections are pure
-named functions owned by the application, so the generic worker does not know
-about desktop, mobile, remote or product-specific timeline semantics.
+timing or tracing without subclassing the worker. `SessionProjections` supplies
+three reserved standard views: `display` keeps user/assistant messages and
+artifacts, `remote` additionally keeps function calls, and `full` keeps all items.
+These preserve item order and leave vision-only Image items out of chat.
+Applications add pure named projections through `AgentSpec.projections`; select
+one with `Application.build(session_projection=...)` when a custom view is needed.
+Pagination selects canonical archive turns before projecting their items.
+Responses and Realtime model input use separate projections.
 
 ## Optional live context
 
@@ -1194,8 +1200,9 @@ The default fleet uses the same application reference to build private agents;
 no forwarding worker command or fleet factory is needed. Custom fleet factories
 remain explicit session-runtime overrides.
 The default generic worker persists history, configuration, plugin state and
-bindings in its canonical session. Declare a
-`resources(session_path) -> AgentResources` factory for initial configuration,
+bindings in its canonical session. Static defaults belong in
+`AgentSpec.configuration`; optionally declare a
+`resources(session_path) -> AgentResources` factory for process-local configuration,
 state and optional inference client. It runs during construction, never during
 compilation. Explicit `build_agent(resources=...)` replaces this factory. Saved
 session values override initial defaults. Updates commit atomically before live

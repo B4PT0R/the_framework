@@ -36,7 +36,7 @@ def test_optional_construction_failure_is_visible_and_chat_and_other_sessions_su
     ))
     declaration = Application({**agents, 'plugins': (*agents.plugins, plugin)})
     app = declaration.build('tests.fixtures.multi_session_app:application',
-        BuildContext(data_root=tmp_path), security=Security(), handshake=handshake, session_projection='display')
+        BuildContext(data_root=tmp_path), security=Security(), handshake=handshake)
     assert calls == ['weather']
     with TestClient(app) as client:
         client.headers['authorization'] = 'Bearer test'

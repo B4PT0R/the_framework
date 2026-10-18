@@ -236,8 +236,20 @@ video and other media. `ARTIFACTS` serves this tree through authenticated
 The starter presents one default conversation. The server can additionally host
 independent sessions via `/api/v1/sessions`; each owns its worker, history, settings
 and bindings. See the Framework's independent application sessions documentation
-for scoped HTTP and WebSocket endpoints. Agent resources supply defaults; the
-canonical session persists changes without separate configuration/state files.
+for scoped HTTP and WebSocket endpoints. Static defaults are declared in
+`AgentSpec.configuration`; a resource factory is only needed for dynamic,
+process-local inputs. The canonical session persists changes without separate
+configuration/state files.
+
+The host serves chat history using the built-in `display` projection: user and
+assistant messages plus artifacts. Vision-only images remain internal. No Worker
+import or projection registration is needed. Custom views remain available through
+`AgentSpec.projections` and `Application.build(session_projection=...)`.
+
+The starter deliberately leaves session reset unavailable. To enable it, provide a
+custom `SessionRuntime` through `session_factory` and override its async
+`reset_session()` method to select the transaction and return the reset result.
+There is no separate reset callback to wire into the server.
 
 The chat and voice clients consume the Framework's public events, not Responses
 or Live wire signals. Streaming text is provisional; committed session items

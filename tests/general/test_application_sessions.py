@@ -26,7 +26,7 @@ async def handshake(socket):
 def build(root):
     return application.build(
         "tests.fixtures.multi_session_app:application", BuildContext(data_root=root),
-        security=Security(), handshake=handshake, session_projection="display",
+        security=Security(), handshake=handshake,
     )
 
 

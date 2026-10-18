@@ -1,7 +1,7 @@
 from tests.fixtures.runtime import FakeRuntime
 from the_framework import Application, AgentResources
 from the_framework.agent.context.session import Session
-from starter.application import application, resources
+from starter.application import ROOT, application
 
 
 def test_starter_assembles_with_product_imports_forbidden():
@@ -126,12 +126,13 @@ def test_starter_without_credentials_remains_available_after_inference_failure(t
 
 def test_starter_builds_without_inference_or_product_configuration(tmp_path):
     session = tmp_path / "session.json"
-    stored = resources(session)
     agent = application.compile().primary_agent.build_agent(
         session,
-        resources=AgentResources({**stored, "client": object()}),
+        resources=AgentResources(client=object()),
     )
     assert agent.name == "assistant"
+    assert agent.configs.model == "gpt-5.6-luna"
+    assert agent.configs.bash.default_cwd == str(ROOT)
     agent.update_config({"bash": {"default_cwd": str(tmp_path)}})
     assert Session.open(session).configuration["bash"]["default_cwd"] == str(tmp_path)
 

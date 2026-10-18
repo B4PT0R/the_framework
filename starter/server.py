@@ -17,5 +17,4 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None, browser_
         ),
         security=security, handshake=security.handshake,
         session_factory=(lambda _supervisor, _context: runtime) if runtime is not None else None,
-        session_projection="display",
     )

@@ -236,6 +236,15 @@ class SessionRuntime:
         if errors:
             raise ExceptionGroup("application runtime shutdown failed", errors)
 
+    async def reset_session(self):
+        """Application-owned HTTP reset policy, deliberately unavailable by default.
+
+        Override this method to select a transaction through reset_runtime_state
+        and return the application's reset result. A transaction factory alone
+        does not opt an application into destructive HTTP operations.
+        """
+        raise NotImplementedError("Canonical session reset is not configured")
+
     async def reset_runtime_state(
         self, *, transaction_factory: Callable[[Path], object] | None = None,
     ):

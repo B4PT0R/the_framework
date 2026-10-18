@@ -41,7 +41,6 @@ from .protocol import (
     WorkerStatus,
     WorkerStopped,
 )
-from ..models.responses import Artifact, FunctionCall, Message
 from ..models.usage import usage_window
 
 
@@ -77,24 +76,6 @@ class Worker:
         self.quota_refresh_task = None
         if hasattr(agent, "bridge"):
             agent.bridge.bind(self.request_application)
-
-    @staticmethod
-    def conversation_projection(items):
-        return [
-            item for item in items
-            if (
-                isinstance(item, Message)
-                and item.role in {"user", "assistant"}
-            ) or isinstance(item, Artifact)
-        ]
-
-    @classmethod
-    def remote_projection(cls, items):
-        visible = cls.conversation_projection(items)
-        return [
-            item for item in items
-            if item in visible or isinstance(item, FunctionCall)
-        ]
 
     async def dispatch(self, command):
         """Run one queued command through the configured middleware chain."""

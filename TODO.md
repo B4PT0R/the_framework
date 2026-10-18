@@ -322,7 +322,7 @@ et les limites de processus explicites ; ne pas créer un nouveau manager/facade
   Harness ; ne pas les généraliser pour réduire artificiellement app.py.
   La taille de application.py ne justifie pas à elle seule de nouvelles abstractions.
 
-Prochaine tranche recommandée : affiner le chemin nominal.
+Tranche réalisée : affiner le chemin nominal (18 octobre).
 1. Starter : resources(session_path) ne fait que vérifier le chemin et retourner
    des valeurs statiques (model et bash.default_cwd). Les mettre dans
    AgentSpec.configuration ; la construction applicative valide déjà data_root.
@@ -594,8 +594,16 @@ modifié et aucune intervention sur les processus utilisateur.
 
 - [x] Carte des propriétaires disponible dans docs/framework.md (responsabilités,
   Application/session, processus desktop). Relue après les tranches API du 18 octobre.
-- [ ] Affiner la recette nominale : configuration statique du starter, projection
+- [x] Affiner la recette nominale : configuration statique du starter, projection
   conversationnelle standard et résolution du reset sur le runtime (revue ci-dessus).
+  SessionProjections porte full/display/remote, display est le défaut HTTP ; les
+  recettes ne déclarent plus les vues standard. reset_handler supprimé ; la méthode
+  async SessionRuntime.reset_session reste indisponible par défaut, indépendamment
+  de la factory de transaction bas niveau. HarnessSession garde sa politique
+  sélective et les hooks voix/reset existants. Payloads et schémas inchangés.
+  Validation : Framework 712 succès / 3 skips avec Chromium, Harness 157 succès ;
+  installation relancée, même navigateur/fenêtre et session canonique conservée,
+  chat/voix disponibles et Jiminy conforme aux réglages mémoire.
 - [ ] Ajouter une matrice d'assemblage : texte seul ; voix sans mémoire ; mémoire
   sans voix ; outils sans UI ; navigateur persistant. Ne pas réduire les garanties
   à « le produit démarre ».

@@ -4,12 +4,26 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from ..models.responses import Artifact, FunctionCall, Message
+
+
+def _display(items):
+    return [item for item in items if isinstance(item, Artifact) or (
+        isinstance(item, Message) and item.role in {"user", "assistant"}
+    )]
+
+
+def _remote(items):
+    return [item for item in items if isinstance(item, (Artifact, FunctionCall)) or (
+        isinstance(item, Message) and item.role in {"user", "assistant"}
+    )]
+
 
 class SessionProjections:
     """Registry of pure turn projections used by worker page requests."""
 
     def __init__(self, projections=None):
-        self._projections = {"full": lambda items: list(items)}
+        self._projections = {"full": list, "display": _display, "remote": _remote}
         for name, projection in dict(projections or {}).items():
             self.add(name, projection)
 

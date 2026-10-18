@@ -1,7 +1,5 @@
 """Reusable declarative HTTP API for one canonical agent runtime."""
 
-import inspect
-
 from fastapi.responses import JSONResponse
 
 from ..runtime.session import InvalidWorkerResult
@@ -24,11 +22,10 @@ class CanonicalAgentApi:
     """Transport-neutral operations common to agent applications."""
 
     def __init__(
-        self, runtime, *, session_projection="full", reset_handler=None,
+        self, runtime, *, session_projection="display",
     ):
         self.runtime = runtime
         self.session_projection = session_projection
-        self.reset_handler = reset_handler
 
     @endpoint(
         "get", "/api/v1/status",
@@ -89,15 +86,13 @@ class CanonicalAgentApi:
     )
     async def reset_session(self):
         """Atomically reset canonical session state through application policy."""
-        if self.reset_handler is None:
-            raise HttpError(
-                501,
-                "session_reset_unavailable",
-                "Canonical session reset is not configured",
-            )
         try:
-            result = self.reset_handler()
-            return await result if inspect.isawaitable(result) else result
+            return await self.runtime.reset_session()
+        except NotImplementedError as cause:
+            raise HttpError(
+                501, "session_reset_unavailable",
+                "Canonical session reset is not configured",
+            ) from cause
         except RuntimeError as cause:
             raise HttpError(500, "session_reset_failed", str(cause)) from cause
 

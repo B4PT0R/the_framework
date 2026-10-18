@@ -208,10 +208,10 @@ def test_latest_queue_does_not_replace_explicit_invalid_backlog():
 
 def test_projection_declaration_is_an_immutable_snapshot():
     project = lambda items: items
-    source = {"display": project}
+    source = {"custom": project}
     spec = AgentSpec(name="example", projections=source)
     source.clear()
-    assert spec.projections["display"] is project
+    assert spec.projections["custom"] is project
     with pytest.raises(TypeError):
         spec.projections["other"] = project
 
