@@ -22,7 +22,11 @@ def freeze_image(source, directory):
     if isinstance(source, bytes):
         data = source
     elif isinstance(source, str) and urlsplit(source).scheme in {"http", "https"}:
-        with httpx.stream("GET", source, follow_redirects=True, timeout=30) as response:
+        with httpx.stream(
+            "GET", source, follow_redirects=True, timeout=30,
+            headers={"User-Agent": "TheFramework/0.2 (local image retrieval)",
+                     "Accept": "image/png,image/jpeg,image/webp,image/gif,image/*;q=0.8,*/*;q=0.5"},
+        ) as response:
             response.raise_for_status()
             data = bytearray()
             for chunk in response.iter_bytes():

@@ -1194,7 +1194,8 @@ Use `Image` separately when vision is required.
 
 `Image.from_source(source, directory=..., description=...)` prepares a local path,
 raw image bytes, or an HTTP(S) URL as an immutable, content-addressed local file.
-Remote images are downloaded with redirects and a 30-second network timeout,
+Remote images are downloaded with an explicit application User-Agent and image
+Accept headers, redirects and a 30-second network timeout,
 limited to 50 MiB, then validated as PNG/JPEG/WebP/GIF before an item is returned.
 Failures occur before session injection. For example:
 
