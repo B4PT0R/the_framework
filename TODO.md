@@ -62,12 +62,22 @@ conceptuelle totale. Ces notes ne constituent pas des demandes de refonte imméd
   client RPC : annulation de l'opération en cours. Tests Chromium et annulation
   couverts ; parcours Réglages/Retour et fermeture d'un aperçu authentifié vérifiés
   sur l'installation, sans perte du chat principal.
-- [ ] **Cause du blocage historique d'un onglet.** L'ancien aperçu ne se fermait
-  plus, même après navigation vers about:blank ; un nouvel onglet et un nouvel
-  aperçu authentifié se fermaient normalement dans le même daemon. Non reproduit
-  avec un contexte neuf, headless ou visible. Le daemon a été mis à jour après
-  sauvegarde de l'état ; la cause initiale reste inconnue. Ne pas présenter
-  l'annulation des RPC abandonnés comme une correction démontrée de cette cause.
+- [x] **Fermeture bloquée pendant un rechargement.** Reproduction Chromium du
+  Harness 1.62 : `Target.closeTarget` répond success:true sans détruire la cible,
+  puis Playwright reste en état closing et les retries ordinaires n'émettent plus
+  de commande. Même signature que l'ancien aperçu, y compris après navigation vers
+  about:blank. Bug amont : https://github.com/microsoft/playwright/issues/42068.
+  Correction : fermeture normale bornée à 5 s, puis reprise du seul onglet via
+  `close(run_before_unload=True)` avec attente de son événement close (5 s maximum).
+  Aucune fermeture globale du contexte ni du chat. Erreur explicite si la reprise
+  échoue et warning sans contenu/URL. Essai 30 cycles : 29 blocages récupérés,
+  autre onglet et brouillon intacts. Tests généraux de récupération/échec/annulation
+  et laboratoire agentique de course reload/close séparés. L'ancien onglet disparu
+  ne permet pas de prouver rétrospectivement son déclencheur exact.
+  Validation : 21 tests navigateur ciblés ; suite complète 691 succès/3 skips,
+  Harness 157 succès. Essai Chromium visible : 10 blocages/10 récupérations ;
+  délais de production : récupération d'un onglet déjà bloqué en 5,03 s.
+
 - [x] **Frontières des plugins.** XML mémoire déplacé dans MemoryLiveContext, à
   partir des provider_slots retenus après ajustement au budget. Migration runtime
   des références historiques supprimée d'AgentSpec.from_profile ; profil résolu

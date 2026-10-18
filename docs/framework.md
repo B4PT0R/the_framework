@@ -494,6 +494,14 @@ new snapshot invalidates all older handles, including hidden/truncated elements.
 If an RPC caller disconnects or times out, the daemon cancels its pending operation
 instead of leaving an orphan task. Cancellation cannot undo an action that Chromium
 has already performed.
+Tab closure first uses the ordinary Playwright close path. If Chromium acknowledges
+it without destroying the tab during a reload (Playwright issue #42068), the daemon
+retries that tab through `close(run_before_unload=True)` and waits for its actual
+close event. Each attempt has a five-second deadline. Playwright's default dialog
+handling accepts the before-unload prompt during this explicit close. If recovery
+also stalls, the caller receives `BrowserError`; the daemon never closes the whole
+context or the independent application UI to recover a single tab. A warning marks
+the native retry in the browser daemon log without recording page contents/URLs.
 
 Customize a complete declaration explicitly without rebuilding its internals:
 

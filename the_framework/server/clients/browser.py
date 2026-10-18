@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import logging
 import threading
 from pathlib import Path
 from typing import Any, Callable
@@ -15,6 +16,8 @@ DEFAULT_VIEWPORT = {"width": 1365, "height": 900}
 # Persisted tool targets, profiles and DOM IDs retain their established names.
 BROWSER_AGENT_ID_ATTR = "data-harness-browser-id"
 BROWSER_TARGETS = {"web", "harness_ui"}
+_PAGE_CLOSE_TIMEOUT = 5
+logger = logging.getLogger(__name__)
 
 
 class BrowserError(RuntimeError):
@@ -279,7 +282,24 @@ class BrowserSession(modict):
             if not 0 <= index < len(pages):
                 raise BrowserError(f"tab index out of range: {index}")
             page = pages[index]
-        await page.close()
+        try:
+            async with asyncio.timeout(_PAGE_CLOSE_TIMEOUT):
+                await page.close()
+        except TimeoutError:
+            if not page.is_closed():
+                # Chromium can acknowledge Target.closeTarget during a reload
+                # without closing the target. Playwright then stays "closing"
+                # and another ordinary close() never reissues the command.
+                # Page.close via run_before_unload uses a different native path.
+                # See microsoft/playwright#42068. Never close the whole context:
+                # other tabs and the independent application UI must survive.
+                logger.warning("Browser tab %s close stalled; retrying through Page.close", index)
+                try:
+                    async with asyncio.timeout(_PAGE_CLOSE_TIMEOUT):
+                        async with page.expect_event("close", timeout=0):
+                            await page.close(run_before_unload=True)
+                except TimeoutError as error:
+                    raise BrowserError(f"browser tab {index} did not close; other tabs were preserved") from error
         if self._active_page is page:
             self._active_page = modict.attr(None)
         remaining = list(getattr(self.context, "pages", [])) if self.started else []
