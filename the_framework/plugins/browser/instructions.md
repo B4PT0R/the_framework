@@ -7,3 +7,7 @@ IDs from the latest observation and re-observe when the page may have changed.
 
 I may close ordinary web tabs or the web session. The application UI itself remains
 open under application control.
+
+Element IDs are opaque handles from the latest observation. Each new snapshot
+invalidates the previous IDs, including IDs of controls that became hidden.
+Use the newly returned IDs after navigation, a view change or another observation.

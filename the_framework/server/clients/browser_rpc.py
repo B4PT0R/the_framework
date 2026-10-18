@@ -178,7 +178,20 @@ class BrowserRPCServer:
             if not isinstance(request, dict):
                 raise BrowserError("browser RPC payload must be an object")
             request_id = request.get("id")
-            result = await self._dispatch(request)
+            operation = asyncio.create_task(self._dispatch(request))
+            disconnected = asyncio.create_task(reader.read(1))
+            try:
+                completed, _ = await asyncio.wait(
+                    (operation, disconnected), return_when=asyncio.FIRST_COMPLETED,
+                )
+                if operation not in completed:
+                    return
+                result = await operation
+            finally:
+                for task in (operation, disconnected):
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(operation, disconnected, return_exceptions=True)
             response = {"id": request_id, "ok": True, "result": result}
         except Exception as error:  # noqa: BLE001 — RPC translates arbitrary service failures.
             response = {

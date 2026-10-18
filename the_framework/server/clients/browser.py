@@ -59,6 +59,9 @@ SNAPSHOT_SCRIPT = r"""
     return clean(el.innerText || el.getAttribute('title') || el.getAttribute('name') || el.value);
   };
   const interesting = el => roles.has(roleFor(el)) || tags.has(el.tagName) || el.hasAttribute('contenteditable') || (el.hasAttribute('tabindex') && Number(el.getAttribute('tabindex')) >= 0) || clickable(el);
+  // A snapshot replaces all prior handles, including hidden/truncated nodes.
+  for (const el of document.querySelectorAll(`[${idAttr}]`)) el.removeAttribute(idAttr);
+  const capture = Array.from(crypto.getRandomValues(new Uint32Array(2)), n => n.toString(16)).join('-');
   const elements = [];
   let nextId = 1;
   for (const el of Array.from(document.querySelectorAll('body *'))) {
@@ -67,7 +70,7 @@ SNAPSHOT_SCRIPT = r"""
     const role = roleFor(el);
     const name = nameFor(el).slice(0, maxTextLength);
     if (!name && !['input', 'textarea', 'select', 'checkbox', 'radio', 'button'].includes(role)) continue;
-    const id = String(nextId++);
+    const id = `${capture}-${nextId++}`;
     el.setAttribute(idAttr, id);
     const rect = el.getBoundingClientRect();
     elements.push({

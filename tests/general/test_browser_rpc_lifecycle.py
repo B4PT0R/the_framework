@@ -201,3 +201,31 @@ def test_new_worker_can_open_ui_in_browser_started_before_upgrade(tmp_path):
             await server.wait_closed()
 
     asyncio.run(run())
+
+
+def test_client_disconnect_cancels_its_pending_operation_and_keeps_service_available(tmp_path):
+    async def run():
+        started, cancelled = asyncio.Event(), asyncio.Event()
+        class Service:
+            async def close_web_tab(self):
+                started.set()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    cancelled.set()
+            async def open_web(self):
+                return {"ready": True}
+            async def stop(self):
+                pass
+        path = tmp_path / 'browser.sock'
+        async with BrowserRPCServer(path, Service()) as server:
+            _, writer = await asyncio.open_unix_connection(path)
+            writer.write(json.dumps({'id': 'close', 'scope': 'service', 'method': 'close_web_tab'}).encode()+b'\n')
+            await writer.drain()
+            await asyncio.wait_for(started.wait(), 1)
+            writer.close()
+            await writer.wait_closed()
+            await asyncio.wait_for(cancelled.wait(), 1)
+            client = BrowserRPCClient(path)
+            assert await asyncio.to_thread(client.call, 'open_web') == {'ready': True}
+    asyncio.run(run())
