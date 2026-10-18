@@ -672,7 +672,7 @@ def test_external_events_are_serialized_and_idempotent():
             super().__init__()
             self.external = []
             self.hooks = Hooks()
-            self.hooks.add(self.on_external_realtime_turn)
+            self.hooks.add(self.on_external_example)
 
         def registry(self, name):
             if name == "hooks":
@@ -680,7 +680,7 @@ def test_external_events_are_serialized_and_idempotent():
             assert name == "agents"
             return self.agents
 
-        def on_external_realtime_turn(self, payload):
+        def on_external_example(self, payload):
             self.external.append(payload)
 
     async def test():
@@ -695,7 +695,7 @@ def test_external_events_are_serialized_and_idempotent():
         running = asyncio.create_task(worker.run())
         event = ExternalEventRequest(
             id="provider-event",
-            name="realtime_turn",
+            name="example",
             payload={"transcript": "hello"},
         )
         await incoming.put(event)
@@ -708,7 +708,7 @@ def test_external_events_are_serialized_and_idempotent():
         assert agent.external == [{"transcript": "hello"}]
         assert [output.type for output in outgoing].count("command_completed") == 2
 
-    asyncio.run(test())
+    asyncio.run(asyncio.wait_for(test(), 5))
 
 
 def test_worker_reports_bad_requests_and_keeps_running():

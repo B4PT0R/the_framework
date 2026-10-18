@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { RemoteRealtimeTranscriptAssembler } from "./realtime-transcript.js";
 import { api } from "./api";
 import { voiceSession } from "./voice";
-import { pluginRunning } from "./plugins";
+import { pluginBindingEnabled } from "./plugins";
 import { Settings } from "./settings";
 import { Artifact } from "./artifact";
 import {
@@ -42,7 +42,7 @@ function App({ artifactRenderers }) {
     const controller = new AbortController();
     api("plugins", { signal: controller.signal })
       .then((result) => {
-        setVoiceAvailable(pluginRunning(result.plugins, "realtime"));
+        setVoiceAvailable(pluginBindingEnabled(result.plugins, "realtime"));
       })
       .catch((cause) => {
         if (cause.name !== "AbortError") setError(cause.message);
@@ -113,6 +113,12 @@ function App({ artifactRenderers }) {
       active.onmessage = ({ data }) => {
         if (!current()) return;
         const output = JSON.parse(data);
+        if (output.type === "realtime_reconnect_requested") {
+          void voice.current?.reconnect(output);
+        }
+        if (output.type === "command_event" && output.event?.type === "agent.plugin.binding.updated" && output.event.plugin === "realtime") {
+          setVoiceAvailable(Boolean(output.event.enabled));
+        }
         if (output.type === "realtime_event" && output.call_id !== voiceCallId) {
           voiceCallId = output.call_id;
           transcripts.reset();

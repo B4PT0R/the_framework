@@ -12,6 +12,7 @@ from the_framework.utils.ids import timestamp_id
 
 
 class MemoryLiveContext:
+    provider_name = "relevant_memory"
     recoverable_context_prefixes = ("memory:append:",)
 
     def __init__(self, controller):

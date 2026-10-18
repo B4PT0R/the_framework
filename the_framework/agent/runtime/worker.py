@@ -160,6 +160,16 @@ class Worker:
             error,
         )
 
+    def _commit_realtime_turn(self, payload):
+        """Persist an accepted voice turn even after its agent binding is removed."""
+        role = payload.get("role")
+        transcript = str(payload.get("transcript") or "").strip()
+        if role not in {"user", "assistant"} or not transcript:
+            raise ValueError("a realtime turn requires a user or assistant transcript")
+        if not str(payload.get("call_id") or "") or not str(payload.get("turn_id") or ""):
+            raise ValueError("a realtime turn requires call_id and turn_id")
+        return self.agent.add_message(role, transcript, kind="realtime")
+
     async def execute(self, command):
         if isinstance(command, PromptRequest):
             try:
@@ -182,6 +192,10 @@ class Worker:
                     await asyncio.to_thread(self.agent.session.clear_context)
             return
         if isinstance(command, ExternalEventRequest):
+            if command.name == "realtime_turn":
+                async for event in self.agent.events.astream(self._commit_realtime_turn, command.payload):
+                    yield event
+                return
             if command.name == "agent_result":
                 agents = self.agent.registry("agents")
                 profile = command.payload.get("profile")

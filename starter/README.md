@@ -138,6 +138,12 @@ can compile the same application declaration without constructing server service
 The memory declaration shows an explicit specialization of the complete `MEMORY`
 plugin with application-owned curator instructions. Text/file ingress is always
 available, with optional realtime coordination through the shared voice lock.
+Plugin bindings change agent exposure while leaving installed services available.
+Changing one during voice closes the old call and reconnects its owning client
+from the updated conversation snapshot. Manual stop takes precedence; disabling
+the voice binding ends the call without reopening it. Installing/removing a plugin
+is a separate startup-composition change, expected to be infrequent.
+
 
 Custom plugins should expose their complete `Plugin` declaration from their
 package; keep agent and server implementations inside it. Backend contributions

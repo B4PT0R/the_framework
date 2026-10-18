@@ -5,18 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests.fixtures.realtime import Sideband
 from the_framework.plugins.realtime.controller import RealtimeController
-
-
-class Sideband:
-    def __init__(self):
-        self.sent = []
-
-    def send(self, event):
-        self.sent.append(event)
-
-    def close(self):
-        pass
 
 
 def controller():

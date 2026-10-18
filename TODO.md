@@ -44,13 +44,18 @@ conceptuelle totale. Ces notes ne constituent pas des demandes de refonte imméd
   Validation : 612 tests Framework, 4 skips ; scénario starter Chromium réel
   avec image conservée malgré suppression du fichier source ; 18 tests JS et build.
 
-- [ ] **Activation des plugins pendant la voix — à examiner.**
-  `plugins/realtime/api.py`, `plugins/memory/live.py`, `server/composition/plugins.py`.
-  Le chargement du runtime, l'exposition à l'agent et la présence d'un contexte
-  vocal sont trois états distincts. Vérifier qu'une désactivation mémoire/registre
-  pendant un appel purge ou bloque correctement les projections déjà préparées.
-  Validation : désactivation/réactivation pendant une réponse ou une délégation,
-  sans fuite de contexte ni perte de la conversation canonique.
+- [x] **Bindings pendant la voix — cohérence validée le 18 octobre.** Un plugin
+  est une tranche d'application ; son installation et son binding sont distincts.
+  Ces changements rares ferment/recréent l'appel, avec snapshot canonique actuel,
+  plutôt qu'un retrait de contexte déjà transmis. Reprise après barrière worker,
+  sans interblocage depuis un outil délégué. Producteurs mémoire/registre limités
+  aux providers autorisés ; fermeture des tâches/caches et files d'attente.
+  Arrêt manuel prioritaire, IDs d'appel corrélés, désactivation voix sans relance,
+  erreurs de réconciliation et arrêt serveur couverts. Écriture des dernières
+  transcriptions dans le worker canonique, indépendante du binding voix. Validation : 654 tests
+  Framework, 153 Harness réussis et un échec intermittent de suivi d’image
+  traité ensuite ; 25/53 tests JS, builds et navigateur avec audio simulé réussis.
+  Le test backend vocal réel reste opt-in ; aucune inférence pour cette validation.
 - [x] **Assemblage à contexte mutable — clarifié le 17 octobre.**
   `server/composition/application.py:BuildContext`, `plugins/realtime/server.py`.
   Entrées fixes et options par plugin ; `provide` retiré. Les services s'injectent

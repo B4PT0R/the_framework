@@ -229,6 +229,7 @@ class RealtimeExtension(AgentExtension):
             "protocol": "codex-realtime-v3",
             "model": self.config.model,
             "session": session,
+            "providers": list(provider_names),
             "provider_slots": fitted_provider_slots,
             # Ordered by the memory plugin's thresholded RAG ranking. The live
             # controller appends at most one previously unseen entry per user
@@ -237,20 +238,3 @@ class RealtimeExtension(AgentExtension):
             "memory_candidates": memory_candidates,
         }
         return snapshot
-
-    @hook
-    def on_external_realtime_turn(self, payload):
-        """Commit one provider-completed voice turn into canonical history."""
-        role = payload.get("role")
-        transcript = str(payload.get("transcript") or "").strip()
-        if role not in {"user", "assistant"} or not transcript:
-            raise ValueError("a realtime turn requires a user or assistant transcript")
-        call_id = str(payload.get("call_id") or "")
-        turn_id = str(payload.get("turn_id") or "")
-        if not call_id or not turn_id:
-            raise ValueError("a realtime turn requires call_id and turn_id")
-        return self.agent.add_message(
-            role,
-            transcript,
-            kind="realtime",
-        )

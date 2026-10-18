@@ -7,6 +7,7 @@ from the_framework.utils.ids import timestamp_id
 
 
 class RegistryLiveContext:
+    provider_name = "persistent_registry"
     def __init__(self, controller):
         self.controller = controller
         self.reset()

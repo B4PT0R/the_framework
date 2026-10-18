@@ -6,6 +6,13 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Recreate active voice calls after agent-binding changes, using an owning-client
+  reconnect signal after canonical voice turns are reconciled. Manual stop wins;
+  disabling voice does not reconnect. Gate memory/registry live producers by
+  selected providers and clean their pending context on call replacement. Move
+  accepted transcription commits into the canonical worker so disabling the
+  realtime binding cannot discard final queued words.
+
 - Make `the-framework bootstrap` prepare an independent app environment, Chromium
   and the editable UI by default, with `--run` for immediate launch and
   `--no-prepare` for source only. Add resumable `prepare` and `run` commands;

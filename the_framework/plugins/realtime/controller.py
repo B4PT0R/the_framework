@@ -79,6 +79,7 @@ class RealtimeController:
         self.restart_resume_input_paused = False
         self.bind_restart_resume = None
         self.contexts = tuple(factory(self) for factory in context_factories)
+        self.active_contexts = ()
         self.recoverable_context_prefixes = tuple(dict.fromkeys((
             *self.recoverable_context_prefixes,
             *(prefix for context in self.contexts
@@ -88,13 +89,18 @@ class RealtimeController:
 
     def start_context(self, projection):
         """Initialize the installed context producers for one live session."""
-        for context in self.contexts:
+        self.active_contexts = tuple(
+            context for context in self.contexts
+            if getattr(context, "provider_name", None) is None
+            or context.provider_name in projection["providers"]
+        )
+        for context in self.active_contexts:
             hook = getattr(context, "start", None)
             if hook is not None:
                 hook(projection)
 
     async def _context_hooks(self, name, *args):
-        for context in self.contexts:
+        for context in self.active_contexts:
             hook = getattr(context, name, None)
             if hook is not None:
                 result = hook(*args)
@@ -112,6 +118,7 @@ class RealtimeController:
 
     async def close_context(self):
         # Release every producer even if one fails; never leave live tasks behind.
+        self.active_contexts = ()
         errors = []
         for context in reversed(self.contexts):
             hook = getattr(context, "close", None)
@@ -835,7 +842,7 @@ class RealtimeController:
         digest = hashlib.sha256(f"{role}\0{transcript}".encode()).hexdigest()[:20]
         return f"content-{digest}"
 
-    async def stop(self, *, barrier_timeout=5):
+    async def stop(self, *, barrier_timeout=5, drain=True):
         async with self.lock:
             self.closing = True
             try:
@@ -850,7 +857,7 @@ class RealtimeController:
                             )
                         except TimeoutError:
                             pass
-                if call_id is not None:
+                if call_id is not None and drain:
                     try:
                         await self._worker_barrier(
                             call_id,

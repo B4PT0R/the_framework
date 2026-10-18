@@ -75,11 +75,11 @@ def test_all_producers_are_released_when_one_cleanup_fails():
 def test_memory_and_registry_reset_between_voice_calls():
     voice = controller((MemoryLiveContext, RegistryLiveContext))
     memory, registry = voice.contexts
-    voice.start_context({"memory_candidates": [{"id": "one"}]})
+    voice.start_context({"providers": ["relevant_memory", "persistent_registry"], "memory_candidates": [{"id": "one"}]})
     assert memory.memory_context_ids == {"one"}
     registry.revision = 42
     asyncio.run(voice.close_context())
     assert memory.memory_context_ids == set()
     assert registry.revision == 0
-    voice.start_context({"memory_candidates": [{"id": "two"}]})
+    voice.start_context({"providers": ["relevant_memory", "persistent_registry"], "memory_candidates": [{"id": "two"}]})
     assert memory.memory_context_ids == {"two"}

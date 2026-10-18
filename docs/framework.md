@@ -901,8 +901,8 @@ requires every entry within its editorial threshold and total volume below capac
 `the_framework.server.clients.browser`/`the_framework.server.clients.browser_rpc` for the persistent Playwright process.
 `the_framework.plugins.realtime` provides canonical voice projection with application-owned
 provider selection. `the_framework.plugins.realtime.controller.RealtimeController` owns transport and
-delegation; subclasses contribute context through `start_context`, `ready_context`,
-`flush_context` and `close_context`. The latter must stop and await their producers.
+delegation; plugins contribute independent context producers through factories.
+Those producers own their state and must stop and await their tasks in `close`.
 Use `await controller.append_context(text)` to deliver live-only context without
 adding it to canonical history. `delivery="ordered"` preserves accepted updates;
 `delivery="latest", key="source"` replaces queued state for that source;
@@ -1135,6 +1135,31 @@ calls them at its existing transport barriers. Each producer owns its state and
 must cancel its tasks in `close`; every producer gets cleanup even when another
 producer fails. Recovery prefixes may be declared as `recoverable_context_prefixes`.
 The memory and registry plugins are independent examples of this seam.
+A producer may declare `provider_name` to run only when that provider is selected
+in the voice projection's `providers` list. Selection combines the agent binding,
+realtime channel and application whitelist. Installed producers with no selected
+provider receive no delivery hooks; all producers still receive cleanup.
+
+A plugin is a complete vertical application feature, rather than a tool palette.
+Installing or removing one changes startup composition and requires a server
+restart; changing its agent binding leaves its installed services and data intact.
+These changes are expected to be infrequent. While voice is active, a binding
+change closes the ephemeral call and clears pending context and producer tasks.
+The canonical worker owns transcription commits independently of the realtime
+binding: a final accepted transcript still persists if voice is disabled before
+its queued execution. It applies the binding and drains final voice turns before the
+server publishes `realtime_reconnect_requested` with the owning browser's client
+`call_id`. The starter and Harness renegotiate from a fresh canonical snapshot.
+Reconciliation runs outside the binding operation, so an agent tool can request
+its own binding change without waiting for itself to finish.
+
+A manual stop cancels the client's intent to reconnect. Stale or foreign call IDs
+are ignored, and disabling the realtime binding ends voice without restarting it.
+Failed reconciliation reports an error rather than opening a call from uncertain
+history. Server shutdown cancels pending reconnect tasks. This is a full call
+replacement; no claim is made that an existing model can unsee provider context.
+The reconnect signal is transient control data, never a conversation item.
+
 
 Keep this seam narrow: it supplies context, not another event bus or task runtime.
 Applications do not need a new controller subclass just to combine these plugins.

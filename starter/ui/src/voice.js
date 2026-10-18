@@ -9,15 +9,17 @@ export function voiceSession(
   report,
   connect = connectRealtimeAudio,
 ) {
-  let connection, attempt, stopping, callId;
+  let connection, attempt, stopping, callId, reconnecting, pendingReconnect;
+  let wanted = false;
   const release = () => api(`realtime/calls/current?call_id=${encodeURIComponent(callId)}`, {
     method: "DELETE",
   });
   const close = () => {
-    connection?.close();
+    const peer = connection;
     connection = null;
+    peer?.close();
   };
-  async function stop() {
+  async function stopCurrent() {
     if (stopping) return stopping;
     if (!attempt && !connection) return;
     attempt?.controller.abort();
@@ -36,7 +38,7 @@ export function voiceSession(
     })();
     return stopping;
   }
-  function start() {
+  function startCurrent() {
     if (attempt || connection || stopping) return;
     const controller = new AbortController();
     callId = crypto.randomUUID();
@@ -54,7 +56,7 @@ export function voiceSession(
           },
           audio,
           () => {
-            void stop();
+            void stopCurrent();
           },
           { signal: controller.signal },
         );
@@ -80,5 +82,33 @@ export function voiceSession(
     })();
     return current.task;
   }
-  return { start, stop };
+  function start() {
+    wanted = true;
+    return startCurrent();
+  }
+  function stop() {
+    wanted = false;
+    pendingReconnect = null;
+    return stopCurrent();
+  }
+  function reconnect(request) {
+    if (!wanted || request.call_id !== callId) return;
+    if (request.error) {
+      report(request.error);
+      return stop();
+    }
+    pendingReconnect = request.call_id;
+    if (reconnecting) return reconnecting;
+    reconnecting = (async () => {
+      while (pendingReconnect) {
+        const previous = pendingReconnect;
+        pendingReconnect = null;
+        if (!wanted || previous !== callId) continue;
+        await stopCurrent();
+        if (wanted) await startCurrent();
+      }
+    })().finally(() => { reconnecting = null; });
+    return reconnecting;
+  }
+  return { start, stop, reconnect };
 }

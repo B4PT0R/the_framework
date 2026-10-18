@@ -4,25 +4,41 @@ import asyncio
 
 import pytest
 
-from the_framework import ApplicationSpec, AgentSpec, BuildContext, ServerExtension, Plugin
+from the_framework import (
+    AgentSpec,
+    ApplicationSpec,
+    BuildContext,
+    Plugin,
+    ServerExtension,
+)
 from the_framework.agent.extensions.extension import AgentExtension
 from the_framework.agent.models.events import Event
 from the_framework.agent.runtime.protocol import PromptRequest, ShutdownRequest
 from the_framework.agent.runtime.worker import Worker
+from the_framework.plugins.realtime import REALTIME
 from the_framework.plugins.system import SystemExtension
 from the_framework.server.runtime.application import ApplicationRuntime
 
 
 @pytest.mark.parametrize("external_first", [False, True])
-def test_agent_tool_changes_binding_without_ending_its_turn(tmp_path, external_first):
+@pytest.mark.parametrize("with_voice", [False, True])
+def test_agent_tool_changes_binding_without_ending_its_turn(tmp_path, external_first, with_voice):
     async def run():
         class Feature(AgentExtension):
             name = "reusable_feature"
 
+        class Security:
+            async def authenticate(self, request):
+                return None
+
+            async def authorize(self, principal, requirement, request):
+                return False
+
         spec = ApplicationSpec(
-            name="Binding test", version="1",
+            name="Binding test", version="1", security=Security(),
             primary_agent=AgentSpec(name="agent", session_mode='durable'),
-            plugins=(Plugin(name="feature", agent_extension=Feature), Plugin(name="system", agent_extension=SystemExtension)),
+            plugins=(Plugin(name="feature", agent_extension=Feature), Plugin(name="system", agent_extension=SystemExtension),
+                     *((REALTIME,) if with_voice else ())),
         )
         agent = spec.compile().primary_agent.build_agent(tmp_path / "session.json")
         agent.client = object()
@@ -65,6 +81,20 @@ def test_agent_tool_changes_binding_without_ending_its_turn(tmp_path, external_f
         agent.astream = stream
         agent.agentic_loop.can_steer = lambda: False
         async with app.router.lifespan_context(app):
+            if with_voice:
+                from tests.fixtures.realtime import Sideband
+
+                voice = app.state.application.services["realtime"]
+                voice.call_id = "owning-browser"
+                voice.controller.call_id = "transport"
+                voice.controller.sideband = Sideband()
+
+                async def reconnection():
+                    async for output in runtime.stream():
+                        if output.type == "realtime_reconnect_requested":
+                            return output
+
+                reconnect = asyncio.create_task(reconnection())
             turn = asyncio.create_task(runtime.command(PromptRequest(id="turn", prompt="change feature"), timeout=2))
             await asyncio.wait_for(entered.wait(), 1)
             if external_first:
@@ -89,6 +119,13 @@ def test_agent_tool_changes_binding_without_ending_its_turn(tmp_path, external_f
             assert agent.session.command_status("turn") == "completed"
             assert runtime.active_command_id is None
             assert agent.session.plugins["feature"] is external_first
+            if with_voice:
+                request = await asyncio.wait_for(reconnect, 1)
+                assert request.call_id == "owning-browser"
+                assert request.error is None
+                assert not voice.controller.active
+                assert not runtime.active_command_id
+                assert voice.call_id is None
         restored = spec.compile().primary_agent.build_agent(tmp_path / "session.json")
         assert restored.extension("feature").activated is external_first
 
