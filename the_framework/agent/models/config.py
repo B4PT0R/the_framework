@@ -37,10 +37,10 @@ class ContextManagementConfig(Base):
 
 
 class CompactionConfig(Base):
-    model: str = "gpt-5.6-luna"
+    model: str = "gpt-6-luna"
     instructions: str | None = None
     reasoning: ReasoningConfig | None = modict.factory(
-        lambda: ReasoningConfig(effort="high")
+        lambda: ReasoningConfig(effort="medium")
     )
     text: TextConfig | None = modict.factory(TextConfig)
     prompt_cache_key: str | None = None

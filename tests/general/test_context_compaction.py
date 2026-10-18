@@ -122,9 +122,9 @@ def test_step_compacts_the_complete_session_including_the_active_turn(tmp_path):
     assert "context_token_limit" not in agent.responses.compaction_requests[0]
     assert "trigger_ratio" not in agent.responses.compaction_requests[0]
     assert "archive_anchor_limit" not in agent.responses.compaction_requests[0]
-    assert agent.responses.compaction_requests[0]["model"] == "gpt-5.6-luna"
+    assert agent.responses.compaction_requests[0]["model"] == "gpt-6-luna"
     assert agent.responses.compaction_requests[0]["reasoning"] == {
-        "effort": "high",
+        "effort": "medium",
         "summary": None,
         "generate_summary": None,
     }

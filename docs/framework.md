@@ -131,6 +131,8 @@ Applications do not assemble a separate compaction controller.
   the backend and emits lifecycle events; `Session.commit_compaction()` atomically
   updates the active history, archive and anchor. There is no separate runtime
   `Compaction` object or arbitrary `input` override.
+  Compaction defaults to `gpt-6-luna` with medium reasoning; customize it through
+  the session's `compaction` configuration independently of the main agent model.
 - UI history comes from the retained archive and named `SessionProjections`;
   Realtime owns its voice projection. They do not reuse Responses input as a
   display format. The item model `Compaction` and `CompactionResponse` payload
