@@ -6,6 +6,10 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Use low reasoning effort for delegated voice turns instead of forcing none,
+  which models such as GPT-6.1 Sol reject. Keep the override scoped to the command;
+  ordinary text conversations retain their configured reasoning settings.
+
 - Add `artifacts.supported_artifacts`: an application-wide catalogue of kinds,
   input payload schemas and examples. Declare custom kinds with Artifact
   subclasses and typed modict payloads, deriving schemas from the same models

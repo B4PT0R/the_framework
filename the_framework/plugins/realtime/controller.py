@@ -418,7 +418,9 @@ class RealtimeController:
             id=command_id,
             prompt=transcript,
             append_prompt=append_prompt,
-            reasoning_effort="none",
+            # Keep delegated voice turns responsive without requiring models to
+            # support disabling reasoning (GPT-6.1 Sol, for example, does not).
+            reasoning_effort="low",
         ))
         await self.runtime.publish(RealtimeDelegationUpdate(
             call_id=self.call_id,

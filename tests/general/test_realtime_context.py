@@ -28,6 +28,21 @@ def texts(voice):
     return [event["content"][0]["text"] for event in voice.sideband.sent]
 
 
+def test_voice_delegation_uses_low_reasoning_without_disabling_it():
+    async def run():
+        voice = controller()
+        await voice._start_delegation({"item": {
+            "type": "delegation", "target": "client", "id": "question",
+            "content": [{"type": "input_text", "text": "Bonjour"}],
+        }})
+        request, = voice.runtime.supervisor.sent
+        assert request.prompt == "Bonjour"
+        assert request.reasoning_effort == "low"
+        assert request.id == "realtime-delegation:call:question"
+
+    asyncio.run(run())
+
+
 def test_context_preserves_order_and_coalesces_latest_state_until_peer_ready():
     async def run():
         voice = controller()
