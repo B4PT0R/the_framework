@@ -1,3 +1,4 @@
+from pathlib import Path
 import argparse
 import asyncio
 import json
@@ -55,9 +56,15 @@ async def _run(
     identity = None
     if application_reference is not None:
         plan = load_application(application_reference).compile()
-        if agent_name is None and plan.primary_agent is None:
-            raise ValueError("application has no primary agent; select a declared agent explicitly")
-        identity = agent_name or plan.primary_agent.name
+        public = {spec.name for spec in plan.application.agents}
+        if agent_name is None and Path(session_path).exists():
+            from ..context.session import Session
+            agent_name = Session.open(session_path).agent_name
+        if agent_name is None:
+            if len(public) != 1:
+                raise ValueError("select a declared agent explicitly")
+            agent_name = next(iter(public))
+        identity = agent_name
         try:
             spec = plan.agents[identity]
         except KeyError as error:
@@ -77,12 +84,15 @@ async def _run(
                 profile = type(profile)({**profile, "session_mode": session_mode})
             else:
                 spec = type(spec)({**spec, "session_mode": session_mode})
+        mode = profile.session_mode if profile is not None else spec.session_mode
+        if session_id is not None and mode == "durable" and not Path(session_path).exists():
+            from ..context.session import Session
+            initial = Session(id=session_id, agent_name=spec.name)
+            initial.set_attr("path", Path(session_path))
+            initial.save()
         agent = spec.build_agent(session_path, application_root=application_root, profile=profile)
         specialists = ()
-        if plan is not None and (
-            identity == getattr(plan.primary_agent, "name", None)
-            or identity in {value.name for value in plan.application.agents}
-        ):
+        if plan is not None and identity in {value.name for value in plan.application.agents}:
             specialists = plan.specialists
         worker = spec.build_worker(agent, transport.receive, transport.send, specialists=specialists)
     else:

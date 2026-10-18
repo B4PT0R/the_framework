@@ -4,7 +4,7 @@ from starter.application import application
 
 def test_starter_declares_general_plugins_and_memory_specialist():
     plan = application.compile()
-    assert plan.primary_agent.name == "assistant"
+    assert plan.agents["assistant"].name == "assistant"
     assert {plugin.name for plugin in application.plugins} == {
         "bash", "registry", "web_search", "memory", "scheduler", "system",
         "realtime", "chromium", "artifacts",

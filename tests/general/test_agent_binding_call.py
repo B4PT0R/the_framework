@@ -36,11 +36,11 @@ def test_agent_tool_changes_binding_without_ending_its_turn(tmp_path, external_f
 
         spec = Application(
             name="Binding test", version="1", security=Security(),
-            primary_agent=AgentSpec(name="agent", session_mode='durable'),
+            agents=(AgentSpec(name="agent", session_mode='durable'),),
             plugins=(Plugin(name="feature", agent_extension=Feature), Plugin(name="system", agent_extension=SystemExtension),
                      *((REALTIME,) if with_voice else ())),
         )
-        agent = spec.compile().primary_agent.build_agent(tmp_path / "session.json")
+        agent = spec.compile().agents["agent"].build_agent(tmp_path / "session.json")
         agent.client = object()
         incoming = asyncio.Queue()
 
@@ -126,7 +126,7 @@ def test_agent_tool_changes_binding_without_ending_its_turn(tmp_path, external_f
                 assert not voice.controller.active
                 assert not runtime.active_command_id
                 assert voice.call_id is None
-        restored = spec.compile().primary_agent.build_agent(tmp_path / "session.json")
+        restored = spec.compile().agents["agent"].build_agent(tmp_path / "session.json")
         assert restored.extension("feature").activated is external_first
 
     asyncio.run(run())

@@ -28,7 +28,7 @@ def test_bootstrap_copies_editable_starter_and_separates_private_data(tmp_path):
         [sys.executable, "-c", (
             "from pathlib import Path; from starter.application import application; "
             "from starter.desktop import default_data_dir; "
-            "assert application.compile().primary_agent.name == 'assistant'; "
+            "assert application.compile().agents['assistant'].name == 'assistant'; "
             f"assert default_data_dir() == Path({str(data)!r})"
         )],
         cwd=code, check=True, capture_output=True, text=True, timeout=30,

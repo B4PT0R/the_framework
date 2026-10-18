@@ -31,7 +31,7 @@ class Security:
 def declaration(*plugins):
     return Application(
         name="Conversation", version="1", security=Security(), surfaces=(),
-        primary_agent=AgentSpec(name="primary", session_mode="durable"),
+        agents=(AgentSpec(name="primary", session_mode="durable"),),
         plugins=plugins,
     )
 
@@ -43,7 +43,7 @@ def test_assembly_recreates_one_durable_conversation(tmp_path, monkeypatch, voic
 from the_framework import Application, AgentSpec
 from the_framework.plugins.realtime import REALTIME
 application = Application(name="Fixture", version="1", surfaces=(),
-    primary_agent=AgentSpec(name="primary", session_mode="durable"),
+    agents=(AgentSpec(name="primary", session_mode="durable"),),
     plugins=(REALTIME,) if VOICE else ())
 '''.replace("VOICE", str(voice)))
     monkeypatch.syspath_prepend(str(tmp_path))
@@ -66,18 +66,18 @@ application = Application(name="Fixture", version="1", surfaces=(),
             )
             assert not context.services
             async with app.router.lifespan_context(app):
-                runtime = context.services["runtime"]
+                runtime = app.state.application.default_session
                 assert runtime.ready.session_id == session.id
                 assert runtime.supervisor.application_reference == "assembly_fixture:application"
                 assert runtime.supervisor.session_path == root / "session.json"
-                assert "canonical_transport" in context.services
+                assert "canonical_transport" in runtime.context.services
                 assert "chat" not in app.state.application.plugins
-                chat = context.services["chat"]
+                chat = runtime.context.services["chat"]
                 assert (chat.voice is not None) == voice
                 if voice:
-                    assert chat.ingress.lock is context.services["realtime"].lock
+                    assert chat.ingress.lock is runtime.context.services["realtime"].lock
                     # Exercise the voice coordinator through the common plugin host.
-                    assert len(context.contributions("plugins.binding_update")) == 1
+                    assert len(runtime.context.contributions("plugins.binding_update")) == 1
                 async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
                     assert (await client.get("/api/v1/session")).status_code == 401
                     response = await client.get("/api/v1/session", headers={"Authorization": "Bearer test"})
@@ -104,7 +104,7 @@ def test_contributions_are_collected_before_factories_in_any_plugin_order(tmp_pa
         app = declaration(*plugins).build(
             "example:application", context, handshake=lambda socket: None,
         )
-        api = app.state.application.extensions["realtime"].service
+        api = app.state.application.default_session.extensions["realtime"].service
         assert len(api.controller.contexts) == 1
         assert isinstance(api.controller.contexts[0], LiveContext)
         with pytest.raises(RuntimeError, match="sealed"):

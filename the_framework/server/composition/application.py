@@ -332,7 +332,6 @@ class ApplicationPlan(modict):
     _config = modict.config(frozen=True, strict=True, extra="forbid", auto_convert=False)
 
     application: Application
-    primary_agent: AgentSpec | None
     server_extensions: tuple[ServerExtension, ...]
     surfaces: tuple[ClientSurface, ...]
     agents: Mapping[str, AgentSpec]
@@ -357,7 +356,6 @@ class Application(modict):
 
     name: str
     version: str
-    primary_agent: AgentSpec | None = None
     agents: tuple[AgentSpec, ...] = ()
     plugins: tuple[Plugin, ...] = ()
     server_extensions: tuple[ServerExtension, ...] = ()
@@ -382,7 +380,9 @@ class Application(modict):
     session_apps = modict.attr(None)
     accepting_sessions = modict.attr(False)
     event_handshake = modict.attr(None)
-    primary_session = modict.attr(None)
+    application_handshake = modict.attr(None)
+    default_session = modict.attr(None)
+    default_session_id = modict.attr(None)
     app = modict.attr(None)
 
     def __init__(self, *args, **kwargs):
@@ -411,8 +411,6 @@ class Application(modict):
             raise ValueError("application name is required")
         if not self.version.strip():
             raise ValueError("application version is required")
-        if self.agents and self.primary_agent is None:
-            raise ValueError("additional agents require a primary_agent")
 
     def with_server_extensions(self, *extensions):
         return type(self)({**self, "server_extensions": (*self.server_extensions, *extensions)})
@@ -445,6 +443,7 @@ class Application(modict):
         event_handshake: Callable | None = None,
         application_handshake: Callable | None = None,
         supervisor: object | None = None,
+        agent: str | None = None,
         session_factory: Callable | None = None,
         session_projection: str = "display",
         health_projection: Callable | None = None,
@@ -454,21 +453,21 @@ class Application(modict):
 
         The ASGI lifespan starts/stops services and owns the process-local current
         application. Workers may import/compile this object without starting a server.
-        Each additional session owns a SessionRuntime, not another Application.
+        Every session owns its SessionRuntime, independently of the application services.
         """
         if _current_application is self:
             raise RuntimeError("cannot rebuild the running application")
-        if self.primary_agent is None:
+        if not self.agents:
             if reference is not None or any(value is not None for value in (
                 handshake, event_handshake, application_handshake, supervisor,
-                session_factory, health_projection,
+                session_factory, health_projection, agent,
             )) or session_extensions:
-                raise ValueError("conversation inputs require a primary_agent")
+                raise ValueError("conversation inputs require declared agents")
             return _assemble_server(self, context=context, security=security)
         if reference is None:
-            raise ValueError("an application with a primary_agent requires its module:application reference")
+            raise ValueError("an application with agents requires its module:application reference")
         if context is None:
-            raise ValueError("an application with a primary_agent requires BuildContext(data_root=...)")
+            raise ValueError("an application with agents requires BuildContext(data_root=...)")
         module, separator, attribute = reference.partition(":")
         if not separator or not attribute.isidentifier() or not all(
             part.isidentifier() for part in module.split(".")
@@ -495,45 +494,95 @@ class Application(modict):
                 )
             surfaces = (ClientSurface(source=source),)
 
-        def build_session(path, agent_name, session_id, durable, *, primary=False, worker=None):
-            declarations = {agent.name: agent for agent in (self.primary_agent, *self.agents)}
-            if agent_name not in declarations:
-                raise ValueError(f"unknown application agent: {agent_name}")
-            if primary:
-                inputs = context
-            else:
-                values = dict(context)
-                values.update(session_path=path, session_id=session_id,
-                              session_mode="durable" if durable else "resident",
-                              session_owner=self)
-                values["plugins"] = {name: dict(options) for name, options in context._plugin_options.items()}
-                inputs = BuildContext(values)
+        path = Path(context.require("session_path"))
+        selected = self._select_agent(agent, path=path)
+        saved = Session.open(path) if path.exists() else None
+        default_id = saved.id if saved is not None else context.get("session_id") or timestamp_id()
+
+        def build_session(path, agent_name, session_id, durable, *, worker=None):
+            self._select_agent(agent_name)
+            values = dict(context)
+            values.update(session_path=path, session_id=session_id,
+                          session_mode="durable" if durable else "resident", session_owner=self)
+            values["plugins"] = {name: dict(options) for name, options in context._plugin_options.items()}
             return self._build_session_server(
-                reference, inputs, agent_name=agent_name, primary=primary,
+                reference, BuildContext(values), agent_name=agent_name,
                 security=security, event_handshake=event_handshake,
                 application_handshake=application_handshake, supervisor=worker,
                 session_factory=session_factory, session_projection=session_projection,
-                health_projection=health_projection,
-                session_extensions=session_extensions, surfaces=surfaces if primary else (),
+                health_projection=health_projection, session_extensions=session_extensions,
             )
 
-        app = build_session(context.require("session_path"), self.primary_agent.name,
-                            context.get("session_id"), True, primary=True, worker=supervisor)
+        app = _assemble_server(self, context=context, security=security,
+                               surfaces=surfaces, application_only=True)
         self.session_root = Path(context.require("data_root")) / "sessions"
         self.event_handshake = event_handshake
+        self.application_handshake = application_handshake
         self.session_builder = build_session
+        self.default_session_id = default_id
         from ..api.sessions import SessionsApi
         registry = EndpointRegistry(app, security=security, validate_responses=self.validate_responses)
         for endpoint in endpoint_declarations(SessionsApi(self)):
             registry.add(endpoint, owner="sessions")
         registry.install()
         app.mount("/sessions", self.serve_session, name="sessions")
+        default_app = build_session(path, selected, default_id, True, worker=supervisor)
+        from fastapi.routing import APIRoute
+        from starlette.routing import Mount, Route
+        from functools import partial
+        shared_routes = {(route.path, method) for route in app.routes if isinstance(route, APIRoute)
+                         for method in route.methods}
+        for route in default_app.routes:
+            if isinstance(route, Mount) and any(
+                isinstance(shared, Mount) and _paths_overlap(route.path, shared.path) for shared in app.routes
+            ):
+                raise ValueError(f"session mount conflicts with an application mount: {route.path}")
+            if not isinstance(route, APIRoute):
+                continue
+            if any((route.path, method) in shared_routes for method in route.methods):
+                raise ValueError(f"session endpoint conflicts with application endpoint: {route.path}")
+            for mount in tuple(app.routes):
+                if isinstance(mount, Mount) and _path_within_mount(route.path, mount.path):
+                    allowed = {path for surface in surfaces for path in surface.server_routes}
+                    if route.path not in allowed:
+                        raise ValueError(f"session endpoint is shadowed by an application mount: {route.path}")
+                    app.router.routes.insert(0, Route(route.path, partial(self.serve_default_session), methods=route.methods))
+        original_openapi = app.openapi
+
+        def openapi():
+            shared = original_openapi()
+            local = self.session_apps.get(self.default_session_id, (default_app, None))[0].openapi()
+            components = {**local.get("components", {}), **shared.get("components", {})}
+            components["schemas"] = {**local.get("components", {}).get("schemas", {}),
+                                     **shared.get("components", {}).get("schemas", {})}
+            return {**shared, "paths": {**local["paths"], **shared["paths"]}, "components": components}
+
+        app.openapi = openapi
+        self.default_session = default_app.state.session
+        self.session_apps[default_id] = (default_app, None)
+        app.mount("/", self.serve_default_session, name="default_session")
         return app
 
+    def _select_agent(self, agent=None, *, path=None):
+        names = {spec.name for spec in self.agents}
+        if path is not None and path.exists():
+            saved = Session.open(path).agent_name
+            if saved is not None:
+                if agent is not None and agent != saved:
+                    raise ValueError("session belongs to another agent")
+                agent = saved
+        if agent is None:
+            if len(names) != 1:
+                raise ValueError("select an agent explicitly when several agents are declared")
+            agent = next(iter(names))
+        if agent not in names:
+            raise ValueError(f"unknown application agent: {agent}")
+        return agent
+
     def _build_session_server(
-        self, reference, context, *, agent_name, primary, security,
+        self, reference, context, *, agent_name, security,
         event_handshake, application_handshake, supervisor, session_factory,
-        session_projection, health_projection, session_extensions, surfaces,
+        session_projection, health_projection, session_extensions,
     ):
         from ..runtime.supervisor import WorkerSupervisor
         from ..api.agent import CanonicalAgentApi
@@ -556,12 +605,11 @@ class Application(modict):
                 raise ValueError("supervisor and conversation must use the same application reference")
         runtime = (session_factory(supervisor, context) if session_factory is not None
                    else SessionRuntime(supervisor, restart=context.get("restart")))
-        if not primary and runtime is self.primary_session:
+        if any(runtime is item.state.session for item, _ in self.session_apps.values()):
             raise ValueError("session_factory must create an independent runtime for each session")
         extra = session_extensions(runtime) if callable(session_extensions) else session_extensions
         return _assemble_server(
-            self, context=context, security=security, session=runtime, primary=primary,
-            surfaces=surfaces, extra_extensions=(
+            self, context=context, security=security, session=runtime, extra_extensions=(
                 *_conversation_extensions(
                     runtime, data_root=context.require("data_root"),
                     event_handshake=event_handshake, application_handshake=application_handshake,
@@ -575,8 +623,6 @@ class Application(modict):
         return self.services.require(name)
 
     def session_runtimes(self):
-        if self.primary_session is not None:
-            yield self.primary_session
         for app, _ in tuple(self.session_apps.values()):
             yield app.state.session
 
@@ -591,22 +637,24 @@ class Application(modict):
     def list_sessions(self):
         active = {key: app.state.session for key, (app, _) in self.session_apps.items()}
         records = {}
-        if self.primary_session is not None and self.primary_session.ready is not None:
-            runtime = self.primary_session
-            records[runtime.ready.session_id] = {
-                "id": runtime.ready.session_id, "agent": runtime.ready.name,
-                "durable": Path(runtime.supervisor.session_path).is_file(),
-                "running": runtime.supervisor.running, "default": True,
-            }
+        path = self.context.get("session_path") if self.context is not None else None
+        if path is not None and Path(path).is_file() and self.default_session_id is not None:
+            saved = Session.open(path)
+            records[self.default_session_id] = {"id": saved.id, "agent": saved.agent_name,
+                                                "durable": True, "running": False, "default": True}
         if self.session_root is not None and self.session_root.exists():
             for path in sorted(self.session_root.glob("*/session.json")):
                 session = Session.open(path)
                 records[path.parent.name] = {"id": session.id, "agent": session.agent_name,
-                                             "durable": True, "running": False}
+                                             "durable": True, "running": False,
+                                             **({"default": True} if session.id == self.default_session_id else {})}
         for key, runtime in active.items():
+            if runtime.ready is None:
+                continue
+            path = self.context.require("session_path") if key == self.default_session_id else self.session_root / key / "session.json"
             records[key] = {"id": key, "agent": runtime.ready.name,
-                            "durable": (self.session_root / key / "session.json").is_file(),
-                            "running": runtime.supervisor.running}
+                            "durable": Path(path).is_file(), "running": runtime.supervisor.running,
+                            **({"default": True} if key == self.default_session_id else {})}
         return list(records.values())
 
     async def open_session(self, *, session_id=None, agent=None, durable=True):
@@ -619,41 +667,37 @@ class Application(modict):
         async with self.session_lock:
             if not self.accepting_sessions:
                 raise RuntimeError("application session host is not running")
-            if self.primary_session is not None and self.primary_session.ready is not None and key == self.primary_session.ready.session_id:
-                if agent is not None and agent != self.primary_session.ready.name:
-                    raise ValueError("session belongs to another agent")
-                return self.primary_session
-            if key in self.session_apps:
-                app, _ = self.session_apps[key]
+            pending = self.session_apps.get(key)
+            if pending is not None:
+                app, lifespan = pending
                 runtime = app.state.session
-                if agent is not None and runtime.ready.name != agent:
-                    raise ValueError("session belongs to another agent")
-                return runtime
-            path = self.session_root / key / "session.json"
-            if path.exists():
-                saved = Session.open(path)
-                if not durable or (agent is not None and saved.agent_name != agent):
-                    raise ValueError("session identity or persistence mode differs")
-                agent = saved.agent_name
-            else:
-                agent = agent or self.primary_agent.name
+                if lifespan is not None:
+                    if agent is not None and runtime.ready.name != agent:
+                        raise ValueError("session belongs to another agent")
+                    return runtime
+            path = (Path(self.context.require("session_path")) if key == self.default_session_id
+                    else self.session_root / key / "session.json")
+            if path.exists() and not durable:
+                raise ValueError("session identity or persistence mode differs")
             created = not path.exists()
-            app = self.session_builder(path, agent, key, durable)
-            runtime = app.state.session
-            if runtime is self.primary_session:
-                raise ValueError("session_factory must create an independent runtime for each session")
-            if durable and created:
-                session = Session(id=key, agent_name=agent)
-                session.set_attr("path", path)
-                session.save()
+            if pending is None:
+                agent = self._select_agent(agent, path=path)
+                app = self.session_builder(path, agent, key, durable)
+            elif agent is not None:
+                self._select_agent(agent, path=path)
             lifespan = app.router.lifespan_context(app)
             try:
                 await lifespan.__aenter__()
             except BaseException:
-                if created:
+                self.session_apps.pop(key, None)
+                if key == self.default_session_id:
+                    self.default_session = None
+                if created and key != self.default_session_id:
                     shutil.rmtree(path.parent, ignore_errors=True)
                 raise
             self.session_apps[key] = (app, lifespan)
+            if key == self.default_session_id:
+                self.default_session = app.state.session
             return app.state.session
 
     async def close_session(self, session_id):
@@ -663,8 +707,11 @@ class Application(modict):
             if item is None:
                 return False
             app, lifespan = item
-            await lifespan.__aexit__(None, None, None)
-            if not (self.session_root / session_id / "session.json").exists():
+            if session_id == self.default_session_id:
+                self.default_session = None
+            if lifespan is not None:
+                await lifespan.__aexit__(None, None, None)
+            if session_id != self.default_session_id and not (self.session_root / session_id / "session.json").exists():
                 shutil.rmtree(self.session_root / session_id, ignore_errors=True)
             return True
 
@@ -687,7 +734,8 @@ class Application(modict):
         relative = scope["path"][len(scope.get("root_path", "")):].lstrip("/")
         key = relative.split("/", 1)[0]
         if scope["type"] == "websocket":
-            authenticated = await self.event_handshake(WebSocket(scope, receive, send))
+            handshake = self.application_handshake if scope["path"].endswith("/api/v1/application") else self.event_handshake
+            authenticated = await handshake(WebSocket(scope, receive, send))
         else:
             request = Request(scope, receive)
             principal = await self.access_policy.authenticate(request)
@@ -700,7 +748,7 @@ class Application(modict):
             else:
                 await JSONResponse({"error": "unauthorized"}, status_code=401)(scope, receive, send)
             return
-        default = self.primary_session is not None and self.primary_session.ready is not None and key == self.primary_session.ready.session_id
+        default = key == self.default_session_id
         if re.fullmatch(r"[a-zA-Z0-9_-]{1,128}", key) is None or (
             not default and key not in self.session_apps and not (self.session_root / key / "session.json").is_file()
         ):
@@ -710,9 +758,28 @@ class Application(modict):
                 await JSONResponse({"error": "session_not_found"}, status_code=404)(scope, receive, send)
             return
         await self.open_session(session_id=key)
-        app = self.app if default else self.session_apps[key][0]
+        app = self.session_apps[key][0]
         scope = {**scope, "root_path": scope.get("root_path", "") + "/" + key}
         await app(scope, receive, send)
+
+
+    async def serve_default_session(self, scope, receive, send):
+        from starlette.responses import JSONResponse
+        entry = self.session_apps.get(self.default_session_id)
+        if entry is None:
+            if scope["type"] == "websocket":
+                from starlette.websockets import WebSocket
+                handshake = self.application_handshake if scope["path"].endswith("/api/v1/application") else self.event_handshake
+                authenticated = await handshake(WebSocket(scope, receive, send))
+                await send({"type": "websocket.close", "code": 1013 if authenticated else 1008})
+            else:
+                from starlette.requests import Request
+                principal = await self.access_policy.authenticate(Request(scope, receive))
+                status = 503 if principal is not None else 401
+                await JSONResponse({"error": "default_session_closed" if principal is not None else "unauthorized"},
+                                   status_code=status)(scope, receive, send)
+            return
+        await entry[0](scope, receive, send)
 
 
 def _compile_application(application, *, extra_extensions=(), surfaces=None):
@@ -744,7 +811,7 @@ def _compile_application(application, *, extra_extensions=(), surfaces=None):
                     f"private agents for plugin {plugin.name} must be AgentSpec instances"
                 )
             identity = f"{plugin.name}.{private_agent.name}"
-            if (application.primary_agent is not None and identity == application.primary_agent.name) or identity in private_identities:
+            if identity in {spec.name for spec in application.agents} or identity in private_identities:
                 raise ValueError(f"duplicate private agent identity: {identity}")
             private_identities.add(identity)
             compiled_agent = AgentSpec({**private_agent, "name": identity})
@@ -820,19 +887,12 @@ def _compile_application(application, *, extra_extensions=(), surfaces=None):
             "client surface route collides with application mount: "
             + ", ".join(sorted(collisions))
         )
-    primary_agent = None
-    if application.primary_agent is not None:
-        primary_agent = application.primary_agent.with_extensions(
-            *agent_contributions
-        )
-        agents[primary_agent.name] = primary_agent
     for declaration in application.agents:
         if declaration.name in agents:
             raise ValueError(f"duplicate agent identity: {declaration.name}")
         agents[declaration.name] = declaration.with_extensions(*agent_contributions)
     return ApplicationPlan(
         application=application,
-        primary_agent=primary_agent,
         server_extensions=tuple(extensions), surfaces=tuple(surfaces),
         agents=MappingProxyType(agents), specialists=tuple(specialists),
         plugins=MappingProxyType(plugins),
@@ -1010,14 +1070,14 @@ def _assemble_server(
     application: Application,
     *,
     context: BuildContext | None = None,
-    security=None, extra_extensions=(), session=None, primary=False, surfaces=None,
+    security=None, extra_extensions=(), session=None, surfaces=None, application_only=False,
 ) -> FastAPI:
     """Compile the complete declaration, then build its FastAPI runtime."""
     if not isinstance(application, Application):
         raise TypeError("server assembly expects an Application")
-    if _current_application is application and (session is None or primary):
+    if _current_application is application and session is None:
         raise RuntimeError("cannot rebuild the running application")
-    is_root = session is None or primary
+    is_root = session is None
     surfaces = ((application.surfaces or ()) if surfaces is None else surfaces) if is_root else ()
     policy = security if security is not None else application.security
     plan = _compile_application(application, extra_extensions=extra_extensions, surfaces=surfaces)
@@ -1029,7 +1089,9 @@ def _assemble_server(
         application.plan = plan
         application.extensions = MappingProxyType({})
         application.service_graph = application.plugin_host = application.surface_service = None
-        application.primary_session = application.app = None
+        application.default_session = application.app = None
+        application.default_session_id = None
+        application.session_apps = {}
         application.access_policy = policy
     plugin_server_extensions = _resolve_plugin_server_extensions(plan, build_context)
     build_context._seal()
@@ -1056,7 +1118,17 @@ def _assemble_server(
         declarations[item.name] for item in plan.server_extensions
     )})
     extension_dependencies = _extension_dependencies(plan, plugin_server_extensions)
-    startup_order = dependency_order(extension_dependencies, kind="application extension")
+    if application_only:
+        shared_names = {name for name, declaration in declarations.items() if declaration.scope == "application"}
+        for name in shared_names:
+            if any(dependency not in shared_names for dependency in extension_dependencies[name]):
+                raise ValueError(f"application service {name} cannot depend on a session or unknown service")
+        startup_order = dependency_order(
+            {name: extension_dependencies[name] for name in declarations if name in shared_names},
+            kind="application extension",
+        )
+    else:
+        startup_order = dependency_order(extension_dependencies, kind="application extension")
     owner = build_context.get("session_owner")
     if owner is not None:
         build_context._services.parent = owner.service_graph
@@ -1074,8 +1146,8 @@ def _assemble_server(
                 construction_errors[name] = owner.service_graph.errors[name]
             inherited.add(name)
             resolved_extensions[name] = shared
-            if name in owner.services:
-                resolved_services[name] = owner.services[name]
+            if shared.service is not None:
+                resolved_services[name] = shared.service
             continue
         unavailable = [dependency for dependency in extension_dependencies[name]
                        if dependency in construction_errors]
@@ -1101,11 +1173,11 @@ def _assemble_server(
         application.access_policy = policy
         application.session_root = application.session_builder = application.event_handshake = None
         application.session_lock = asyncio.Lock()
-        session_runtimes = [service for service in resolved_services.values() if isinstance(service, SessionRuntime)]
-        if len(session_runtimes) > 1:
-            raise ValueError("an application may install only one primary agent runtime")
-        application.primary_session = session if session is not None else session_runtimes[0] if session_runtimes else None
-        session = application.primary_session
+    if is_root and not application_only and session is None:
+        installed = [service for service in resolved_services.values() if isinstance(service, SessionRuntime)]
+        if len(installed) > 1:
+            raise ValueError("a manually assembled server may install only one session runtime")
+        session = installed[0] if installed else None
     if session is not None:
         session.services = build_context._services
     agent_runtime = session if isinstance(session, SessionRuntime) else None
@@ -1150,7 +1222,7 @@ def _assemble_server(
     plugin_owners = {
         extension.name: plugin_name
         for plugin_name, group in plugin_server_extensions.items()
-        for extension in group
+        for extension in group if extension.name in resolved_extensions
     }
     all_extensions = tuple(
         (runtime.extensions[name], plugin_owners.get(name, name))
@@ -1180,14 +1252,15 @@ def _assemble_server(
                 )
             mounts.append((path, mounted_app, name))
     mount_prefixes = tuple(path for path, _, _ in mounts)
+    reserved_surfaces = surfaces if is_root else application.plan.surfaces
     surface_prefixes = tuple(
         route
-        for surface in surfaces
+        for surface in reserved_surfaces
         for route in (*surface.routes, surface.preview_route)
     )
     allowed_surface_routes = {
         route
-        for surface in surfaces
+        for surface in reserved_surfaces
         for route in surface.server_routes
     }
     registry = EndpointRegistry(
@@ -1222,7 +1295,7 @@ def _assemble_server(
                     f"application WebSocket is shadowed by a mount: {endpoint.path}"
                 )
             socket_registry.add(endpoint, owner=owner)
-    if plan.plugins and policy is not None:
+    if plan.plugins and policy is not None and not application_only:
         for endpoint in endpoint_declarations(PluginHostApi(runtime)):
             registry.add(endpoint, owner="plugin_host")
     if surfaces:
@@ -1268,7 +1341,7 @@ def _assemble_server(
     binding_updates = build_context.contributions("plugins.binding_update")
     if len(binding_updates) > 1:
         raise ValueError("only one plugin binding coordinator may be installed")
-    plugin_host = PluginHost(
+    plugin_host = None if application_only else PluginHost(
         plan, service_graph=graph, service_owners=MappingProxyType({
             name: plugin for name, plugin in plugin_owners.items()
             if resolved_extensions[name].service is not None or name in construction_errors
@@ -1300,9 +1373,12 @@ def _assemble_server(
                 await runtime.surface_service.initialize(ui_root=build_context.get("ui_root"))
             await graph.start()
             try:
-                await plugin_host.start()
+                if plugin_host is not None:
+                    await plugin_host.start()
                 if is_root:
                     application.accepting_sessions = True
+                    if application.default_session_id is not None:
+                        await application.open_session(session_id=application.default_session_id)
                 yield
             finally:
                 if is_root:

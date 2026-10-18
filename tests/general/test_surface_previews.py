@@ -65,7 +65,7 @@ def test_preview_is_authenticated_read_only_and_does_not_take_primary_connection
                     pytest.fail('preview acquired the application bridge')
                 assert denied.value.code == 1008
                 with client.websocket_connect('/api/v1/events', headers={'origin': 'http://testserver'}):
-                    transport = app.state.application.services['canonical_transport']
+                    transport = app.state.application.default_session.services['canonical_transport']
                     assert transport.event_connection_count == 2
                     assert transport.primary_event_connection_count == 1
                     assert runtime.bridge.connected
@@ -119,7 +119,7 @@ def test_agent_preview_control_opens_a_new_authenticated_web_tab(tmp_path, monke
             calls.append((method, url, kwargs))
     monkeypatch.setattr('the_framework.server.composition.controls.BrowserRPCClient', Browser)
     with TestClient(app) as client:
-        runtime = app.state.application.services['runtime']
+        runtime = app.state.application.default_session.services['runtime']
         before_session = client.get('/api/v1/session', headers={'authorization': 'Bearer control'}).json()['watermark']
         before = app.state.application.surface_service.active_path('mobile').name
         result = client.portal.call(runtime.bridge.call, 'surfaces', 'preview', {'name': 'mobile'})

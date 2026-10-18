@@ -24,7 +24,7 @@ from starter import desktop
 from starter.server import create_app
 with TemporaryDirectory() as root:
     app = create_app(Path(root), token='isolated-test', origin='http://localhost')
-    assert app.state.application.extensions['runtime'].service is not None
+    assert app.state.application.default_session.extensions['runtime'].service is not None
 """], capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stderr
 
@@ -58,8 +58,8 @@ def test_starter_assembles_without_voice_plugin(tmp_path, monkeypatch):
     app = server.create_app(
         tmp_path, token="test", origin="http://testserver", runtime=runtime,
     )
-    assert "realtime" not in app.state.application.extensions
-    assert "chat" in app.state.application.extensions
+    assert "realtime" not in app.state.application.default_session.extensions
+    assert "chat" in app.state.application.default_session.extensions
     with TestClient(app) as client:
         client.headers["authorization"] = "Bearer test"
         prompt = client.post(
@@ -83,7 +83,7 @@ def test_starter_host_provides_chat_outside_the_plugin_catalogue(tmp_path):
     runtime = FakeRuntime()
     app = create_app(tmp_path, token="test", origin="http://testserver", runtime=runtime)
     assert "chat" not in application.compile().plugins
-    assert "chat" in app.state.application.extensions
+    assert "chat" in app.state.application.default_session.extensions
     with TestClient(app) as client:
         client.headers["authorization"] = "Bearer test"
         assert "chat" not in {
@@ -126,7 +126,7 @@ def test_starter_without_credentials_remains_available_after_inference_failure(t
 
 def test_starter_builds_without_inference_or_product_configuration(tmp_path):
     session = tmp_path / "session.json"
-    agent = application.compile().primary_agent.build_agent(
+    agent = application.compile().agents["assistant"].build_agent(
         session,
         resources=AgentResources(client=object()),
     )
@@ -203,8 +203,8 @@ def test_starter_real_worker_starts_and_restores_configuration(tmp_path):
         app = create_app(tmp_path, token="private-test-secret", origin="http://testserver")
         with TestClient(app) as client:
             assert client.get("/api/v1/health", headers=headers).json()["status"] == "ok"
-            scheduler = app.state.application.service("scheduler")
-            system = app.state.application.service("system")
+            scheduler = app.state.application.default_session.service("scheduler")
+            system = app.state.application.default_session.service("system")
             assert scheduler.path == tmp_path / "scheduler.json"
             assert scheduler.active is True
             assert system.path == tmp_path / "system-control.json"
@@ -247,7 +247,7 @@ def test_replacing_session_starts_with_default_bindings(tmp_path):
     with TestClient(first) as client:
         plugins = client.get("/api/v1/plugins", headers=headers).json()["plugins"]
         assert next(item for item in plugins if item["name"] == "registry")["binding_enabled"] is False
-        assert next(item for item in first.state.application.service("runtime").ready.plugins
+        assert next(item for item in first.state.application.default_session.service("runtime").ready.plugins
                     if item["name"] == "registry")["activated"] is False
 
     session_path.unlink()
@@ -255,7 +255,7 @@ def test_replacing_session_starts_with_default_bindings(tmp_path):
     with TestClient(second) as client:
         plugins = client.get("/api/v1/plugins", headers=headers).json()["plugins"]
         assert next(item for item in plugins if item["name"] == "registry")["binding_enabled"] is True
-        assert next(item for item in second.state.application.service("runtime").ready.plugins
+        assert next(item for item in second.state.application.default_session.service("runtime").ready.plugins
                     if item["name"] == "registry")["activated"] is True
 
 
@@ -275,7 +275,7 @@ def test_starter_voice_transcript_is_committed_once_and_restored(tmp_path):
             events.append(output)
 
         with TestClient(app) as client:
-            runtime = app.state.application.service("runtime")
+            runtime = app.state.application.default_session.service("runtime")
             runtime.register_observer(observe)
             client.portal.call(runtime.command, command)
             response = client.get("/api/v1/session", headers={"authorization": "Bearer test-secret"})

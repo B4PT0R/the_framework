@@ -24,7 +24,7 @@ def test_starter_real_inference_with_tool_and_canonical_response(tmp_path):
             events.append(output.event)
 
     with TestClient(app) as client:
-        runtime = app.state.application.service("runtime")
+        runtime = app.state.application.default_session.service("runtime")
         runtime.register_observer(observe)
         command = PromptRequest(id="tool-smoke", prompt=(
             "Use the bash tool once to execute: printf 'starter-tool-ok'. "
@@ -46,7 +46,7 @@ def test_starter_real_memory_curates_indexes_and_survives_reconstruction(tmp_pat
     app = create_app(tmp_path, token="isolated-test", origin="http://testserver")
     results = []
     with TestClient(app) as client:
-        runtime = app.state.application.service("runtime")
+        runtime = app.state.application.default_session.service("runtime")
         runtime.register_fleet_result_handler(lambda result: results.append(result))
         client.portal.call(runtime.command, PromptRequest(
             id="memory-smoke",
@@ -74,7 +74,7 @@ def test_starter_real_memory_curates_indexes_and_survives_reconstruction(tmp_pat
     from starter.application import application
 
     session = tmp_path / "session.json"
-    agent = application.compile().primary_agent.build_agent(session)
+    agent = application.compile().agents["assistant"].build_agent(session)
     recalled = agent.extension("memory").search("What language does Copper Finch use?")
     assert recalled["status"] == "found"
     assert any("rust" in entry["content"].lower() for entry in recalled["memories"])

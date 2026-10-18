@@ -24,7 +24,7 @@ class Feature(AgentExtension):
 
 application = Application(
     name="Concurrent sessions", version="1", surfaces=(),
-    primary_agent=AgentSpec(name="first", session_mode="durable"),
-    agents=(AgentSpec(name="second", session_mode="durable"),),
+    agents=(AgentSpec(name="first", session_mode="durable"), *(AgentSpec(name="second", session_mode="durable"),)),
+
     plugins=(Plugin(name="feature", agent_extension=Feature),),
 )

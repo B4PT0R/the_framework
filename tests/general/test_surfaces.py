@@ -63,9 +63,9 @@ def declaration(source, *, timeout=10, retain=3):
     return Application(
         name="Surface test",
         version="1",
-        primary_agent=AgentSpec(
+        agents=(AgentSpec(
             name="primary", description="Primary test agent.", session_mode='durable'
-        ),
+        ),),
         surfaces=(ClientSurface(
             name="main",
             source=source,
@@ -260,9 +260,9 @@ def test_surface_mounts_reject_nested_routes_and_shadowed_plugin_endpoints(tmp_p
     with pytest.raises(ValueError, match="overlapping client surface route"):
         Application(
             name="Nested", version="1",
-            primary_agent=AgentSpec(
+            agents=(AgentSpec(
                 name="primary", description="Primary.", session_mode='durable',
-            ),
+            ),),
             surfaces=(first, nested),
             security=Security(),
         ).compile()
@@ -270,9 +270,9 @@ def test_surface_mounts_reject_nested_routes_and_shadowed_plugin_endpoints(tmp_p
     with pytest.raises(ValueError, match="shadowed by a mount"):
         Application(
             name="Shadowed", version="1",
-            primary_agent=AgentSpec(
+            agents=(AgentSpec(
                 name="primary", description="Primary.", session_mode='durable',
-            ),
+            ),),
             plugins=(Plugin(
                 name="example",
                 server_extensions=ServerExtension(
@@ -292,7 +292,7 @@ def test_declared_plugin_bootstrap_endpoint_may_precede_its_surface_mount(tmp_pa
     source = source_tree(tmp_path)
     specification = Application(
         name="Surface bootstrap", version="1",
-        primary_agent=AgentSpec(name="primary", session_mode='durable'),
+        agents=(AgentSpec(name="primary", session_mode='durable'),),
         plugins=(Plugin(
             name="hosted_ui", server_extensions=ServerExtension(
                 name="hosted_ui_runtime", endpoints=(bootstrap,),
@@ -475,7 +475,7 @@ def test_device_surfaces_have_independent_initial_bundles_previews_and_rollbacks
         ))
     specification = Application(
         name="Multiple devices", version="1",
-        primary_agent=AgentSpec(name="primary", session_mode="durable"),
+        agents=(AgentSpec(name="primary", session_mode="durable"),),
         surfaces=surfaces, security=Security(),
     )
     app = specification._build_server(BuildContext(surface_root=tmp_path / "runtime"))

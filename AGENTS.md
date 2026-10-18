@@ -30,7 +30,7 @@ file records the constraints to preserve when changing the framework.
   remain the capability channels. Advanced `session_factory`/`session_extensions`
   run per session and must not reuse a live controller. Application services
   remain shared, session services/bindings/health remain isolated.
-- An application with a default agent may host independent concurrent sessions. Each session has exactly one worker/history writer and owns its durable
+- An application with declared agents may host independent concurrent sessions. Each session has exactly one worker/history writer and owns its durable
   configuration, extension state and plugin bindings. Private specialists are agents
   with their own session; they never write into the caller history. Results return
   as ordered caller input; transient activity is routed only to that caller. The
@@ -144,3 +144,11 @@ module reference during build(): main surface, npm run build, dist output, /ui
 route and Playwright shell. surfaces=() explicitly disables UI. Do not guess source locations
 from cwd, call stacks or filesystem scanning. Worker compilation remains inert;
 custom and multi-device surfaces remain ordinary ClientSurface declarations.
+
+Application.agents is the sole public recipe catalogue; no primary_agent or plan
+alias. Multiple sessions may run the same recipe. default_session_id is the startup
+session identity; default_session points to its open runtime. Root routes delegate
+to that session rather than owning its services. All sessions, including the
+default, use the same open/close lifecycle and scoped service graphs. Application
+services cannot depend on session services. Saved session.agent_name selects the
+recipe on resume; never silently change it to a different startup choice.

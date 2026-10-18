@@ -26,7 +26,7 @@ async def handshake(socket):
 def build(root):
     return application.build(
         "tests.fixtures.multi_session_app:application", BuildContext(data_root=root),
-        security=Security(), handshake=handshake,
+        security=Security(), handshake=handshake, agent="first",
     )
 
 
@@ -84,7 +84,7 @@ def test_resident_session_is_discarded_on_close_and_does_not_cross_route_boundar
         app = build(tmp_path)
         async with app.router.lifespan_context(app):
             host = app.state.application
-            runtime = await host.open_session(durable=False)
+            runtime = await host.open_session(agent="first", durable=False)
             key = runtime.ready.session_id
             await runtime.apply_event("record", {"text": "temporary"})
             assert not (tmp_path / "sessions" / key / "session.json").exists()
@@ -129,7 +129,7 @@ def test_another_worker_cannot_claim_the_same_session(tmp_path):
             with pytest.raises(RuntimeError, match="worker exited before ready"):
                 await duplicate.start()
             assert any("already has an active worker" in line for line in duplicate.stderr)
-            assert app.state.application.primary_session.supervisor.running
+            assert app.state.application.default_session.supervisor.running
     asyncio.run(asyncio.wait_for(run(), 15))
 
 
@@ -162,11 +162,11 @@ def test_service_scopes_share_only_application_resources_and_fan_out_surface_eve
     async def run():
         app = spec.build(
             "tests.fixtures.multi_session_app:application", BuildContext(data_root=tmp_path),
-            security=Security(), handshake=handshake,
+            security=Security(), handshake=handshake, agent="first",
         )
         host = app.state.application
         async with app.router.lifespan_context(app):
-            child = await host.open_session()
+            child = await host.open_session(agent="first")
             child_app = host.session_apps[child.ready.session_id][0].state.session
             assert Application.current() is spec
             assert child.application is spec
@@ -175,17 +175,17 @@ def test_service_scopes_share_only_application_resources_and_fan_out_surface_eve
             assert child.context.application is spec
             assert child_app.service("shared") is shared
             assert child_app.service("private") is child.context
-            assert host.service("private") is host.context
+            assert host.default_session.service("private") is host.default_session.context
             assert child.context is not host.context
             assert child.context.require("session_path") != host.context.require("session_path")
-            assert child_app.service("realtime").controller is not host.service("realtime").controller
+            assert child_app.service("realtime").controller is not host.default_session.service("realtime").controller
             assert child_app.service("realtime").controller.runtime is child
             assert views[-1][0] is child.context
             assert views[-1][1]["shared"] is shared
             assert views[-1][1]["private"] is child.context
             assert changes == ["start"]
             from contextlib import aclosing
-            async with aclosing(host.primary_session.stream()) as primary_events, aclosing(child.stream()) as child_events:
+            async with aclosing(host.default_session.stream()) as primary_events, aclosing(child.stream()) as child_events:
                 first = asyncio.create_task(anext(primary_events))
                 second = asyncio.create_task(anext(child_events))
                 await asyncio.sleep(0)
@@ -209,7 +209,7 @@ def test_invalid_session_requests_leave_no_workers_or_files(tmp_path):
                 assert reply.status_code == 201
                 assert (await client.post("/api/v1/sessions", json={"session_id": "stable", "agent": "first"})).status_code == 422
                 assert (await client.get("/sessions/unknown/api/v1/session")).status_code == 404
-                assert list(app.state.application.session_apps) == ["stable"]
+                assert set(app.state.application.session_apps) == {app.state.application.default_session_id, "stable"}
                 assert [p.name for p in (tmp_path / "sessions").iterdir()] == ["stable"]
     asyncio.run(asyncio.wait_for(run(), 20))
 
@@ -242,18 +242,18 @@ def test_cancelling_session_start_reaps_its_worker_and_removes_partial_data(tmp_
     from the_framework.server.runtime.session import SessionRuntime
     supervisors = []
     def session_factory(supervisor, context):
-        if context.get("session_owner") is not None:
+        if context.get("session_id") == "cancelled":
             supervisor.command = [sys.executable, "-c", "import time; time.sleep(30)"]
             supervisors.append(supervisor)
         return SessionRuntime(supervisor)
     async def run():
         app = application.build(
             "tests.fixtures.multi_session_app:application", BuildContext(data_root=tmp_path),
-            security=Security(), handshake=handshake, session_factory=session_factory,
+            security=Security(), handshake=handshake, agent="first", session_factory=session_factory,
         )
         host = app.state.application
         async with app.router.lifespan_context(app):
-            opening = asyncio.create_task(host.open_session(session_id="cancelled"))
+            opening = asyncio.create_task(host.open_session(session_id="cancelled", agent="first"))
             while not supervisors or not supervisors[0].running:
                 await asyncio.sleep(0.01)
             opening.cancel()
@@ -261,8 +261,72 @@ def test_cancelling_session_start_reaps_its_worker_and_removes_partial_data(tmp_
                 await opening
             assert supervisors[0].process.returncode is not None
             assert not (tmp_path / "sessions/cancelled").exists()
-            assert not host.session_apps
-            assert host.primary_session.supervisor.running
+            assert set(host.session_apps) == {host.default_session_id}
+            assert host.default_session.supervisor.running
         with pytest.raises(RuntimeError, match="not running"):
             await host.open_session()
     asyncio.run(asyncio.wait_for(run(), 15))
+
+
+def test_default_session_can_close_and_resume_without_stopping_the_application(tmp_path):
+    from the_framework import Application, ServerExtension
+    changes = []
+
+    class Shared:
+        def start(self):
+            changes.append('start')
+        def stop(self):
+            changes.append('stop')
+
+    spec = Application({**application, 'server_extensions': (ServerExtension(name='shared', service=Shared()),)})
+
+    async def run():
+        app = spec.build('tests.fixtures.multi_session_app:application', BuildContext(data_root=tmp_path),
+                         security=Security(), handshake=handshake, agent='first')
+        async with app.router.lifespan_context(app):
+            default = spec.default_session
+            key = spec.default_session_id
+            sibling = await spec.open_session(agent='first')
+            assert sibling.ready.name == default.ready.name
+            assert sibling.ready.session_id != key
+            await default.update_config({'feature': {'label': 'retained'}})
+            assert await spec.close_session(key)
+            assert default.supervisor.process.returncode == 0
+            assert spec.default_session is None and sibling.supervisor.running
+            assert changes == ['start']
+            async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
+                assert (await client.get('/api/v1/status')).status_code == 401
+                client.headers['authorization'] = 'Bearer test'
+                assert (await client.get('/api/v1/status')).status_code == 503
+                resumed = await client.post('/api/v1/sessions', json={'session_id': key})
+                assert resumed.status_code == 201, resumed.text
+                assert resumed.json()['agent'] == 'first'
+                assert (await client.get('/api/v1/config')).json()['config']['feature']['label'] == 'retained'
+                assert (await client.get(f'/sessions/{key}/api/v1/config')).status_code == 200
+            assert spec.default_session is not default
+            assert spec.default_session.ready.session_id == key
+            assert sibling.supervisor.running and changes == ['start']
+        assert changes == ['start', 'stop']
+
+    asyncio.run(asyncio.wait_for(run(), 30))
+
+
+def test_saved_default_session_selects_its_own_agent_from_the_catalogue(tmp_path):
+    import pytest
+    saved = Session(id='kept', agent_name='second')
+    saved.set_attr('path', tmp_path / 'session.json')
+    saved.save()
+
+    async def run():
+        app = application.build('tests.fixtures.multi_session_app:application', BuildContext(data_root=tmp_path),
+                                security=Security(), handshake=handshake)
+        async with app.router.lifespan_context(app):
+            assert application.default_session.ready.name == 'second'
+            assert application.default_session.ready.session_id == 'kept'
+            with pytest.raises(ValueError, match='select an agent'):
+                await application.open_session()
+        with pytest.raises(ValueError, match='another agent'):
+            application.build('tests.fixtures.multi_session_app:application', BuildContext(data_root=tmp_path),
+                              security=Security(), handshake=handshake, agent='first')
+
+    asyncio.run(asyncio.wait_for(run(), 20))

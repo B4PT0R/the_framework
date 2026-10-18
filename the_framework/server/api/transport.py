@@ -9,6 +9,7 @@ class CanonicalTransportSockets:
     def __init__(self, runtime, *, event_handshake, application_handshake):
         self.runtime = runtime
         self._event_connections = 0
+        self._sockets = set()
         self._primary_socket = None
         self.primary_event_connection_count = 0
         self.events_socket = WebSocketEndpoint(
@@ -47,6 +48,7 @@ class CanonicalTransportSockets:
         try:
             await socket.accept(subprotocol=connection["subprotocol"])
             accepted = True
+            self._sockets.add(socket)
             self._event_connections += 1
             if primary:
                 self.primary_event_connection_count += 1
@@ -57,11 +59,17 @@ class CanonicalTransportSockets:
             await serve_event_stream_until_disconnect(socket, send_events)
         finally:
             if accepted:
+                self._sockets.discard(socket)
                 self._event_connections -= 1
                 if primary:
                     self.primary_event_connection_count -= 1
             if self._primary_socket is socket:
                 self._primary_socket = None
+
+    async def stop(self):
+        """Close this session's event connections on lifecycle shutdown."""
+        for socket in tuple(self._sockets):
+            await socket.close(code=1012)
 
     async def serve_application(self, socket, connection):
         if connection.get('client_role', 'primary') != 'primary':

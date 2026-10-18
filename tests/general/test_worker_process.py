@@ -62,7 +62,7 @@ def test_application_specialist_retains_factories_and_resolved_runtime_profile(t
     runner = AgentRunner(profile, tmp_path, asyncio.Queue(), application_reference="test:application")
     assert runner.command(tmp_path / "session.json", profile_path)[-2:] == ["--profile", str(profile_path)]
     monkeypatch.setattr(worker_process, "load_application", lambda _: SimpleNamespace(
-        compile=lambda: SimpleNamespace(agents={spec.name: spec}, primary_agent=spec, specialists=()),
+        compile=lambda: SimpleNamespace(agents={spec.name: spec}, application=SimpleNamespace(agents=(spec,)), specialists=()),
     ))
     agents = []
 
@@ -112,7 +112,7 @@ def test_resolved_launch_settings_override_defaults_but_not_saved_session(tmp_pa
         profile_path = root / "profile.json"
         profile_path.write_text(json.dumps(profile))
         monkeypatch.setattr(worker_process, "load_application", lambda _: SimpleNamespace(
-            compile=lambda: SimpleNamespace(agents={spec.name: spec}, primary_agent=spec, specialists=())))
+            compile=lambda: SimpleNamespace(agents={spec.name: spec}, application=SimpleNamespace(agents=(spec,)), specialists=())))
         constructed = []
         async def capture(worker):
             constructed.append(worker.agent)

@@ -55,10 +55,10 @@ def test_wheel_contains_standalone_framework_and_prompt_resources(tmp_path, monk
             "from the_framework import Application, AgentSpec, ClientSurface, "
             "ServerExtension, Plugin, QueuePolicy, endpoint, "
             "provider, tool; from the_framework.agent import AgentExtension; "
-            "a = Application(name='Wheel', version='1', primary_agent=AgentSpec("
-            "name='main', description='Main agent.', session_mode='durable')); "
+            "a = Application(name='Wheel', version='1', agents=(AgentSpec("
+            "name='main', description='Main agent.', session_mode='durable'),)); "
             "s = ClientSurface(name='ui', source='.', build=('true',), artifact='dist', routes=('/ui',)); "
-            "assert a.compile().primary_agent.name == 'main' and s.name == 'ui'"
+            "assert a.compile().agents['main'].name == 'main' and s.name == 'ui'"
         )],
         check=True, capture_output=True, text=True, timeout=30,
     )
@@ -80,7 +80,7 @@ def test_wheel_contains_standalone_framework_and_prompt_resources(tmp_path, monk
         [sys.executable, "-c", (
             "from pathlib import Path; from starter.application import application; "
             "from starter.desktop import default_data_dir; "
-            "assert application.compile().primary_agent.name == 'assistant'; "
+            "assert application.compile().agents['assistant'].name == 'assistant'; "
             f"assert default_data_dir() == Path({str(data)!r})"
         )],
         cwd=code, check=True, capture_output=True, text=True, timeout=30,

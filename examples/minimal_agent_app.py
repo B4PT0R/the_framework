@@ -1,4 +1,4 @@
-"""Service-only Application; add primary_agent to host a conversation."""
+"""Service-only Application; declare agents to host a conversation."""
 
 from the_framework import Application, ServerExtension, Plugin, endpoint
 from the_framework.server import ApplicationHealthApi

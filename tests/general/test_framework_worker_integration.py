@@ -41,10 +41,10 @@ def test_independent_application_preserves_session_across_server_recreation(tmp_
             api = CanonicalAgentApi(runtime)
             app = _assemble_server(Application(
                 name="Independent Test", version="1",
-                primary_agent=AgentSpec(
+                agents=(AgentSpec(
                     name="primary", description="Primary test agent.",
                     session_mode='durable',
-                ),
+                ),),
                 security=Security(), server_extensions=(
                     ServerExtension(name="runtime", service=runtime),
                     ServerExtension(name="api", endpoints=(api.session, api.config, api.update_config),

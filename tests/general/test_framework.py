@@ -43,9 +43,9 @@ def application(name, version="1", **options):
     return Application(
         name=name,
         version=version,
-        primary_agent=AgentSpec(
+        agents=(AgentSpec(
             name="primary", description="Primary test agent.", session_mode='durable'
-        ),
+        ),),
         **options,
     )
 
@@ -173,10 +173,10 @@ def test_single_service_plugin_has_explicit_construction_and_lifecycle(factory):
         application("Invalid", plugins=(Plugin(name="invalid", server_extensions=object()),))._build_server()
 
 
-def test_compile_rejects_private_agent_shadowing_primary():
+def test_compile_rejects_private_agent_shadowing_application_agent():
     spec = Application(
         name="collision", version="1",
-        primary_agent=AgentSpec(name="plugin.agent", session_mode='durable'),
+        agents=(AgentSpec(name="plugin.agent", session_mode='durable'),),
         plugins=(Plugin(name="plugin", specialists=(AgentSpec(name="agent"),)),),
     )
     with pytest.raises(ValueError, match="duplicate private agent identity"):
@@ -612,9 +612,9 @@ def test_extension_discovers_decorated_methods_from_an_object():
 def test_application_accepts_an_in_memory_default_agent():
     application = Application(
         name="In-memory application", version="1",
-        primary_agent=AgentSpec(name="primary", session_mode="ephemeral"),
+        agents=(AgentSpec(name="primary", session_mode="ephemeral"),),
     )
-    assert application.compile().primary_agent.session_mode == "ephemeral"
+    assert application.compile().agents["primary"].session_mode == "ephemeral"
 
 
 @pytest.mark.parametrize("short_form", [False, True])
@@ -644,7 +644,7 @@ def test_plugin_private_agent_identities_are_namespaced_and_ephemeral_by_default
     assert [profile.name for profile in plan.specialists] == [
         "owner.observer",
     ]
-    agent = plan.primary_agent.build_agent()
+    agent = plan.agents["primary"].build_agent()
     assert "owner.observer" in agent.registry("agents")
 
 

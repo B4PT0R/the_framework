@@ -63,8 +63,8 @@ or `agent_plugins` import aliases. The wheel isolation test extracts only the
 plugins using their packaged Markdown resources.
 
 `Application` is the application's global object. It carries both its declared
-configuration and its server-owned resources: service graph, plugin host, client
-surfaces, primary conversation and additional session lifespans. The separate
+configuration and its server-owned resources: shared service graph, client
+surfaces and independent session lifespans. The separate
 ApplicationHost layer has been removed. Declare `application = Application(...)`
 in an importable module and build its server through `application.build(...)`.
 The ASGI server's `state.application` is that same object.
@@ -74,8 +74,8 @@ open a browser or start a server. Worker processes import and compile this modul
 without activating an application server. Python globals are process-local; the
 server's live resources are not shared with those worker processes.
 
-`build(...)` constructs the ASGI server and resolves service factories. With a
-primary agent it installs conversation, authenticated text/attachment routes,
+`build(...)` constructs the ASGI server and resolves service factories. With
+declared agents it prepares a default session with authenticated text/attachment routes,
 voice coordination when installed, and independent session hosting. Without an
 agent it installs only declared services and surfaces. An agent application must
 provide its importable reference, storage inputs and authentication; omission does
@@ -86,7 +86,7 @@ the ASGI lifespan.
 
 | Object | What it owns |
 | --- | --- |
-| `Application` | The unique running server's configuration, services, surfaces, plugin host and session management. |
+| `Application` | The unique running server's configuration, shared services, surfaces and session management. |
 | `SessionRuntime` | One conversation's supervisor, specialist fleet, commands, event subscribers, capability bridge and session-scoped services/routes. Every concurrent session has its own controller, linked to the same Application. |
 | `Session` | Canonical history, configuration, extension state and plugin bindings, in memory or atomically persisted by its worker. |
 | `BuildContext` | Fixed construction inputs and plugin options for the application or one session; its read-only service view fills during startup. `context.application` points to the owning Application. |
@@ -138,19 +138,28 @@ Applications do not assemble a separate compaction controller.
 
 Declaration fields such as `plugins` and `server_extensions` keep their input
 shape. `application.extensions` is the read-only map of resolved server declarations.
-`application.service(name)` reads the root service registry, including the primary
-session's services. Additional sessions must use their own `session.service(name)`.
-`application.primary_session` names the primary controller explicitly.
+`application.service(name)` reads only application-owned services. Every session,
+including the default one, uses its own `session.service(name)` lookup with access
+to shared resources. `application.default_session` points to the currently open
+default controller after build and while open; it becomes `None` on closure.
+`default_session_id` remembers its identity even while closed.
+The application has no global agent-binding host: plugin_host belongs to each
+session. Root HTTP/WebSocket aliases delegate to the default session; named routes
+under `/sessions/{id}` work for every session, including that one.
 
 `await application.open_session(...)`, `application.list_sessions()` and
 `await application.close_session(id)` manage conversations. Creating one assembles
 its controller and scoped ASGI routes, not another Application or a cloned root
-definition. Shared application services are reused; session services, plugin
+definition. The default session can be closed and reopened through the same API. Closing it
+leaves application services and sibling workers running; root conversation aliases
+report unavailable until it is reopened. Resuming it retains its identity,
+configuration and recipe. Shared application services are reused; session services, plugin
 bindings and health remain scoped to that conversation. `session.application` and
-`session.context.application` refer to the global Application. Its ASGI adapter
-exposes `state.application` as the global object and `state.session` as its own
-controller; request handlers can select this explicit session through
-`request.app.state.session`. There is no global mutable current-session pointer.
+`session.context.application` refer to the global Application. Each session
+adapter exposes `state.application` as the global object and `state.session` as
+its own controller; request handlers can select this explicit session through
+`request.app.state.session`. The root adapter has no session controller of its
+own. There is no global mutable current-session pointer.
 
 `compile()` produces a validated `ApplicationPlan` without running factories.
 Configuration fields remain in the mapping; live resources use metadata attributes
@@ -161,7 +170,9 @@ from the server's Python object. Wire payload models and their schemas are uncha
 Objects supplied directly as `service=...` are used as provided, without cloning.
 Application-scoped services are shared across sessions; concurrent workers use
 distinct session storage paths. Shutdown closes hosted sessions before stopping
-root services in reverse dependency order. The desktop process owner binds/listens
+root services in reverse dependency order. Application-scoped services cannot
+depend on session-scoped services; session services may consume shared resources.
+The desktop process owner binds/listens
 and runs ASGI separately; its persistent browser survives server replacement.
 
 `agent.bridge.call(...)` sends a capability request to its server-side
@@ -261,9 +272,9 @@ See `examples/minimal_agent_app.py` for a complete authenticated example. No
 Pydantic DTO, model serialization layer or second validation implementation is
 introduced; model metadata is adapted only at the HTTP/OpenAPI boundary.
 
-### Primary runtime integration
+### Conversation runtime integration
 
-For a primary agent, `Application.build()` installs one session-scoped
+For every hosted session, `Application.build()` installs one session-scoped
 `SessionRuntime`, connects the plugin host's binding updates and startup snapshot
 to its worker, and registers agent-facing plugin and installed surface controls. Surface
 initialization belongs to the server lifespan and also works without an agent
@@ -305,7 +316,13 @@ app = application.build(
 The default runtime derives `session.json` and `surfaces/` from
 `data_root`. `handshake` applies to both sockets; `event_handshake` and
 `application_handshake` independently override it when their wire protocols differ.
-The declared primary agent name is passed to the supervised worker automatically.
+`Application.agents` is the public catalogue of AgentSpec recipes. One recipe may
+run in multiple independent sessions. The existing default session selects its
+saved agent_name on resume. For a new default session, a single declared agent is
+implicit; with several declarations, pass `build(..., agent="assistant")`.
+Creating another session follows the same selection rule. Worker startup receives
+the selected identity explicitly; private plugin specialists remain separate.
+The worker creates each durable session's identity under its exclusive writer lock.
 The framework owns construction, ordering and cleanup; it does not start inference
 or perform network authentication during declaration/build.
 
@@ -362,7 +379,7 @@ configured port for every replacement so the existing page can reconnect.
 `serve(..., parent_stream=...)` optionally stops a child when its parent pipe closes.
 Neither requires a new framework-level supervisor or a process-wide task manager.
 
-A service-only `Application` omits `primary_agent` and uses
+A service-only `Application` leaves `agents` empty and uses
 `application.build(context=BuildContext(...))` when it needs paths or plugin inputs.
 It installs no worker, canonical chat or session-management routes. There is no
 second public conversation builder or helper to reproduce the host wiring.
@@ -571,7 +588,7 @@ whereas a server extension is a declaration describing a service and its surface
 | `Plugin.specialists` | Private `AgentSpec` declarations |
 | `Plugin.provides_capabilities` | Versioned contracts exported by this feature |
 | `Plugin.requires_capabilities` / `optional_capabilities` | Required or optional versioned contracts from other plugins |
-| `Plugin.agent_binding_enabled` / `agent_binding_required` | Initial and mandatory binding to the primary agent; server installation remains fixed |
+| `Plugin.agent_binding_enabled` / `agent_binding_required` | Initial and mandatory binding to each public agent; server installation remains fixed |
 | `ServerExtension.requires_services` / `optional_services` | Names of local services supplied to its factory, in dependency order |
 | `Application.server_extensions` | Application-wide server infrastructure |
 | `AgentSpec.extensions` | Contributions installed in that agent |
@@ -585,7 +602,7 @@ from the_framework.plugins.scheduler import SCHEDULER
 from the_framework.plugins.system import SYSTEM
 
 application = Application(
-    name="Example", version="1", primary_agent=primary,
+    name="Example", version="1", agents=(primary,),
     plugins=(BASH, MEMORY, SCHEDULER, SYSTEM),
 )
 ```
@@ -922,7 +939,7 @@ through `agents.submit(name, prompt)`, which returns a request ID without waitin
 The worker routes results to `AgentTriggers.dispatch()` and the declared handler;
 there is no `call()` alias suggesting a synchronous result or a second `publish()`
 adapter. Another plugin can reach their capability only through an explicit versioned public
-contract. The generic worker entrypoint resolves either the primary agent or a
+contract. The generic worker entrypoint resolves a selected public agent or a
 namespaced specialist from `module:application`.
 
 `@agent_trigger(spec, observes=..., item_kinds=..., conversation_roles=...,
@@ -1252,7 +1269,7 @@ Omit `surfaces` (or use None) for this convention; use `surfaces=()` to explicit
 build a conversation without an interface. A missing default `ui/` is an error,
 not a silent fallback to headless mode. Imports and worker compilation stay inert:
 the default source is resolved only during server build, independently of cwd or
-the Python call stack. Applications without a primary agent have no implicit UI.
+the Python call stack. Applications without declared agents have no implicit UI.
 
 For a different source with the same desktop defaults, use
 `surfaces=(ClientSurface(source=frontend_dir),)`. Other build systems, layouts and
@@ -1359,7 +1376,7 @@ uvicorn examples.minimal_agent_app:app
 ## The Harness as a larger application example
 
 The separate The Harness application uses the same `Application` and
-`Plugin` API as the starter. Its declaration supplies one primary agent,
+`Plugin` API as the starter. Its declaration supplies one public agent recipe,
 product plugins, their versioned dependencies and a multi-device client
 surface. The server entrypoint supplies process-local inputs through
 `BuildContext` and calls `build`, which owns the canonical runtime
@@ -1393,11 +1410,11 @@ the application's extensions.
 
 ## Canonical chat and optional live context
 
-For an application declaring a primary agent, `Application.build()` installs the host-owned `chat` service,
+For an application declaring agents, `Application.build()` installs the host-owned `chat` service,
 including `POST /api/v1/agent/prompt` and `POST /api/v1/agent/attachments`.
 It is part of the conversation assembly, absent from the plugin catalogue, and
 cannot be disabled through plugin controls. A client can omit the chat UI while
-keeping these APIs available. An application without a declared primary agent
+keeping these APIs available. An application without declared agents
 has no conversation services.
 Both accept a client-generated command `id`; attachments use multipart form data
 with `files` and an optional `prompt`. The service coordinates with the installed

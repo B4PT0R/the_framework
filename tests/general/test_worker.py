@@ -971,11 +971,11 @@ def test_ready_catalogue_uses_configured_inactive_triggers_and_bare_declarations
         def observer(self, result):
             return result
 
-    plan = Application(name="Catalogue", version="1", primary_agent=AgentSpec(name="main"), plugins=(
+    plan = Application(name="Catalogue", version="1", agents=(AgentSpec(name="main"),), plugins=(
         Plugin(name="feature", agent_extension=Feature, agent_binding_enabled=False,
             specialists=(AgentSpec(name="observer"), AgentSpec(name="bare"))),
     )).compile()
-    agent = plan.primary_agent.build_agent()
+    agent = plan.agents["main"].build_agent()
     assert not agent.extension("feature").activated
     async def run():
         outgoing = []
@@ -983,7 +983,7 @@ def test_ready_catalogue_uses_configured_inactive_triggers_and_bare_declarations
         await incoming.put(ShutdownRequest(id="stop"))
         async def send(event):
             outgoing.append(event)
-        worker = plan.primary_agent.build_worker(agent, incoming.get, send, specialists=plan.specialists)
+        worker = plan.agents["main"].build_worker(agent, incoming.get, send, specialists=plan.specialists)
         await worker.run()
         ready = outgoing[0]
         assert {value.name for value in ready.specialists} == {"feature.observer", "feature.bare"}

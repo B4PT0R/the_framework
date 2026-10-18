@@ -278,7 +278,7 @@ curl -sS -X POST http://127.0.0.1:8000/api/v1/counter/increment \
 
 The result is `{"value":2}`. The literal bearer secret is **only** for this
 loopback demonstration; use a real authentication policy for an application.
-An application with a primary agent builds its canonical chat, supervised worker
+An application with declared agents builds its canonical chat, supervised worker
 and authenticated transports through `Application.build(reference, context, ...)`.
 Construction does not start inference. `@endpoint` validates request and response data and contributes an
 OpenAPI schema. Declare server components through `Plugin.server_extensions`;

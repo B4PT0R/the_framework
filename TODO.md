@@ -746,7 +746,7 @@ jusqu'au rendu Connected, worker sain et historique authentifié ; arrêt propre
 Installation Harness relancée : navigateur/fenêtre et conversation conservés,
 chat/voix disponibles et Jiminy conforme à la configuration canonique.
 
-## Prochaine clarification : catalogue d'agents et session par défaut
+## Catalogue d'agents et session par défaut — livraison
 
 Retour de Baptiste : primary_agent confond la recette d'un agent avec le statut
 particulier d'une conversation. Cible : Application.agents est l'unique catalogue
@@ -770,4 +770,18 @@ Le rôle primary/default appartient à une session identifiée, pas à sa spec.
 - Conserver le cas simple sans SessionSpec, nouveau manager ou choix superflus.
   Pas de modification des modèles de payload ou de migration runtime implicite.
 
-Revue du code seulement dans ce tour ; proposition non implémentée.
+Implémentation réalisée : catalogue public unique et sélection explicite si ambiguë ;
+le worker crée l'identité durable sous son verrou d'écriture. La session par défaut
+utilise le même assemblage et le même cycle open/close que les autres sessions.
+Services partagés et surfaces appartiennent à la racine ; les routes conversationnelles
+racine délèguent au défaut, avec indisponibilité authentifiée pendant sa fermeture.
+Reprise de la recette, identité, configuration et bindings sauvegardés. Pas d'alias
+ni de migration ou modification des modèles de payloads. Starter et Harness adaptés,
+services client distant/notifications isolés par session, frontière HTTP gardée à
+l'échelle application. Validation finale : Framework 724 succès / 3 skips ; Harness 157 succès.
+Ruff critique et diff propres. Starter neuf préparé, Chromium connecté et arrêt
+propre vérifiés ; seconde préparation sans installation ni rebuild. Installation
+Harness relancée avec même navigateur/fenêtre, conversation canonique conservée,
+contrôles texte/voix et 13 plugins disponibles, Jiminy conforme à la configuration
+sauvegardée. Fermeture/reprise de la session par défaut et identité/recette
+sauvegardées couvertes par les tests de contrat.

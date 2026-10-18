@@ -20,8 +20,8 @@ from the_framework.server.api.websockets import WebSocketEndpoint
     lambda: WebSocketEndpoint(path="/events", handler=lambda: None),
     lambda: EndpointContext(request=Request({"type": "http"}), principal=Principal(id="caller")),
     lambda: ClientSurface(name="ui", source=".", build=("true",), artifact="dist", routes=("/ui",)),
-    lambda: Application(name="app", version="1", primary_agent=AgentSpec(name="main", session_mode='durable')),
-    lambda: Application(name="app", version="1", primary_agent=AgentSpec(name="main", session_mode='durable')).compile(),
+    lambda: Application(name="app", version="1", agents=(AgentSpec(name="main", session_mode='durable'),)),
+    lambda: Application(name="app", version="1", agents=(AgentSpec(name="main", session_mode='durable'),)).compile(),
 ])
 def test_runtime_declarations_are_frozen_validated_mappings(make):
     model = make()

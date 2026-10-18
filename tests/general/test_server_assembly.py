@@ -21,7 +21,7 @@ def test_standard_assembly_keeps_authentication_and_includes_runtime_health(tmp_
 
     application = Application(
         name="Example", version="1", security=Security(), surfaces=(),
-        primary_agent=AgentSpec(name="primary", session_mode="durable"),
+        agents=(AgentSpec(name="primary", session_mode="durable"),),
     )
     app = application.build(
         "example:application", BuildContext(data_root=tmp_path),

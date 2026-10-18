@@ -27,12 +27,14 @@ class Memory(MemoryExtension):
 application = Application(
     name="Pandora",
     version="0.1.0",
-    primary_agent=AgentSpec(
-        name="assistant",
-        description="Pandora, a persistent local agent that can evolve her own application.",
-        session_mode='durable',
-        instructions=(ROOT / "instructions.md").read_text(encoding="utf-8"),
-        configuration={"model": "gpt-5.6-luna", "bash": {"default_cwd": str(ROOT)}},
+    agents=(
+        AgentSpec(
+            name="assistant",
+            description="Pandora, a persistent local agent that can evolve her own application.",
+            session_mode='durable',
+            instructions=(ROOT / "instructions.md").read_text(encoding="utf-8"),
+            configuration={"model": "gpt-5.6-luna", "bash": {"default_cwd": str(ROOT)}},
+        ),
     ),
     plugins=(
         BASH, REGISTRY, WEB_SEARCH, Plugin({**MEMORY, "agent_extension": Memory}),

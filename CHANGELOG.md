@@ -6,6 +6,17 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Replace `primary_agent` with the sole public `Application.agents` catalogue.
+  One recipe is selected implicitly; several require `build(..., agent=...)` for
+  a new default session. Resume the saved `Session.agent_name` without changing
+  its identity. Keep private specialists separate from public agent recipes.
+- Give every conversation the same session-scoped lifecycle, including the default
+  session. Root conversation routes delegate to it; named session routes also
+  address it. Closing/reopening it preserves durable state without stopping sibling
+  workers or application-owned services. `default_session_id` identifies this role;
+  `default_session` exposes its current controller. Session shutdown closes its
+  event connections so clients can reconnect to the replacement controller.
+
 - Default agent applications to an editable desktop `ui/` beside their explicit
   declaration module, with no ClientSurface wiring in the starter. Resolve the
   source at server build only; `surfaces=()` opts out and missing sources fail
