@@ -5,7 +5,6 @@ from pathlib import Path
 from the_framework import (
     Application,
     AgentSpec,
-    ClientSurface,
     Plugin,
 )
 from the_framework.plugins.bash import BASH
@@ -40,8 +39,5 @@ application = Application(
         ARTIFACTS,
         SCHEDULER, SYSTEM, REALTIME, CHROMIUM,
     ),
-    surfaces=(ClientSurface(name="main", source=ROOT / "ui",
-                            build=("npm", "run", "build"), artifact="dist",
-                            routes=("/ui",), shell="playwright"),),
     docs_url=None,
 )

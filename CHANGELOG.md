@@ -6,6 +6,12 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Default agent applications to an editable desktop `ui/` beside their explicit
+  declaration module, with no ClientSurface wiring in the starter. Resolve the
+  source at server build only; `surfaces=()` opts out and missing sources fail
+  clearly. ClientSurface supplies standard desktop defaults so custom apps repeat
+  only nonstandard settings; explicit multi-device declarations remain supported.
+
 - Make plugin server assembly explicit: `server_extensions` contains component
   declarations and `configure(context)` collects advanced build-time contributions.
   Remove the overloaded `server_extension` field and implicit bare-service wrapping.

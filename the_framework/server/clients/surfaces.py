@@ -23,14 +23,14 @@ from .previews import PreviewAccess
 class ClientSurface(modict):
     _config = modict.config(frozen=True, strict=True, extra="forbid", auto_convert=False)
 
-    name: str
+    name: str = "main"
     source: str | Path
-    build: tuple[str, ...]
-    artifact: str | Path
-    routes: tuple[str, ...]
+    build: tuple[str, ...] = ("npm", "run", "build")
+    artifact: str | Path = "dist"
+    routes: tuple[str, ...] = ("/ui",)
     server_routes: tuple[str, ...] = ()
     preview_route: str | None = None
-    shell: str | None = None
+    shell: str | None = "playwright"
     retain_releases: int = 3
     timeout_seconds: float | int = 300
 

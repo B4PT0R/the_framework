@@ -193,6 +193,11 @@ npm stages and rebuilds changed UI sources. It accepts `--port`,
 `--headless` and `--no-browser`. Commands also work as `python -m the_framework`;
 inside the generated project, `uv run the-framework run` uses its own environment.
 
+A simple agent application needs no surface declaration: its editable `ui/`
+directory beside the application module is the standard desktop client. Use
+`surfaces=()` for no UI, or explicit `ClientSurface` declarations for custom builds
+and multiple device interfaces.
+
 Change `starter/application.py` and `starter/instructions.md` first;
 `starter/ui/` contains the editable interface. Keep the data directory private:
 it holds conversation history, configuration, the file bucket, memory and browser

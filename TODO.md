@@ -721,3 +721,27 @@ succès ; Ruff critique et diff --check propres. Bootstrap neuf préparé et dé
 jusqu'à l'UI réelle ; seconde préparation sans installations ni rebuild ; arrêt
 supervisé propre. Installation Harness relancée : même navigateur/fenêtre, session
 canonique conservée, chat/voix disponibles et Jiminy conforme aux réglages mémoire.
+
+
+## Desktop UI conventionnel sans déclaration — 18 octobre
+
+- [x] Application.build(reference, context) résout par défaut ui/ à côté du module
+  explicitement référencé pour une application avec agent. Surface main, build
+  npm run build, sortie dist, route /ui et shell Playwright. Pas de recherche dans
+  cwd, la pile Python ou l'arborescence ; imports/compilation worker restent inertes.
+- [x] surfaces=() exprime le mode sans UI. Source par défaut absente : erreur
+  explicite, jamais un changement silencieux de mode. Les apps sans agent n'ont
+  pas d'UI implicite. Les surfaces personnalisées/multiples restent déclaratives.
+- [x] ClientSurface porte les défauts desktop, seul source est requis pour un
+  emplacement personnalisé. Starter sans import ni déclaration de ClientSurface ;
+  Harness conserve uniquement ses choix de build/artefact/routes serveur/timeout.
+- [x] Tests des conventions, résolution hors cwd, auth API/aperçu et opt-out ;
+  fixtures sans UI désormais explicites, fixture de reprise Chromium adaptée.
+  Bootstrap neuf préparé puis démarré sans déclaration de surface jusqu'au rendu
+  Chromium, worker et historique authentifié ; arrêt supervisé propre.
+
+Validation finale : Framework 722 succès / 3 skips avec Chromium ; Harness 157
+succès. Ruff critique et diff propres. Bootstrap neuf sans ClientSurface vérifié
+jusqu'au rendu Connected, worker sain et historique authentifié ; arrêt propre.
+Installation Harness relancée : navigateur/fenêtre et conversation conservés,
+chat/voix disponibles et Jiminy conforme à la configuration canonique.

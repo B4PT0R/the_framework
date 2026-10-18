@@ -259,6 +259,15 @@ or Live wire signals. Streaming text is provisional; committed session items
 supply replay. Voice captions receive cumulative `voice.transcript.updated` text
 and clear on `voice.turn.completed`. Plugin-specific events belong in the plugin.
 
+### Desktop interface convention
+
+The application does not need a `ClientSurface` declaration for the usual case:
+`Application.build("starter.application:application", ...)` locates `starter/ui/`,
+builds with `npm run build` into `dist` and serves the main desktop surface at `/ui`.
+The UI stays editable application source. Use `surfaces=()` for an explicitly
+headless application, or declare custom `ClientSurface` values for other source
+paths, builds or mobile/Quest interfaces. Only nonstandard settings need repeating.
+
 ### Adding a server feature
 
 Declare a `Plugin` with a `ServerExtension(service_factory=YourService)`.

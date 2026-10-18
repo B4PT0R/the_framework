@@ -361,7 +361,7 @@ class Application(modict):
     agents: tuple[AgentSpec, ...] = ()
     plugins: tuple[Plugin, ...] = ()
     server_extensions: tuple[ServerExtension, ...] = ()
-    surfaces: tuple[ClientSurface, ...] = ()
+    surfaces: tuple[ClientSurface, ...] | None = None
     security: SecurityPolicy | None = None
     title: str | None = None
     description: str | None = None
@@ -419,6 +419,8 @@ class Application(modict):
 
     @modict.any_validator(mode="before")
     def normalize_sequences(self, key, value):
+        if key == "surfaces" and value is None:
+            return None
         if key == "plugins":
             plugins = []
             for declaration in _tuple(value):
@@ -480,6 +482,18 @@ class Application(modict):
         if not callable(event_handshake) or not callable(application_handshake):
             raise ValueError("a conversation requires authenticated socket handshakes")
         context.require("data_root")
+        surfaces = self.surfaces
+        if surfaces is None:
+            # The explicit worker reference also locates editable client sources;
+            # never infer application paths from cwd or the Python call stack.
+            source_file = getattr(import_module(module), "__file__", None)
+            source = Path(source_file).resolve().parent / "ui" if source_file else None
+            if source is None or not source.is_dir():
+                raise ValueError(
+                    "default desktop UI requires ui/ beside the application module; "
+                    "declare custom surfaces or use surfaces=() for no UI"
+                )
+            surfaces = (ClientSurface(source=source),)
 
         def build_session(path, agent_name, session_id, durable, *, primary=False, worker=None):
             declarations = {agent.name: agent for agent in (self.primary_agent, *self.agents)}
@@ -500,7 +514,7 @@ class Application(modict):
                 application_handshake=application_handshake, supervisor=worker,
                 session_factory=session_factory, session_projection=session_projection,
                 health_projection=health_projection,
-                session_extensions=session_extensions,
+                session_extensions=session_extensions, surfaces=surfaces if primary else (),
             )
 
         app = build_session(context.require("session_path"), self.primary_agent.name,
@@ -519,7 +533,7 @@ class Application(modict):
     def _build_session_server(
         self, reference, context, *, agent_name, primary, security,
         event_handshake, application_handshake, supervisor, session_factory,
-        session_projection, health_projection, session_extensions,
+        session_projection, health_projection, session_extensions, surfaces,
     ):
         from ..runtime.supervisor import WorkerSupervisor
         from ..api.agent import CanonicalAgentApi
@@ -547,7 +561,7 @@ class Application(modict):
         extra = session_extensions(runtime) if callable(session_extensions) else session_extensions
         return _assemble_server(
             self, context=context, security=security, session=runtime, primary=primary,
-            extra_extensions=(
+            surfaces=surfaces, extra_extensions=(
                 *_conversation_extensions(
                     runtime, data_root=context.require("data_root"),
                     event_handshake=event_handshake, application_handshake=application_handshake,
@@ -705,7 +719,7 @@ def _compile_application(application, *, extra_extensions=(), surfaces=None):
     plugins = {}
     capabilities = {}
     extensions = [*application.server_extensions, *extra_extensions]
-    surfaces = application.surfaces if surfaces is None else surfaces
+    surfaces = (application.surfaces or ()) if surfaces is None else surfaces
     extension_map = {}
     for extension in extensions:
         if not isinstance(extension, ServerExtension):
@@ -996,7 +1010,7 @@ def _assemble_server(
     application: Application,
     *,
     context: BuildContext | None = None,
-    security=None, extra_extensions=(), session=None, primary=False,
+    security=None, extra_extensions=(), session=None, primary=False, surfaces=None,
 ) -> FastAPI:
     """Compile the complete declaration, then build its FastAPI runtime."""
     if not isinstance(application, Application):
@@ -1004,7 +1018,7 @@ def _assemble_server(
     if _current_application is application and (session is None or primary):
         raise RuntimeError("cannot rebuild the running application")
     is_root = session is None or primary
-    surfaces = application.surfaces if is_root else ()
+    surfaces = ((application.surfaces or ()) if surfaces is None else surfaces) if is_root else ()
     policy = security if security is not None else application.security
     plan = _compile_application(application, extra_extensions=extra_extensions, surfaces=surfaces)
     build_context = context if context is not None else BuildContext()

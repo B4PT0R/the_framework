@@ -138,3 +138,9 @@ Session ServiceContext borrows only application-scoped services through its pare
 graph. Its ServiceGraph owns only local lifecycle entries; inherited resources keep
 their original owner and health probe, without no-op start/stop wrappers. Do not cache
 configure hooks across sessions: their contributions may depend on session inputs.
+
+Agent applications default to the editable ui/ beside the explicit application
+module reference during build(): main surface, npm run build, dist output, /ui
+route and Playwright shell. surfaces=() explicitly disables UI. Do not guess source locations
+from cwd, call stacks or filesystem scanning. Worker compilation remains inert;
+custom and multi-device surfaces remain ordinary ClientSurface declarations.

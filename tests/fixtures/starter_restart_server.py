@@ -13,7 +13,7 @@ from starter.desktop import main
 build = starter.server.create_app
 if source := os.environ.get("STARTER_TEST_UI"):
     declaration = starter.server.application
-    surface = ClientSurface({**declaration.surfaces[0], "source": Path(source)})
+    surface = ClientSurface(source=Path(source))
     starter.server.application = Application({**declaration, "surfaces": (surface,)})
 
 

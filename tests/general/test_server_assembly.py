@@ -20,7 +20,7 @@ def test_standard_assembly_keeps_authentication_and_includes_runtime_health(tmp_
             return principal.id == "local"
 
     application = Application(
-        name="Example", version="1", security=Security(),
+        name="Example", version="1", security=Security(), surfaces=(),
         primary_agent=AgentSpec(name="primary", session_mode="durable"),
     )
     app = application.build(

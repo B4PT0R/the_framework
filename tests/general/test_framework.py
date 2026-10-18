@@ -39,6 +39,7 @@ class Service:
 
 
 def application(name, version="1", **options):
+    options.setdefault("surfaces", ())
     return Application(
         name=name,
         version=version,

@@ -72,3 +72,58 @@ def test_agent_application_cannot_silently_build_without_its_conversation():
         Application(name='Services', version='1').build('example:application')
     with pytest.raises(ValueError, match='additional agents require a primary_agent'):
         Application(name='Services', version='1', agents=(AgentSpec(name='assistant'),))
+
+
+def test_conversation_defaults_to_editable_ui_beside_its_declaration(tmp_path, monkeypatch):
+    import sys
+    from types import ModuleType
+    from tests.fixtures.runtime import FakeRuntime
+
+    source = tmp_path / 'project' / 'ui'
+    (source / 'dist').mkdir(parents=True)
+    (source / 'dist/index.html').write_text('<h1>My application</h1>')
+    definition = Application(name='Desktop', version='1', primary_agent=AgentSpec(name='assistant'))
+    module = ModuleType('desktop_example')
+    module.__file__ = str(source.parent / 'application.py')
+    module.application = definition
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    monkeypatch.chdir(tmp_path)
+    assert definition.compile().primary_agent.name == "assistant"
+    app = definition.build(
+        'desktop_example:application', BuildContext(data_root=tmp_path / 'data'),
+        security=Security(), handshake=refuse_socket,
+        session_factory=lambda supervisor, context: FakeRuntime(),
+    )
+    surface = definition.plan.surfaces[0]
+    assert surface.source == source
+    assert surface.name == 'main' and surface.routes == ('/ui',)
+    with TestClient(app) as client:
+        assert client.get('/ui/').text == '<h1>My application</h1>'
+        assert client.get('/api/v1/session').status_code == 401
+        assert client.get(surface.preview_route + '/').status_code == 401
+
+
+def test_headless_conversation_does_not_resolve_a_ui_module(tmp_path):
+    definition = Application(name='Headless', version='1', surfaces=(),
+                             primary_agent=AgentSpec(name='assistant'))
+    app = definition.build(
+        'unimportable_example:application', BuildContext(data_root=tmp_path),
+        security=Security(), handshake=refuse_socket,
+    )
+    assert definition.surface_service is None
+    assert not any(route.path == '/ui' for route in app.routes)
+
+
+def test_default_ui_reports_missing_source_without_silently_becoming_headless(tmp_path, monkeypatch):
+    import sys
+    from types import ModuleType
+
+    module = ModuleType('missing_ui_example')
+    module.__file__ = str(tmp_path / 'application.py')
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    definition = Application(name='Desktop', version='1', primary_agent=AgentSpec(name='assistant'))
+    with pytest.raises(ValueError, match='surfaces='):
+        definition.build(
+            'missing_ui_example:application', BuildContext(data_root=tmp_path / 'data'),
+            security=Security(), handshake=refuse_socket,
+        )

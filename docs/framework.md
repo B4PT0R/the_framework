@@ -1242,8 +1242,22 @@ The public `the_framework.server` package exports reusable pieces for common age
 
 ## Versioned client surfaces
 
-`ClientSurface` makes a mutable web template an application capability rather
-than a special Vite side effect:
+An agent application's `build(reference, context, ...)` uses a single desktop UI
+by default. Keep editable sources in `ui/` beside the module named in the explicit
+`module:application` reference. The standard surface is `main`, built with
+`npm run build` into `dist`, served at `/ui`, with the Playwright shell. The
+starter follows this convention and declares no surfaces.
+
+Omit `surfaces` (or use None) for this convention; use `surfaces=()` to explicitly
+build a conversation without an interface. A missing default `ui/` is an error,
+not a silent fallback to headless mode. Imports and worker compilation stay inert:
+the default source is resolved only during server build, independently of cwd or
+the Python call stack. Applications without a primary agent have no implicit UI.
+
+For a different source with the same desktop defaults, use
+`surfaces=(ClientSurface(source=frontend_dir),)`. Other build systems, layouts and
+multiple device interfaces remain explicit. `ClientSurface` makes each mutable
+web template an application capability rather than a special Vite side effect:
 
 ```python
 from the_framework import ClientSurface
