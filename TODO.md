@@ -128,6 +128,59 @@ et l'avis précédent de ne pas introduire de singleton.
 - Tests agentic du starter : assertions sur les anciens chemins de factories
   supprimées ; inventaire courant conservé sans verrouiller les adaptateurs internes.
 
+### Revue Session / Context / Compaction — 18 octobre
+
+Revue effectuée, propositions ci-dessous non implémentées. Sources :
+agent/context/{session,builder,compaction,projections}.py, runtime/{agent,
+agentic_loop,worker}.py, projections Realtime, recettes starter/Harness et tests.
+
+À conserver :
+- Session : état canonique, historique actif et archive, configuration/état/bindings,
+  reçus de commandes, mutations atomiques et reprise. Ne pas créer SessionData +
+  SessionStore + SessionManager pour répartir artificiellement ces responsabilités.
+- Context : vue de travail de l'agent, préfixes dynamiques, providers éphémères,
+  budget local et préparation de l'entrée du modèle. Ce n'est pas BuildContext.
+- Projections clientes : sélection de l'archive par tours puis projection pure
+  nommée dans Worker/SessionProjections. Realtime garde sa projection propre ;
+  ne pas imposer une abstraction commune aux formats Responses, voix et UI.
+- Les modèles Compaction, CompactionResponse, SessionWatermark et autres payloads
+  restent hors refonte. Deux Compaction existent aujourd'hui : un item de modèle
+  et un contrôleur runtime ; seule la nécessité du second est remise en question.
+
+Priorités proposées, sans nouvelle classe/helper public :
+1. Déplacer la conversion de séquences vers Responses de Session.to_api_format
+   vers Context. Génération et compaction doivent partager la préparation du
+   contexte canonique ; seule la génération ajoute les providers éphémères.
+   Garder Image/Artifact.to_api_format et les autres logiques locales de payloads.
+   Rendre explicite la réparation canonique avant projection : aujourd'hui une
+   méthode nommée comme une conversion peut modifier/persister la session.
+2. Ramener l'orchestration de compaction dans Context, garder agent.compact()
+   comme opération usuelle et Session.commit_compaction() comme mutation atomique.
+   Supprimer le contrôleur Compaction(agent), agent.compaction et le fallback
+   getattr(agent, "context", None), plutôt que les remplacer par un autre manager.
+3. Retirer les branches/options sans usage utile : compose_session_items vérifie
+   une ancre puis concatène prefix + history[:tail_start] + history[tail_start:],
+   exactement comme son retour général prefix + history. L'option compact(input=...)
+   n'a qu'un usage de test dans les consommateurs explorés ; elle permet pourtant
+   de remplacer le contexte canonique à partir d'une autre séquence. Préférer une
+   opération compactant explicitement la session courante ; adapter le test de clé
+   de cache au contrat réel. Ne pas supprimer tail_start du schéma à cette occasion.
+
+Garanties à vérifier lors de l'implémentation : préfixe avant toute sortie compactée,
+limites d'images et feedback d'artefacts, providers non persistés/non compactés,
+archive restituable malgré réduction du contexte actif, appels d'outils interrompus
+réparés sans répétition de leurs effets, échec de sauvegarde sans mutation partielle,
+usage mesuré distinct du comptage local, événements publics inchangés. La commande
+manuelle de compaction recalcule déjà le budget dans Worker : pas de correction
+supplémentaire nécessaire sur la base de cette revue.
+
+Impact consommateur : ni le starter ni le Harness n'assemblent Context/Compaction
+ou n'appellent Session.to_api_format directement ; ils déclarent la projection
+"display" et passent par les commandes du worker. Adapter en priorité les appels
+Framework et tests, puis vérifier le couple complet et la reprise desktop.
+Validation de la revue : 44 tests Session/contexte/compaction/artefacts réussis.
+Aucun changement runtime, modèle, schéma, installation ou publication effectué.
+
 ### Secteurs à revoir
 
 - Minimiser le vocabulaire nécessaire aux cas simples et réutiliser les mêmes
@@ -146,8 +199,10 @@ et l'avis précédent de ne pas introduire de singleton.
 - [x] Revoir ensemble Plugin, AgentExtension, ServerExtension et BuildContext :
   injection directe du contexte, construction différée et découverte unifiées ;
   les contributions avancées gardent leur phase explicite avant les services.
-- [ ] Examiner les frontières Session / Context / Compaction et la place des
-  projections vers le backend et vers les clients, sans fusionner leurs garanties.
+- [x] Examiner les frontières Session / Context / Compaction et la place des
+  projections vers le backend et vers les clients : revue ci-dessus.
+- [ ] Implémenter la préparation du contexte et la compaction réunies dans Context,
+  conserver Session canonique et les projections clientes distinctes.
 - [ ] Réexaminer AgentSpec / AgentTrigger / WorkerProfile et la construction des
   spécialistes à partir de la déclaration et du profil résolu.
 - [x] Le plugin mémoire possède désormais le décodage de son XML depuis les
