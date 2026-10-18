@@ -1192,6 +1192,27 @@ projection includes the id, kind and payload, confirming canonical presence only
 never successful client rendering. It does not send image pixels to the model.
 Use `Image` separately when vision is required.
 
+`Image.from_source(source, directory=..., description=...)` prepares a local path,
+raw image bytes, or an HTTP(S) URL as an immutable, content-addressed local file.
+Remote images are downloaded with redirects and a 30-second network timeout,
+limited to 50 MiB, then validated as PNG/JPEG/WebP/GIF before an item is returned.
+Failures occur before session injection. For example:
+
+```python
+image = Image.from_source(
+    "https://example.org/reference.png",
+    directory=agent.session_root / "images",
+    description="Reference for the requested analysis",
+)
+agent.add_response_item(image)
+```
+
+This factory performs blocking I/O; async tools should call it with
+`await asyncio.to_thread(...)`. Ordinary `Image(path=...)` remains a reference to
+an already-local file. Deserialization and API projection never download: the
+projection reads the frozen file and emits a base64 `data:` image, never a remote
+URL. Replays therefore do not depend on the source URL remaining accessible.
+
 Providers can return the same typed item, but **all provider outputs are ephemeral**.
 On each model step, `agent.provider_artifacts.updated` replaces the current turn's
 provider presentations. No provider output is appended to history or archive;

@@ -251,12 +251,23 @@ class Image(ResponseItem):
     command_id: str | None = None
     context_tag: str = "generated_image"
 
+    @classmethod
+    def from_source(cls, source, *, directory, **metadata):
+        """Freeze bytes, a local file or an HTTP(S) URL before adding to a session.
+
+        This explicit preparation may perform I/O; ordinary construction,
+        deserialization and context projection never download remote images.
+        """
+        from ...utils.images import freeze_image
+
+        return cls(path=str(freeze_image(source, directory)), **metadata)
+
     def to_api_format(self):
         path = Path(self.path)
         try:
             encoded = base64.b64encode(path.read_bytes()).decode()
         except OSError as error:
-            raise ValueError(f"local generated image is unavailable: {path}") from error
+            raise ValueError(f"local image is unavailable: {path}") from error
         context_tag = (
             self.context_tag
             if re.fullmatch(r"[a-z][a-z0-9_]*", self.context_tag or "")
