@@ -559,7 +559,6 @@ whereas a server extension is a declaration describing a service and its surface
 | `ServerExtension.requires_services` / `optional_services` | Names of local services supplied to its factory, in dependency order |
 | `Application.server_extensions` | Application-wide server infrastructure |
 | `AgentSpec.extensions` | Contributions installed in that agent |
-| `AgentSpec.specialist_profiles` | Compiled worker profiles; application code normally declares specialists on their owning `Plugin` |
 
 The normal import is the complete plugin, not its agent and server parts:
 
@@ -903,8 +902,10 @@ The same `AgentSpec` declares a private specialist. Specialists are ephemeral
 by default and can opt into `session_mode="resident"` or
 `session_mode="durable"`. `QueuePolicy` controls bounded FIFO/latest delivery
 and durable task journaling. A plugin owns its specialists and calls them
-through `agents.call()`, `agents.submit()` and `agents.publish()`; another
-plugin can reach their capability only through an explicit versioned public
+through `agents.submit(name, prompt)`, which returns a request ID without waiting.
+The worker routes results to `AgentTriggers.dispatch()` and the declared handler;
+there is no `call()` alias suggesting a synchronous result or a second `publish()`
+adapter. Another plugin can reach their capability only through an explicit versioned public
 contract. The generic worker entrypoint resolves either the primary agent or a
 namespaced specialist from `module:application`.
 
@@ -923,8 +924,22 @@ scopes matter; both forms use the same construction path.
 A plugin that configures its specialist at load time replaces `trigger.spec`
 with a revised `AgentSpec`; it does not mutate the shared class declaration.
 The emitted worker profile is compiled from that current spec and the trigger's
-selection. Agent construction overlays explicit resources on declared
-configuration, without retaining a competing source profile.
+selection. Agent construction applies declared configuration, then process-local
+resource defaults, then resolved launch-profile settings when the worker has one.
+Saved Session configuration is restored last. The launch profile is consumed
+without retaining a competing source in AgentSpec; executable factories and
+initializers stay on the application declaration. An explicit session-mode choice
+at the worker entrypoint overrides the launch profile's mode.
+
+Application compilation validates private identities and retains their AgentSpec
+declarations in its plan. AgentSpec has no compiled `specialist_profiles` field.
+After extension loading, the worker forms one declaration catalogue: each loaded
+trigger supplies its configured spec and selection, replacing the corresponding
+static declaration; explicit specialists without a trigger remain available.
+The catalogue includes inactive bindings so the fleet can suspend or re-enable
+execution without losing the configured declaration. Only then are WorkerProfile
+payloads produced for WorkerReady. Worker constructors no longer merge two sets
+of already serialized profiles.
 
 The serialized specialist profile carries `session_mode` explicitly, preserving
 `ephemeral`, `resident` and `durable` across worker construction. Session and
@@ -937,7 +952,10 @@ specialist's task/result handling to its plugin. `WorkerProfile`, under
 `agent.models.worker`, is internal serializable fleet metadata, not a second
 public declaration API. A profile is not a serializer for Python factories,
 initializers or projection callables: application-backed workers resolve the
-original namespaced spec. Imported role text becomes an ordinary spec instruction;
+original namespaced spec. The advanced `build_agent(..., profile=...)` argument is
+used at this process boundary to apply resolved settings after resource defaults;
+ordinary application declarations do not need it. A profile with another agent's
+identity is rejected. Imported role text becomes an ordinary spec instruction;
 exporting uses the current instructions rather than the old profile text.
 
 Terminal private-agent results enter a durable outbox only after their terminal

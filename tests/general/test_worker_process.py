@@ -62,7 +62,7 @@ def test_application_specialist_retains_factories_and_resolved_runtime_profile(t
     runner = AgentRunner(profile, tmp_path, asyncio.Queue(), application_reference="test:application")
     assert runner.command(tmp_path / "session.json", profile_path)[-2:] == ["--profile", str(profile_path)]
     monkeypatch.setattr(worker_process, "load_application", lambda _: SimpleNamespace(
-        compile=lambda: SimpleNamespace(agents={spec.name: spec}, primary_agent=spec),
+        compile=lambda: SimpleNamespace(agents={spec.name: spec}, primary_agent=spec, specialists=()),
     ))
     agents = []
 
@@ -75,3 +75,72 @@ def test_application_specialist_retains_factories_and_resolved_runtime_profile(t
     assert agents[0].extension("memory_curator").store.path == path
     assert path.exists()
     assert "Application-specific curation role" in str(agents[0].instructions)
+
+
+def test_resolved_launch_settings_override_defaults_but_not_saved_session(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from the_framework import AgentResources, AgentSpec
+    from the_framework.agent.context.session import Session
+    from the_framework.agent.runtime import worker_process
+    from the_framework.plugins.memory.curator import MemoryCuratorExtension
+
+    for saved in (False, True):
+        root = tmp_path / str(saved)
+        root.mkdir()
+        client = object()
+        calls = []
+        def resources(path):
+            calls.append(path)
+            return AgentResources(client=client, configuration={
+                "model": "resource-default",
+                "memory_curator": {"store_path": str(root / "resource.sqlite3")},
+            })
+        spec = AgentSpec(name="private", session_mode="durable", resources=resources,
+            configuration={"model": "declared-default"},
+            extensions=(lambda agent: MemoryCuratorExtension(agent),),
+            initializers=(lambda agent: setattr(agent, "application_initializer", True),))
+        session_path = root / "session.json"
+        previous_id = None
+        if saved:
+            session = Session.open(session_path)
+            session.update_agent(configuration={"model": "saved-model",
+                "memory_curator": {"store_path": str(root / "saved.sqlite3")}})
+            previous_id = session.id
+        profile = AgentSpec(name="private", session_mode="durable", instructions="Resolved role",
+            configuration={"model": "resolved-model",
+                "memory_curator": {"store_path": str(root / "resolved.sqlite3")}}).fleet_profile()
+        profile_path = root / "profile.json"
+        profile_path.write_text(json.dumps(profile))
+        monkeypatch.setattr(worker_process, "load_application", lambda _: SimpleNamespace(
+            compile=lambda: SimpleNamespace(agents={spec.name: spec}, primary_agent=spec, specialists=())))
+        constructed = []
+        async def capture(worker):
+            constructed.append(worker.agent)
+        monkeypatch.setattr(worker_process.Worker, "run", capture)
+        asyncio.run(worker_process.run(session_path, application_reference="test:application",
+            agent_name=spec.name, profile_path=profile_path))
+        agent = constructed[0]
+        assert agent.configs.model == ("saved-model" if saved else "resolved-model")
+        expected = root / ("saved.sqlite3" if saved else "resolved.sqlite3")
+        assert agent.extension("memory_curator").store.path == expected
+        assert agent.client is client
+        assert agent.application_initializer is True
+        assert calls == [session_path]
+        assert "Resolved role" in str(agent.instructions)
+        if saved:
+            assert agent.session.id == previous_id
+
+
+def test_worker_entrypoint_explicit_session_mode_overrides_launch_profile(tmp_path, monkeypatch):
+    from the_framework import AgentSpec
+    from the_framework.agent.runtime import worker_process
+    profile = AgentSpec(name="private", session_mode="durable").fleet_profile()
+    path = tmp_path / "profile.json"
+    path.write_text(json.dumps(profile))
+    constructed = []
+    async def capture(worker):
+        constructed.append(worker.agent)
+    monkeypatch.setattr(worker_process.Worker, "run", capture)
+    asyncio.run(worker_process.run(tmp_path / "session.json", profile_path=path, session_mode="ephemeral"))
+    assert constructed[0].session.path is None
+    assert constructed[0].retain_history is False

@@ -55,6 +55,18 @@ file records the constraints to preserve when changing the framework.
   Only a plugin's binding to an agent changes live. Disabling that binding must
   leave the plugin's server routes and services available.
 
+## Agent construction and specialist catalogue
+
+AgentSpec owns declarations; AgentTrigger owns task selection and result handling.
+WorkerProfile/AgentTask/AgentResult remain wire payloads, not declarations to redesign.
+Construction priority is declaration < resource defaults < resolved launch profile
+< saved Session configuration; preserve executable resources/factories/initializers.
+AgentSpec does not retain compiled profiles. Compilation retains private declarations;
+the worker resolves one catalogue after extension load, including configured inactive
+triggers and explicit specialists without handlers, then emits its wire profiles.
+Use submit for nonblocking work and dispatch internally for results. Do not restore
+call/publish aliases or a second profile catalogue.
+
 ## Agent context and compaction
 
 Session owns canonical data and atomic mutations; Context owns model projection,

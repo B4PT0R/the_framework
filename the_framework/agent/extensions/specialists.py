@@ -164,11 +164,6 @@ class AgentTriggers(Base[str, AgentTrigger]):
         self.agent.emit(request)
         return request.request_id
 
-    def call(self, name, prompt, *, source_item_ids=()):
-        return self.submit(name, prompt, source_item_ids=source_item_ids)
-
-    def publish(self, result):
-        return self.dispatch(AgentResult.from_dict(result))
 
 
 __all__ = [

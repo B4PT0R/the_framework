@@ -566,20 +566,28 @@ class Worker:
     async def run(self):
         await asyncio.to_thread(self.agent.session.sanitize)
         await asyncio.to_thread(self.agent.session.recover_commands)
-        plugin_specialists = (
-            self.agent.registry("agents").profiles()
-            if hasattr(self.agent, "agents")
-            else []
-        )
-        specialists = {
-            profile.name: profile
-            for profile in (*self.specialists, *plugin_specialists)
-        }
+        # Resolve one declaration catalogue after all extensions have loaded.
+        # Configured triggers replace their static declarations, including when
+        # their binding is disabled (the fleet controls execution separately).
+        declarations = {spec.name: spec for spec in self.specialists}
+        triggers = list(self.agent.agents.values()) if hasattr(self.agent, "agents") else []
+        for extension in getattr(self.agent, "extensions", ()):
+            triggers.extend(extension.contributions("agents"))
+        seen = set()
+        for trigger in triggers:
+            if trigger.name in seen:
+                raise ValueError(f"duplicate agent trigger: {trigger.name}")
+            seen.add(trigger.name)
+            declarations[trigger.name] = trigger
+        specialists = [
+            value.profile() if name in seen else value.fleet_profile()
+            for name, value in declarations.items()
+        ]
         await self.send(WorkerReady(
             session_id=self.agent.id,
             name=self.agent.name,
             description=self.agent.description,
-            specialists=list(specialists.values()),
+            specialists=specialists,
             plugins=[
                 {"name": plugin.title, "activated": plugin.activated}
                 for plugin in getattr(self.agent, "extensions", [])

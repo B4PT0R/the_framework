@@ -259,3 +259,9 @@ The worker also owns context preparation and compaction: applications use
 `agent.compact()` or the existing worker command, without constructing a compaction
 controller. The same canonical session continues to supply display history after
 compaction; ephemeral provider output belongs only to generation, not the archive.
+
+Private specialists are declared as AgentSpec values or `@agent_trigger` bindings
+on their plugin. The worker resolves their configured catalogue after extensions
+load; application code does not assemble worker profiles. Submit work with
+`agents.submit(...)` (a request ID, not a blocking result). Saved session settings
+remain authoritative over declaration, resource and resolved launch defaults.

@@ -75,7 +75,6 @@ class AgentSpec(modict):
     completion_tool: str | None = None
     completion_retry_limit: int = 0
     queue: QueuePolicy = modict.factory(QueuePolicy)
-    specialist_profiles: tuple[WorkerProfile, ...] = ()
 
     @modict.model_validator(mode="after")
     def validate_declaration(self):
@@ -93,7 +92,7 @@ class AgentSpec(modict):
     def normalize_declaration(self, key, value):
         if key == "instructions" and isinstance(value, str):
             return (Instruction(name="role", content=value),)
-        if key in {"extensions", "instructions", "initializers", "command_middleware", "specialist_profiles"}:
+        if key in {"extensions", "instructions", "initializers", "command_middleware"}:
             return _tuple(value)
         if key in {"projections", "configuration"}:
             return MappingProxyType(dict(value))
@@ -122,9 +121,6 @@ class AgentSpec(modict):
 
     def with_extensions(self, *plugins):
         return type(self)({**self, "extensions": (*self.extensions, *plugins)})
-
-    def with_specialist_profiles(self, *profiles):
-        return type(self)({**self, "specialist_profiles": tuple(profiles)})
 
     def fleet_profile(self, *, identity=None, observes=("agent.task.requested",),
                       item_kinds=(), conversation_roles=(), input_item_field=None):
@@ -189,8 +185,18 @@ class AgentSpec(modict):
         *,
         resources: AgentResources | None = None,
         application_root=None,
+        profile: WorkerProfile | None = None,
     ):
+        """Construct with declaration < resources < launch profile < saved session.
+
+        A profile is consumed only at the worker boundary, never retained as a
+        competing declaration. Executable factories and initializers stay local.
+        """
         from .runtime.agent import Agent
+        resolved = type(self).from_profile(profile) if profile is not None else None
+        if resolved is not None and resolved.name != self.name:
+            raise ValueError("execution profile belongs to another agent declaration")
+        mode = resolved.session_mode if resolved is not None else self.session_mode
         # Explicit resources replace the factory as a whole; there is no hidden
         # merge or fallback between independently supplied construction inputs.
         if resources is None:
@@ -199,22 +205,24 @@ class AgentSpec(modict):
             raise TypeError("agent resources must be AgentResources")
         options = dict(self.configuration)
         options.update(resources.configuration)
+        if resolved is not None:
+            options.update(resolved.configuration)
         if resources.client is not None:
             options["client"] = resources.client
         agent = Agent(
-            session_path=session_path if self.session_mode == "durable" else None,
+            session_path=session_path if mode == "durable" else None,
             name=self.name,
             application_root=application_root,
             session_root=Path(session_path).parent if session_path is not None else None,
             description=self.description,
-            retain_history=self.session_mode != "ephemeral",
+            retain_history=mode != "ephemeral",
             state=resources.state,
             **options,
         )
         if agent.session.agent_name not in (None, self.name):
             raise ValueError("session belongs to another agent declaration")
         agent.session.agent_name = self.name
-        for instruction in self.instructions:
+        for instruction in resolved.instructions if resolved is not None else self.instructions:
             agent.add_instruction(
                 instruction
                 if isinstance(instruction, Instruction)
@@ -235,7 +243,7 @@ class AgentSpec(modict):
         agent.session.update_agent(configuration=agent.configs, state=agent.states.snapshot())
         return agent
 
-    def build_worker(self, agent, receive, send):
+    def build_worker(self, agent, receive, send, *, specialists=()):
         from .runtime.worker import Worker
         return Worker(
             agent,
@@ -243,7 +251,7 @@ class AgentSpec(modict):
             send,
             command_middleware=self.command_middleware,
             projections=SessionProjections(self.projections),
-            specialists=self.specialist_profiles,
+            specialists=specialists,
         )
 
 

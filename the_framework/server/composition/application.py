@@ -348,6 +348,7 @@ class ApplicationPlan(modict):
     server_extensions: tuple[ServerExtension, ...]
     surfaces: tuple[ClientSurface, ...]
     agents: Mapping[str, AgentSpec]
+    specialists: tuple[AgentSpec, ...]
     plugins: Mapping[str, Plugin]
     capabilities: Mapping[str, Capability]
 
@@ -730,19 +731,13 @@ def _compile_application(application, *, extra_extensions=(), surfaces=None):
     agent_contributions = []
     private_identities = set()
     agents = {}
-    specialist_profiles = []
+    specialists = []
     for plugin in application.plugins:
         if not isinstance(plugin, Plugin):
             raise TypeError("application plugins must be Plugin instances")
         if plugin.name in plugins:
             raise ValueError(f"duplicate plugin: {plugin.name}")
         plugins[plugin.name] = plugin
-        triggers = {
-            trigger.spec.name: trigger
-            for _, member in inspect.getmembers(plugin.agent_extension)
-            if getattr(member, "agent_trigger", None) is not None
-            for trigger in (AgentTrigger.from_function(member),)
-        }
         for private_agent in plugin.specialists:
             if not isinstance(private_agent, AgentSpec):
                 raise TypeError(
@@ -754,15 +749,7 @@ def _compile_application(application, *, extra_extensions=(), surfaces=None):
             private_identities.add(identity)
             compiled_agent = AgentSpec({**private_agent, "name": identity})
             agents[identity] = compiled_agent
-            trigger = triggers.get(private_agent.name)
-            specialist_profiles.append(
-                compiled_agent.fleet_profile(
-                    identity=identity,
-                    **({key: trigger[key] for key in (
-                        "observes", "item_kinds", "conversation_roles", "input_item_field"
-                    )} if trigger is not None else {}),
-                )
-            )
+            specialists.append(compiled_agent)
         for capability in plugin.provides_capabilities:
             if capability.name in capabilities:
                 raise ValueError(f"duplicate plugin capability: {capability.name}")
@@ -838,17 +825,17 @@ def _compile_application(application, *, extra_extensions=(), surfaces=None):
     if application.primary_agent is not None:
         primary_agent = application.primary_agent.with_extensions(
             *agent_contributions
-        ).with_specialist_profiles(*specialist_profiles)
+        )
         agents[primary_agent.name] = primary_agent
     for declaration in application.agents:
         if declaration.name in agents:
             raise ValueError(f"duplicate agent identity: {declaration.name}")
-        agents[declaration.name] = declaration.with_extensions(*agent_contributions).with_specialist_profiles(*specialist_profiles)
+        agents[declaration.name] = declaration.with_extensions(*agent_contributions)
     return ApplicationPlan(
         application=application,
         primary_agent=primary_agent,
         server_extensions=tuple(extensions), surfaces=tuple(surfaces),
-        agents=MappingProxyType(agents),
+        agents=MappingProxyType(agents), specialists=tuple(specialists),
         plugins=MappingProxyType(plugins),
         capabilities=MappingProxyType(capabilities),
     )

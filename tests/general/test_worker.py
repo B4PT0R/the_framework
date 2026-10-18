@@ -565,6 +565,7 @@ def test_config_snapshot_describes_loaded_plugins_even_when_inactive():
             title="memory",
             description="Relational memory.",
             activated=False,
+            contributions=lambda _name: (),
         )]
         worker = Worker(agent, incoming.get, send)
         await incoming.put(ConfigSnapshotRequest(id="config"))
@@ -945,4 +946,46 @@ def test_status_recovers_automatic_compaction_and_clears_failed_lifecycle():
         assert outgoing[-1].foreground_pending == 0
         await worker.quota_refresh_task
 
+    asyncio.run(run())
+
+
+def test_ready_catalogue_uses_configured_inactive_triggers_and_bare_declarations(tmp_path):
+    from the_framework import Application, AgentExtension, Plugin
+    class Feature(AgentExtension):
+        name = "feature"
+        def load(self):
+            super().load()
+            for kind, trigger in self._contributions:
+                if kind == "agents":
+                    trigger.spec = AgentSpec({**trigger.spec,
+                        "configuration": {"model": "configured-after-load"},
+                        "instructions": "Configured role"})
+            return self
+
+        @agent_trigger(AgentSpec(name="observer", configuration={"model": "static-default"}),
+                       observes=("agent.response_item.added",))
+        def observer(self, result):
+            return result
+
+    plan = Application(name="Catalogue", version="1", primary_agent=AgentSpec(name="main"), plugins=(
+        Plugin(name="feature", agent_extension=Feature, agent_binding_enabled=False,
+            specialists=(AgentSpec(name="observer"), AgentSpec(name="bare"))),
+    )).compile()
+    agent = plan.primary_agent.build_agent()
+    assert not agent.extension("feature").activated
+    async def run():
+        outgoing = []
+        incoming = asyncio.Queue()
+        await incoming.put(ShutdownRequest(id="stop"))
+        async def send(event):
+            outgoing.append(event)
+        worker = plan.primary_agent.build_worker(agent, incoming.get, send, specialists=plan.specialists)
+        await worker.run()
+        ready = outgoing[0]
+        assert {value.name for value in ready.specialists} == {"feature.observer", "feature.bare"}
+        assert len(ready.specialists) == 2
+        observer = next(value for value in ready.specialists if value.name == "feature.observer")
+        assert observer.model == "configured-after-load"
+        assert observer.instructions == "Configured role"
+        assert observer.observes == ["agent.response_item.added"]
     asyncio.run(run())

@@ -208,7 +208,7 @@ Aucun changement runtime, modèle, schéma, installation ou publication effectu�
 
 ### Revue AgentSpec / AgentTrigger / WorkerProfile — 18 octobre
 
-Revue effectuée, propositions non implémentées. Sources : agent/spec.py,
+Revue effectuée avant implémentation ; livraison ci-dessous. Sources : agent/spec.py,
 extensions/specialists.py, runtime/{worker,worker_process}.py, compilation
 Application et FleetSupervisor/AgentRunner ; plugin mémoire et recettes produit.
 
@@ -266,6 +266,33 @@ réussis ; reproduction empirique de priorité de configuration avec un worker
 intercepté avant démarrage, client authentifié/inférence jamais sollicités.
 Aucun changement runtime ni redémarrage installé effectué.
 
+### Tranche déclaration / lancement / spécialistes livrée — 18 octobre
+
+- build_agent consomme le profil de lancement à la frontière worker, après les
+  défauts AgentResources et avant la reprise Session. Les factories, client,
+  initializers et extensions restent ceux de la déclaration applicative ; le
+  profil n'est pas conservé comme seconde recette. Identité du profil vérifiée.
+  Mode de session explicite en CLI prioritaire sur celui du profil.
+- specialist_profiles et with_specialist_profiles supprimés d'AgentSpec.
+  ApplicationPlan conserve des déclarations AgentSpec privées ; les workers publics
+  reçoivent ces déclarations, les workers privés ne récupèrent pas toute la flotte.
+  Après chargement des extensions, Worker forme un catalogue de déclarations,
+  remplace les bases par leurs triggers configurés (y compris désactivés), garde les
+  spécialistes sans trigger, puis produit une seule fois les profils WorkerReady.
+  Aucun nouveau manager/helper public ni modification de WorkerProfile/AgentTask/
+  AgentResult ou autres schémas/protocoles ; les adaptateurs from_profile/fleet_profile
+  restent utiles au mode autonome --profile et au transport des workers.
+- Alias AgentTriggers.call/publish supprimés ; submit retourne un identifiant sans
+  attente, dispatch reste le retour interne vers le handler. Documentation Framework,
+  starter et Harness alignée ; pas de câblage produit supplémentaire nécessaire.
+- Validation : 117 tests ciblés, puis 711 tests Framework / 3 skips avec Chromium,
+  157 Harness ; Ruff critique et diff vérifiés. Régression de priorité reproduite
+  et corrigée sur modèle et chemin de plugin, reprise persistée prioritaire, factory
+  appelée une fois et client/initializer conservés. Catalogue testé avec spécialiste
+  explicite, trigger configuré et binding désactivé ; files/résultats et modes de
+  session couverts. Installation relancée sans changer Chromium ni conversation ;
+  chat/voix disponibles, catalogue de Jiminy conforme aux réglages mémoire sauvegardés.
+
 ### Secteurs à revoir
 
 - Minimiser le vocabulaire nécessaire aux cas simples et réutiliser les mêmes
@@ -290,7 +317,7 @@ Aucun changement runtime ni redémarrage installé effectué.
   conserver Session canonique et les projections clientes distinctes.
 - [x] Réexaminer AgentSpec / AgentTrigger / WorkerProfile et la construction des
   spécialistes : revue et reproduction ci-dessus.
-- [ ] Unifier les priorités de réglages du worker, puis le catalogue final des
+- [x] Unifier les priorités de réglages du worker, puis le catalogue final des
   spécialistes et les opérations du registre ; conserver les payloads inchangés.
 - [x] Le plugin mémoire possède désormais le décodage de son XML depuis les
   slots de contexte retenus ; Realtime ne connaît plus les candidats mémoire.

@@ -638,7 +638,7 @@ def test_plugin_private_agent_identities_are_namespaced_and_ephemeral_by_default
     assert "owner.observer" in plan.agents
     assert plan.agents["owner.observer"].session_mode == "ephemeral"
     assert plan.agents["owner.observer"].queue.mode == "fifo"
-    assert [profile.name for profile in plan.primary_agent.specialist_profiles] == [
+    assert [profile.name for profile in plan.specialists] == [
         "owner.observer",
     ]
     agent = plan.primary_agent.build_agent()

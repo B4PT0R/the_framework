@@ -62,28 +62,29 @@ async def _run(
             spec = plan.agents[identity]
         except KeyError as error:
             raise ValueError(f"unknown application agent: {identity}") from error
+    profile = None
     if profile_path is not None:
         from ..models.worker import WorkerProfile
         from ..spec import AgentSpec
 
         with open(profile_path, encoding="utf-8") as file:
-            configured = AgentSpec.from_profile(WorkerProfile(**json.load(file)))
-        # The application supplies executable composition (factories, hooks,
-        # resources); the primary worker supplies the resolved specialist policy.
-        # Recompiling alone would lose plugin-derived paths and user settings.
-        spec = configured if spec is None else AgentSpec({
-            **spec,
-            **{key: configured[key] for key in (
-                "instructions", "session_mode", "queue", "idle_timeout_seconds",
-                "completion_tool", "completion_retry_limit",
-            )},
-            "configuration": {**spec.configuration, **configured.configuration},
-        })
+            profile = WorkerProfile(**json.load(file))
+        if spec is None:
+            spec = AgentSpec.from_profile(profile)
     if spec is not None:
         if session_mode is not None:
-            spec = type(spec)({**spec, "session_mode": session_mode})
-        agent = spec.build_agent(session_path, application_root=application_root)
-        worker = spec.build_worker(agent, transport.receive, transport.send)
+            if profile is not None:
+                profile = type(profile)({**profile, "session_mode": session_mode})
+            else:
+                spec = type(spec)({**spec, "session_mode": session_mode})
+        agent = spec.build_agent(session_path, application_root=application_root, profile=profile)
+        specialists = ()
+        if plan is not None and (
+            identity == getattr(plan.primary_agent, "name", None)
+            or identity in {value.name for value in plan.application.agents}
+        ):
+            specialists = plan.specialists
+        worker = spec.build_worker(agent, transport.receive, transport.send, specialists=specialists)
     else:
         agent = Agent(session_path=session_path)
         agent.session.update_agent(configuration=agent.configs, state=agent.states.snapshot())
