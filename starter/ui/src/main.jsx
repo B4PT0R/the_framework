@@ -74,6 +74,14 @@ function App({ artifactRenderers }) {
   }, [voiceAvailable]);
   const scroll = useRef(null);
   const follow = useRef(true);
+  const lastScrollTop = useRef(0);
+  function followLatest() {
+    const el = scroll.current;
+    if (follow.current && el) {
+      el.scrollTop = el.scrollHeight;
+      lastScrollTop.current = el.scrollTop;
+    }
+  }
   useEffect(() => {
     let disposed = false,
       socket,
@@ -176,8 +184,7 @@ function App({ artifactRenderers }) {
     };
   }, []);
   useLayoutEffect(() => {
-    if (follow.current)
-      scroll.current?.scrollTo({ top: scroll.current.scrollHeight });
+    followLatest();
   }, [messages, artifacts, activity, captions]);
   useLayoutEffect(() => {
     if (historyScroll.current && scroll.current) {
@@ -250,11 +257,13 @@ function App({ artifactRenderers }) {
             className="conversation"
             ref={scroll}
             aria-label="Conversation"
-            onLoadCapture={() => { if (follow.current) scroll.current?.scrollTo({top: scroll.current.scrollHeight}); }}
+            onLoadCapture={followLatest}
             onScroll={() => {
               const el = scroll.current;
-              follow.current =
-                el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+              // Layout growth alone is not a request to leave follow mode.
+              if (el.scrollHeight - el.scrollTop - el.clientHeight < 80) follow.current = true;
+              else if (el.scrollTop < lastScrollTop.current) follow.current = false;
+              lastScrollTop.current = el.scrollTop;
             }}
           >
             {before && (

@@ -132,3 +132,9 @@ conceptuelle totale. Ces notes ne constituent pas des demandes de refonte imméd
   backend. Garder les tests isolés et les tests live clairement distingués.
 - [ ] Préparer version et notes de migration uniquement après stabilisation ;
   aucune publication ou modification de dépendances externes implicite.
+
+- [x] **Suivi des images — course scroll/load corrigée le 18 octobre.** Le starter
+  et le Harness distinguent déplacement vers le haut et croissance du contenu.
+  Un scroll livré avant le load ne désactive plus le suivi. Régression durable
+  rouge/verte dans le Harness ; 155 tests Harness, 53/25 JS, builds et scénario
+  Chromium de récupération du starter réussis.

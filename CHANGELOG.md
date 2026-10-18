@@ -6,6 +6,10 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Keep the starter following newly loaded images when layout delivers a scroll
+  before the image load event. Leave follow mode on upward movement rather than
+  treating content growth as a request to read older history.
+
 - Recreate active voice calls after agent-binding changes, using an owning-client
   reconnect signal after canonical voice turns are reconciled. Manual stop wins;
   disabling voice does not reconnect. Gate memory/registry live producers by
