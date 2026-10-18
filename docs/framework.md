@@ -1211,7 +1211,11 @@ This factory performs blocking I/O; async tools should call it with
 `await asyncio.to_thread(...)`. Ordinary `Image(path=...)` remains a reference to
 an already-local file. Deserialization and API projection never download: the
 projection reads the frozen file and emits a base64 `data:` image, never a remote
-URL. Replays therefore do not depend on the source URL remaining accessible.
+URL. The persisted item retains `path` as its image reference and `source_url`
+as provenance for HTTP(S) inputs; the latter is never used by projection or
+included in API input. Replays therefore do not depend on the source URL
+remaining accessible. Source URLs may contain sensitive query parameters: use
+an appropriate public source when that provenance should be retained.
 
 Providers can return the same typed item, but **all provider outputs are ephemeral**.
 On each model step, `agent.provider_artifacts.updated` replaces the current turn's

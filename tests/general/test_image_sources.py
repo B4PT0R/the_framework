@@ -59,7 +59,13 @@ def test_remote_image_is_frozen_before_history_and_projected_as_base64(tmp_path,
     api_image = payload["content"][0]["image_url"]
     assert api_image == "data:image/png;base64," + base64.b64encode(data).decode()
     assert source not in json.dumps(payload)
-    assert source not in session.path.read_text()
+    assert image.source_url == source
+    assert restored.source_url == source
+    saved = json.loads(session.path.read_text())
+    assert source in json.dumps(saved)
+    assert restored.path == image.path
+    for _ in range(3):
+        assert restored.to_api_format() == payload
     assert base64.b64encode(data).decode() not in session.path.read_text()
     assert len(requests) == 2
     agent = Agent(client=object(), session=session)
@@ -74,6 +80,7 @@ def test_local_and_binary_sources_are_validated_and_immutable(tmp_path, source_k
     source.write_bytes(data)
     image = Image.from_source(data if source_kind == "bytes" else source, directory=tmp_path / "images", description="Reference")
     source.unlink()
+    assert image.source_url is None
     assert Path(image.path).suffix == suffix
     assert Path(image.path).read_bytes() == data
     assert Image.from_source(data, directory=tmp_path / "images").path == image.path

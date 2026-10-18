@@ -244,6 +244,7 @@ class Image(ResponseItem):
     id: str = modict.factory(timestamp_id)
     kind: str = "image"
     path: str
+    source_url: str | None = None
     description: str
     parameters: dict = modict.factory(dict)
     generation_id: str | None = None
@@ -260,7 +261,12 @@ class Image(ResponseItem):
         """
         from ...utils.images import freeze_image
 
-        return cls(path=str(freeze_image(source, directory)), **metadata)
+        from urllib.parse import urlsplit
+
+        path = freeze_image(source, directory)
+        if isinstance(source, str) and urlsplit(source).scheme in {"http", "https"}:
+            metadata["source_url"] = source
+        return cls(path=str(path), **metadata)
 
     def to_api_format(self):
         path = Path(self.path)
