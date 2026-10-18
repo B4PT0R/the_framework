@@ -645,7 +645,7 @@ def test_factory_service_exposes_its_decorated_routes_without_endpoint_copy():
             server_extension=ServerExtension(
                 name="feature_runtime",
                 service_factory=FeatureService,
-                endpoints="service",
+
             ),
         ),),
     )
@@ -675,7 +675,7 @@ def test_prebuilt_plugin_service_exposes_decorated_routes_without_endpoint_copy(
         primary_agent=AgentSpec(name="primary", session_mode='durable'),
         plugins=(Plugin(
             name="feature",
-            server_extension=ServerExtension(name="feature_runtime", service=Api(), endpoints="service"),
+            server_extension=ServerExtension(name="feature_runtime", service=Api()),
         ),),
     )._build_server()
 
@@ -690,13 +690,13 @@ def test_prebuilt_plugin_service_exposes_decorated_routes_without_endpoint_copy(
     asyncio.run(scenario())
 
 
-def test_service_routes_require_explicit_opt_in():
+def test_service_routes_can_be_explicitly_hidden():
     app = Application(
         name="Private service", version="1",
         primary_agent=AgentSpec(name="primary", session_mode='durable'),
         plugins=(Plugin(
             name="feature",
-            server_extension=ServerExtension(name="feature_runtime", service=Api()),
+            server_extension=ServerExtension(name="feature_runtime", service=Api(), endpoints=()),
         ),),
     )._build_server()
 
@@ -707,18 +707,6 @@ def test_service_routes_require_explicit_opt_in():
             assert (await client.get("/plugin/value")).status_code == 404
 
     asyncio.run(scenario())
-    with pytest.raises(ValueError, match="without a decorated service"):
-        Application(
-            name="Invalid service", version="1",
-            primary_agent=AgentSpec(name="primary", session_mode='durable'),
-            plugins=(Plugin(
-                name="feature",
-                server_extension=ServerExtension(
-                    name="feature_runtime", service=object(), endpoints="service",
-                ),
-            ),),
-        )._build_server()
-
 
 def test_plugin_status_uses_actual_service_lifecycle_and_keeps_failed_routes_installed():
     async def run():

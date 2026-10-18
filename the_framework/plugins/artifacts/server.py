@@ -8,7 +8,6 @@ from uuid import uuid4
 
 from ...server.api.bucket import FileBucket
 from ...server.api.uploads import copy_uploaded_files, safe_filename
-from ...server.composition.application import ServerExtension
 
 
 class ArtifactAssets(FileBucket):
@@ -55,12 +54,7 @@ class ArtifactAssets(FileBucket):
         }
 
 
-def build_server_extensions(context):
-    root = context.require("data_root")
-
-    def build(runtime):
-        assets = ArtifactAssets(root)
-        runtime.bridge.register("artifacts", assets.handle)
-        return assets
-
-    return ServerExtension(name="artifacts", scope="session", service_factory=build, endpoints="service")
+def build_service(context, runtime):
+    assets = ArtifactAssets(context.require("data_root"))
+    runtime.bridge.register("artifacts", assets.handle)
+    return assets

@@ -67,7 +67,7 @@ application = Application(
     version="1.0",
     security=BearerSecurity(),
     plugins=(Plugin(name="counter", server_extension=ServerExtension(
-        name="counter", service_factory=CounterService, endpoints="service",
+        name="counter", service_factory=CounterService,
     )),),
     server_extensions=(
         ServerExtension(name="health", endpoints=(health_api.health,), requires_services=("counter",)),

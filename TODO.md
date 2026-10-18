@@ -105,10 +105,28 @@ et l'avis précédent de ne pas introduire de singleton.
   Installation redémarrée : JSON de session strictement identique, même PID du
   navigateur, catalogue de plugins et aperçu authentifié fonctionnels.
 
-La prochaine tranche porte sur Plugin / AgentExtension / ServerExtension et
-l’allègement des options et de l’injection dans BuildContext, sur ce propriétaire unique.
-Ne pas confondre cette première clarification des propriétaires avec la refonte
-encore à faire des contributions, des options et de l'injection de construction.
+### Tranche plugins / construction livrée — 18 octobre
+
+- Une factory de service reçoit explicitement `context` (BuildContext) et ses
+  dépendances nommées ; plus besoin d'une factory de plugin qui fabrique une
+  closure de construction pour lire chemins et options. `context` n'est pas une
+  dépendance de service et n'est jamais injecté implicitement dans **kwargs.
+- Les références service_factory="module:factory" restent inertes au compile/import
+  worker ; résolution et inférence des dépendances précèdent le DAG de construction.
+- Même découverte des routes décorées et sockets pour service direct et factory.
+  Les flags "service" et with_endpoints inutilisé sont retirés ; None découvre,
+  () masque explicitement. Authentification et validation restent obligatoires.
+- Scheduler, système, artefacts et services Harness aplatis ; starter utilise les
+  chemins par défaut des plugins. Builders conservés pour contributions avant
+  construction (voix, mémoire, registre, politiques distantes), pas de nouvelle
+  classe publique ni helper d'assemblage. Payloads et protocoles inchangés.
+- Validation : suite complète Framework 704 succès / 3 skips avec Chromium,
+  puis 6 tests ciblés de construction (dont **kwargs nommé context) ; Harness 157.
+  Isolation des contextes par session, échecs optionnels, coordination voix/reset,
+  wheel/starter et reprise réelle du navigateur couverts. Installation relancée :
+  même navigateur et conversation, contrôles retrouvés, catalogue et aperçu vérifiés.
+- Tests agentic du starter : assertions sur les anciens chemins de factories
+  supprimées ; inventaire courant conservé sans verrouiller les adaptateurs internes.
 
 ### Secteurs à revoir
 
@@ -121,12 +139,13 @@ encore à faire des contributions, des options et de l'injection de construction
   Le nombre de types de protocole n'est pas une mesure de complexité de l'API.
   L'héritage `modict` seul ne classe pas un objet : Session et BrowserSession
   mêlent actuellement données et responsabilités runtime.
-- [x] Clarifier les propriétaires : Application est la définition réutilisable,
-  ApplicationHost l'hôte ASGI construit, SessionRuntime le pilote d'une session.
+- [x] Clarifier les propriétaires : Application porte configuration et ressources
+  globales ; SessionRuntime pilote une session. ApplicationHost a été supprimé.
   Les canaux d'appels sont nommés bridge côté agent et serveur ; les payloads
   conservent leurs noms/schémas.
-- [ ] Revoir ensemble Plugin, AgentExtension, ServerExtension et BuildContext :
-  formes de déclaration, configuration, dépendances et contributions.
+- [x] Revoir ensemble Plugin, AgentExtension, ServerExtension et BuildContext :
+  injection directe du contexte, construction différée et découverte unifiées ;
+  les contributions avancées gardent leur phase explicite avant les services.
 - [ ] Examiner les frontières Session / Context / Compaction et la place des
   projections vers le backend et vers les clients, sans fusionner leurs garanties.
 - [ ] Réexaminer AgentSpec / AgentTrigger / WorkerProfile et la construction des

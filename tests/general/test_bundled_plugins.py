@@ -4,9 +4,17 @@ import subprocess
 import sys
 from types import SimpleNamespace
 
-from the_framework import BuildContext
+from the_framework import Application, BuildContext, ServerExtension
 from the_framework.plugins.scheduler import SCHEDULER
 from the_framework.plugins.system import SYSTEM
+
+
+class Security:
+    async def authenticate(self, request):
+        return None
+
+    async def authorize(self, principal, requirement, request):
+        return False
 
 
 def test_complete_plugin_imports_and_worker_compile_do_not_import_server_modules():
@@ -50,8 +58,10 @@ def test_complete_stateful_plugins_install_handlers_and_reset_hooks(tmp_path):
             "system": {"state_path": tmp_path / "custom-control.json"},
         },
     )
-    scheduler = SCHEDULER.build_server_extensions(context)[0].service_factory(runtime)
-    system = SYSTEM.build_server_extensions(context)[0].service_factory(runtime)
+    app = Application(name="Services", version="1", plugins=(SCHEDULER, SYSTEM),
+        server_extensions=(ServerExtension(name="runtime", service=runtime),)).build(context=context)
+    scheduler = app.state.application.extensions["scheduler"].service
+    system = app.state.application.extensions["system"].service
     assert scheduler.path == tmp_path / "custom-clock.json"
     assert system.path == tmp_path / "custom-control.json"
     assert set(handlers) == {"scheduler", "system"}
@@ -81,8 +91,9 @@ def test_realtime_reset_waits_for_worker_barrier_and_clears_call_identity(tmp_pa
 
         supervisor.send = send
         runtime = SessionRuntime(supervisor, reset_transaction_factory=lambda path: None)
-        extension = REALTIME.build_server_extensions(BuildContext())[0]
-        api = extension.service_factory(runtime)
+        app = Application(name="Voice reset", version="1", security=Security(), plugins=(REALTIME,),
+            server_extensions=(ServerExtension(name="runtime", service=runtime),)).build()
+        api = app.state.application.extensions["realtime"].service
         api.call_id = "client-call"
         api.controller.call_id = "voice-call"
 

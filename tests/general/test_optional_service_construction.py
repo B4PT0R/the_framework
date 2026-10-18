@@ -31,8 +31,8 @@ def test_optional_construction_failure_is_visible_and_chat_and_other_sessions_su
         calls.append('view')
         raise AssertionError('a dependent factory must not run without its dependency')
     plugin = Plugin(name='weather', server_extension=(
-        ServerExtension(name='weather', service_factory=weather, critical=False, endpoints='service'),
-        ServerExtension(name='weather_view', service_factory=view, critical=False, scope='session', endpoints='service'),
+        ServerExtension(name='weather', service_factory=weather, critical=False),
+        ServerExtension(name='weather_view', service_factory=view, critical=False, scope='session'),
     ))
     declaration = Application({**agents, 'plugins': (*agents.plugins, plugin)})
     app = declaration.build('tests.fixtures.multi_session_app:application',
@@ -95,14 +95,14 @@ def test_required_resource_failure_remains_fatal(dependent):
         Application(name='Example', version='1', primary_agent=AgentSpec(name='agent'), server_extensions=extensions)._build_server()
 
 
-@pytest.mark.parametrize('failure', ['missing_dependency', 'automatic_endpoints', 'async_factory'])
+@pytest.mark.parametrize('failure', ['missing_dependency', 'invalid_endpoints', 'async_factory'])
 def test_invalid_optional_service_contract_is_not_downgraded(failure):
     async def asynchronous():
         return object()
     if failure=='missing_dependency':
         extension = ServerExtension(name='invalid', critical=False, service_factory=lambda missing: object())
-    elif failure=='automatic_endpoints':
-        extension = ServerExtension(name='invalid', critical=False, service_factory=lambda: object(), endpoints='service')
+    elif failure=='invalid_endpoints':
+        extension = ServerExtension(name='invalid', critical=False, service_factory=lambda: object(), endpoints=(object(),))
     else:
         extension = ServerExtension(name='invalid', critical=False, service_factory=asynchronous)
     with pytest.raises((ValueError, TypeError)):

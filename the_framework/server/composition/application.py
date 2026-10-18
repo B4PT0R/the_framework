@@ -182,15 +182,20 @@ class CapabilityRequirement(modict):
 
 
 class ServerExtension(modict):
-    """One coherent server capability and its declarative surface."""
+    """A service, its construction dependencies, lifecycle and client surfaces.
+
+    Factories may request BuildContext as ``context`` alongside named services.
+    Default surfaces discover decorated routes/sockets; empty tuples hide them.
+    String factory references defer implementation imports until server build.
+    """
 
     _config = modict.config(frozen=True, strict=True, extra="forbid", auto_convert=False)
 
     name: str
     service: object | None = None
-    service_factory: Callable[..., object] | None = None
-    endpoints: tuple[object, ...] | Literal["service"] = ()
-    websockets: tuple[object, ...] | Literal["service"] = ()
+    service_factory: Callable[..., object] | str | None = None
+    endpoints: tuple[object, ...] | None = None
+    websockets: tuple[object, ...] | None = None
     requires_services: tuple[str, ...] = ()
     optional_services: tuple[str, ...] = ()
     critical: bool = True
@@ -204,13 +209,21 @@ class ServerExtension(modict):
     def __init__(self, *args, **kwargs):
         declaration = dict(*args, **kwargs)
         factory = declaration.get("service_factory")
-        if factory is not None:
+        if isinstance(factory, str):
+            module, separator, attribute = factory.partition(":")
+            if (
+                not separator
+                or not all(part.isidentifier() for part in module.split("."))
+                or not attribute.isidentifier()
+            ):
+                raise ValueError("service factory reference must use module:factory")
+        elif factory is not None:
             required = list(_tuple(declaration.get("requires_services")))
             optional = list(_tuple(declaration.get("optional_services")))
             for parameter in inspect.signature(factory).parameters.values():
                 if parameter.kind in {parameter.POSITIONAL_ONLY, parameter.VAR_POSITIONAL}:
                     raise ValueError("extension factory requires keyword parameters")
-                if parameter.kind == parameter.VAR_KEYWORD:
+                if parameter.kind == parameter.VAR_KEYWORD or parameter.name == "context":
                     continue
                 if parameter.name in optional and parameter.default is parameter.empty:
                     raise ValueError(f"optional service parameter requires a default: {parameter.name}")
@@ -223,27 +236,25 @@ class ServerExtension(modict):
     @modict.model_validator(mode="after")
     def validate_declaration(self):
         _identifier(self.name, "extension name")
+        if self.name == "context":
+            raise ValueError("context is reserved for the build context, not a service")
         dependencies = (*self.requires_services, *self.optional_services)
+        if "context" in dependencies:
+            raise ValueError("context is an injected build input, not a service dependency")
         if self.name in dependencies:
             raise ValueError(f"extension cannot depend on itself: {self.name}")
         if len(dependencies) != len(set(dependencies)):
             raise ValueError(f"duplicate extension dependency: {self.name}")
         if self.service is not None and self.service_factory is not None:
             raise ValueError("extension service and factory are mutually exclusive")
-        if isinstance(self.endpoints, str) and self.endpoints != "service":
-            raise ValueError("extension endpoints must use 'service' or declarations")
-        if isinstance(self.websockets, str) and self.websockets != "service":
-            raise ValueError("extension websockets must use 'service' or declarations")
-
-    def with_endpoints(self, *endpoints):
-        if self.endpoints == "service":
-            raise ValueError("cannot append endpoints to automatic service discovery")
-        return type(self)({**self, "endpoints": (*self.endpoints, *endpoints)})
 
     @modict.any_validator(mode="before")
     def normalize_sequences(self, key, value):
-        if key in {"endpoints", "websockets"} and value == "service":
-            return value
+        if key in {"endpoints", "websockets"}:
+            if isinstance(value, str):
+                raise TypeError(f"extension {key} must contain declarations, not a discovery flag")
+            if value is None:
+                return None
         return _tuple(value) if key in {"endpoints", "websockets", "requires_services", "optional_services", "middleware", "mounts"} else value
 
 
@@ -321,11 +332,6 @@ class Plugin(modict):
             runtime = ServerExtension(
                 name=self.name,
                 service=runtime,
-                endpoints="service" if has_endpoints else (),
-                websockets=(
-                    "service" if callable(getattr(runtime, "websocket_declarations", None))
-                    else ()
-                ),
             )
         extensions = _tuple(runtime)
         if not all(isinstance(item, ServerExtension) for item in extensions):
@@ -952,12 +958,15 @@ def _plugin_dependency_order(plugins):
 
 def _unavailable_extension(extension):
     """Retain lifecycle identity/dependencies without exposing an absent service."""
-    return ServerExtension({key: extension[key] for key in (
-        "name", "scope", "critical", "requires_services", "optional_services",
-    )})
+    return ServerExtension({
+        **{key: extension[key] for key in (
+            "name", "scope", "critical", "requires_services", "optional_services",
+        )},
+        "endpoints": (), "websockets": (),
+    })
 
 
-def _construct_extension_service(extension, services, construction_errors):
+def _construct_extension_service(extension, services, construction_errors, context):
     service = extension.service
     if extension.service_factory is not None:
         dependencies = {
@@ -965,12 +974,19 @@ def _construct_extension_service(extension, services, construction_errors):
             for dependency in (*extension.requires_services, *extension.optional_services)
             if dependency in services
         }
-        parameters = inspect.signature(extension.service_factory).parameters
+        signature = inspect.signature(extension.service_factory)
+        parameters = signature.parameters
+        context_parameter = parameters.get("context")
+        if (
+            context_parameter is not None
+            and context_parameter.kind != context_parameter.VAR_KEYWORD
+        ):
+            dependencies["context"] = context
         if not any(item.kind == item.VAR_KEYWORD for item in parameters.values()):
             dependencies = {name: value for name, value in dependencies.items() if name in parameters}
         # Argument/declaration errors remain composition errors. Only exceptions
         # from the user's factory body participate in optional-service degradation.
-        inspect.signature(extension.service_factory).bind(**dependencies)
+        signature.bind(**dependencies)
         try:
             service = extension.service_factory(**dependencies)
         except Exception as error:
@@ -985,22 +1001,12 @@ def _construct_extension_service(extension, services, construction_errors):
                 f"extension factory must be synchronous: {extension.name}"
             )
     endpoints = extension.endpoints
-    if endpoints == "service":
-        if service is None or not _service_declares_endpoints(service):
-            raise ValueError(
-                f"extension {extension.name} requested service endpoints "
-                "without a decorated service"
-            )
-        endpoints = (service,)
+    if endpoints is None:
+        endpoints = (service,) if service is not None and _service_declares_endpoints(service) else ()
     websockets = extension.websockets
-    if websockets == "service":
+    if websockets is None:
         declarations = getattr(service, "websocket_declarations", None)
-        if not callable(declarations):
-            raise ValueError(
-                f"extension {extension.name} requested service WebSockets "
-                "without websocket_declarations()"
-            )
-        websockets = tuple(declarations())
+        websockets = tuple(declarations()) if callable(declarations) else ()
     if (
         service is extension.service
         and endpoints is extension.endpoints
@@ -1050,6 +1056,21 @@ def _assemble_server(
             *(item for group in plugin_server_extensions.values() for item in group),
         )
     }
+    # Resolve lazy factories only in the server process, before dependency ordering.
+    for name, declaration in declarations.items():
+        if isinstance(declaration.service_factory, str):
+            module, attribute = declaration.service_factory.split(":", 1)
+            declarations[name] = ServerExtension({
+                **declaration, "service_factory": getattr(import_module(module), attribute),
+            })
+    plugin_server_extensions = {
+        name: tuple(declarations[item.name] for item in group)
+        for name, group in plugin_server_extensions.items()
+    }
+    # Application declarations also need their inferred dependencies after import.
+    plan = ApplicationPlan({**plan, "server_extensions": tuple(
+        declarations[item.name] for item in plan.server_extensions
+    )})
     extension_dependencies = _extension_dependencies(plan, plugin_server_extensions)
     startup_order = dependency_order(extension_dependencies, kind="application extension")
     resolved_services = {}
@@ -1078,7 +1099,7 @@ def _assemble_server(
         if name in construction_errors:
             extension = _unavailable_extension(declaration)
         else:
-            extension = _construct_extension_service(declaration, resolved_services, construction_errors)
+            extension = _construct_extension_service(declaration, resolved_services, construction_errors, build_context)
         resolved_extensions[name] = extension
         if extension.service is not None:
             resolved_services[name] = extension.service

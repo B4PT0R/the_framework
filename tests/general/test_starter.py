@@ -206,7 +206,7 @@ def test_starter_real_worker_starts_and_restores_configuration(tmp_path):
             system = app.state.application.service("system")
             assert scheduler.path == tmp_path / "scheduler.json"
             assert scheduler.active is True
-            assert system.path == tmp_path / "system.json"
+            assert system.path == tmp_path / "system-control.json"
             assert client.get("/api/v1/status", headers=headers).status_code == 200
             response = client.get("/api/v1/session", headers=headers)
             assert response.status_code == 200

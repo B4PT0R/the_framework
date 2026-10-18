@@ -1,9 +1,12 @@
-from ...server.composition.application import Plugin, Capability
+from ...server.composition.application import Plugin, ServerExtension, Capability
 from .agent import SystemExtension
 
 SYSTEM = Plugin(
     name="system", agent_extension=SystemExtension,
-    server_extension="the_framework.plugins.system.server:build_server_extensions",
+    server_extension=ServerExtension(
+        name="system", scope="session",
+        service_factory="the_framework.plugins.system.server:build_service",
+    ),
     provides_capabilities=(Capability(name="system.control", version=1),),
 )
 

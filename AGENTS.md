@@ -55,6 +55,17 @@ file records the constraints to preserve when changing the framework.
   Only a plugin's binding to an agent changes live. Disabling that binding must
   leave the plugin's server routes and services available.
 
+## Service construction
+
+Prefer a direct ServerExtension service factory over nested plugin/service builders.
+Factories request `context` for BuildContext inputs and name services in their other
+parameters. Use `module:factory` references for server-only imports; resolve them
+before dependency ordering, never during worker compilation. Decorated HTTP methods
+and websocket_declarations are discovered by default; explicit empty tuples keep
+surfaces private. Retain plugin builders for declaration-time contributions/dynamic
+composition, sealed before service construction. Inputs, started services and saved
+Session state remain distinct.
+
 ## Making changes
 
 - Keep the public API small and typed. Prefer improving an existing primitive

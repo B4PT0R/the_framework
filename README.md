@@ -249,7 +249,7 @@ application = Application(
     version="0.1",
     security=BearerSecurity(),
     plugins=(Plugin(name="counter", server_extension=ServerExtension(
-        name="counter", service_factory=Counter, endpoints="service",
+        name="counter", service_factory=Counter,
     )),),
 )
 app = application.build()
@@ -278,8 +278,10 @@ transport. `@endpoint` validates request and response data and contributes an
 OpenAPI schema. Passing a service directly to `Plugin.server_extension` discovers its
 decorated routes and manages its `start()`/`stop()` lifecycle. For a feature
 with several server components or dependencies on other services, return
-`ServerExtension` declarations instead; there, `endpoints="service"` explicitly
-enables route discovery, and omitting it exposes no routes.
+`ServerExtension` declarations instead; the default `endpoints=None` automatically
+enables discovery of decorated routes. Set `endpoints=()` to keep them private.
+Factories may request `context` for fixed build inputs alongside named service
+dependencies; a `module:factory` reference keeps server-only imports deferred.
 During build, the combined dependency graph and routes are validated before
 services start.
 

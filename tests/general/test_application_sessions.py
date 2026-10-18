@@ -151,7 +151,7 @@ def test_service_scopes_share_only_application_resources_and_fan_out_surface_eve
         "plugins": (*application.plugins, REALTIME),
         "server_extensions": (
             ServerExtension(name="shared", service=shared),
-            ServerExtension(name="private", scope="session", service_factory=lambda shared: object()),
+            ServerExtension(name="private", scope="session", service_factory=lambda shared, context: context),
         ),
     })
 
@@ -170,7 +170,10 @@ def test_service_scopes_share_only_application_resources_and_fan_out_surface_eve
             assert child.app.state.session is child
             assert child.context.application is spec
             assert child_app.service("shared") is shared
-            assert child_app.service("private") is not host.service("private")
+            assert child_app.service("private") is child.context
+            assert host.service("private") is host.context
+            assert child.context is not host.context
+            assert child.context.require("session_path") != host.context.require("session_path")
             assert child_app.service("realtime").controller is not host.service("realtime").controller
             assert child_app.service("realtime").controller.runtime is child
             assert changes == ["start"]

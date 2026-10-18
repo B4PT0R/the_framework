@@ -1,7 +1,5 @@
 """Compose the persistent conversation with the starter's local access policy."""
 
-from pathlib import Path
-
 from the_framework import BuildContext
 
 from .application import application
@@ -16,7 +14,6 @@ def create_app(data_root, *, token, origin, runtime=None, restart=None, browser_
         REFERENCE,
         BuildContext(
             data_root=data_root, origin=origin, restart=restart,
-            plugins={"system": {"state_path": Path(data_root) / "system.json"}},
         ),
         security=security, handshake=security.handshake,
         session_factory=(lambda _supervisor, _context: runtime) if runtime is not None else None,

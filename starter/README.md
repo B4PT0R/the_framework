@@ -243,3 +243,14 @@ The chat and voice clients consume the Framework's public events, not Responses
 or Live wire signals. Streaming text is provisional; committed session items
 supply replay. Voice captions receive cumulative `voice.transcript.updated` text
 and clear on `voice.turn.completed`. Plugin-specific events belong in the plugin.
+
+### Adding a server feature
+
+Declare a `Plugin` with a `ServerExtension(service_factory=YourService)`.
+The constructor can request `context` for paths/options and named services such as
+`runtime`; the framework orders their construction and startup. Decorated HTTP
+methods and `websocket_declarations()` are discovered on the constructed service.
+Use a `module:factory` reference to keep server implementation imports out of the
+agent worker. The starter uses the bundled plugins' storage defaults; only pass
+`BuildContext(plugins={...})` when overriding them. See the Framework reference for
+advanced inter-plugin contributions and session/application scopes.

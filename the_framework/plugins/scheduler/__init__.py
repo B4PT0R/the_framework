@@ -1,9 +1,12 @@
-from ...server.composition.application import Plugin
+from ...server.composition.application import Plugin, ServerExtension
 from .agent import SchedulerConfig, SchedulerExtension
 
 SCHEDULER = Plugin(
     name="scheduler", agent_extension=SchedulerExtension,
-    server_extension="the_framework.plugins.scheduler.server:build_server_extensions",
+    server_extension=ServerExtension(
+        name="scheduler", scope="session",
+        service_factory="the_framework.plugins.scheduler.server:build_service",
+    ),
 )
 
 __all__ = ["SCHEDULER", "SchedulerConfig", "SchedulerExtension"]

@@ -413,7 +413,7 @@ def test_extension_factory_discovers_its_services_websockets():
         "Service sockets",
         server_extensions=(ServerExtension(
             name="feature", service_factory=SocketService,
-            websockets="service",
+
         ),),
     ))
 
@@ -421,13 +421,11 @@ def test_extension_factory_discovers_its_services_websockets():
         with client.websocket_connect("/feature/events") as socket:
             assert socket.receive_json() == {"status": "ready"}
 
-    with pytest.raises(ValueError, match="without websocket_declarations"):
-        _assemble_server(application(
-            "Missing sockets",
-            server_extensions=(ServerExtension(
-                name="feature", service=object(), websockets="service",
-            ),),
-        ))
+    # No socket declaration means no socket, without a separate discovery flag.
+    empty = _assemble_server(application(
+        "No sockets", server_extensions=(ServerExtension(name="feature", service=object()),),
+    ))
+    assert empty.state.application.extensions["feature"].websockets == ()
 
 
 def test_plugin_agent_binding_can_be_disabled_while_runtime_is_installed():

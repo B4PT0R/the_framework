@@ -461,8 +461,31 @@ For example, `service_factory=ConversationApi` can use a constructor
 A present optional service starts before its consumer; an absent one is not
 passed to the factory, preserving the parameter's default. This is a
 service-name dependency, distinct from a plugin's versioned public capability
-dependency. Application settings belong in the enclosing plugin factory or a
-closure, leaving the service factory's parameters for service inputs.
+dependency. A parameter named `context` receives this build's `BuildContext`,
+not a service. Other parameters still name services; fixed inputs are never
+injected by guessing their names or passed implicitly to `**services`.
+The name `context` is reserved and cannot identify a service.
+
+A factory or constructor can therefore read paths and options without an enclosing
+factory or a closure:
+
+```python
+class WeatherService:
+    def __init__(self, context, runtime):
+        self.root = context.require("data_root")
+        self.options = context.plugin("weather")
+        self.runtime = runtime
+
+weather = Plugin(name="weather", server_extension=ServerExtension(
+    name="weather", scope="session", service_factory=WeatherService,
+))
+```
+
+Use `service_factory="your_app.weather.server:WeatherService"` to defer server
+imports until assembly. Construction and worker compilation do not import that
+module. At server build time, the framework resolves the reference and infers its
+service dependencies before ordering construction. The factory must be synchronous;
+its returned service owns the usual `start`, `stop` and `health` methods.
 
 Use `requires_services` and `optional_services` for additional ordering
 constraints, or to make an input with a default mandatory. Additional names are
@@ -479,16 +502,14 @@ without its provider; an optional one can be absent. Installed plugin runtimes a
 lifetime; removing a provider requires updating the startup declaration and
 restarting the server.
 
-If a service has `@endpoint` methods, set `endpoints="service"` to discover
-them on the constructed instance, including one returned by `service_factory`.
-Omitting `endpoints` exposes no routes; use an explicit tuple when routes come
-from another object or you intend to expose only a subset. Route collisions
-and invalid schemas are still checked before startup.
-
-For a service that constructs its own WebSocket declarations, implement
-`websocket_declarations()` returning its `WebSocketEndpoint` values and set
-`websockets="service"`. This works with `service_factory` as well, so the socket
-handlers can refer to the constructed service without a separate pre-build step.
+A service's decorated `@endpoint` methods and `websocket_declarations()` are
+normally discovered on the constructed instance. This is the same rule for a
+direct service and one returned by a factory; undecorated methods are never HTTP
+routes. Omitting `endpoints` or `websockets` (their default is `None`) enables this
+convention. Use `endpoints=()` / `websockets=()` to keep that surface private, or an
+explicit tuple to expose selected declarations or another object. Authentication,
+route collisions and schema validation still apply before startup.
+There is no string discovery flag or separate pre-build step.
 
 Runtime lookup goes through the single application context:
 
@@ -585,15 +606,26 @@ Passing an agent extension class directly remains a shorthand for a custom
 agent-only plugin. It must declare its `name`; the application normalizes it to
 `Plugin` with the same identity and private-agent validation.
 
-`Plugin` records that a product capability has an agent binding, a runtime,
-private specialist agents, or any combination of those. For a feature with
-one self-contained server service, pass the service directly. Its decorated
-endpoints and WebSocket declarations are discovered, and its conventional
-`start()` and `stop()` methods participate in application lifecycle:
+`Plugin` groups one feature's agent binding, server components and private
+specialists. For a service that needs paths or other services, declare its factory
+directly; the framework owns construction, ordering and lifecycle:
 
 ```python
-images = Plugin(name="images", agent_extension=ImageGenerationExtension, server_extension=image_service)
+images = Plugin(
+    name="images", agent_extension=ImageGenerationExtension,
+    server_extension=ServerExtension(
+        name="images", scope="session",
+        service_factory="your_app.images.server:ImageService",
+    ),
+)
 ```
+
+`ImageService.__init__(self, context, runtime)` receives the session's build context
+and runtime. A callable factory or class works in place of the import reference
+when server-only imports are not a concern. Decorated routes and socket declarations
+are discovered on the result. A service already constructed in the server process
+can also be passed directly as `Plugin.server_extension`; its lifecycle is still
+owned by the application.
 
 `Plugin.name` is the shared feature identity. Its agent extension is bound under
 that name for configuration, state, tool namespaces, specialists and live
@@ -603,7 +635,7 @@ This lets a complete plugin supply the identity while its implementation stays
 reusable. An already loaded extension cannot be renamed.
 
 The service may instead be returned by a server-side factory that receives
-`BuildContext`. Use `ServerExtension` when that service needs explicit dependencies,
+`BuildContext`. Use `ServerExtension` to defer service construction or specify scope, dependencies,
 route selection, middleware, mounts or lifecycle adapters, or when the plugin
 owns several server components:
 
@@ -656,14 +688,19 @@ compilation before the factory runs.
   Services appear after startup and disappear during shutdown or rollback.
 
 Declare service dependencies on `ServerExtension` (or infer them from its
-factory's named parameters). Use those injected objects during construction.
+factory's named parameters). Ask for `context` explicitly when construction needs
+fixed inputs, plugin options or contributions. Use injected service objects during construction.
 Use `context.services` in deferred callbacks that need a service during operation,
 including authentication. It does not expose partially constructed services.
-`context.provide` has been removed: services no longer overwrite or extend the
-construction inputs. Create a fresh context for each application build.
+Services never overwrite or extend construction inputs. Create a fresh context
+for each application/session build; use the same context throughout its construction.
+`context.application` references the owning Application even before startup.
+Saved agent configuration and plugin state belong to Session, not BuildContext.
 
-Some integrations are contributions to an owner's policy rather than a service
-dependency. A runtime factory can call `context.contribute("feature.policy",
+Most plugins need only an agent extension and a service declaration. A plugin-level
+server builder is needed when it assembles several declarations dynamically or
+contributes to another feature's policy before service construction.
+Such a builder can call `context.contribute("feature.policy",
 contribution)` whether it runs before or after the owner factory. The owner
 reads `context.contributions("feature.policy")` in its service factory, after
 all plugin runtime factories have declared their contributions. Contributions are

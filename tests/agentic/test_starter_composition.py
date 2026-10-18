@@ -10,6 +10,4 @@ def test_starter_declares_general_plugins_and_memory_specialist():
         "realtime", "chromium", "artifacts",
     }
     assert "memory.jiminy" in plan.agents
-    assert plan.plugins["scheduler"].server_extension == "the_framework.plugins.scheduler.server:build_server_extensions"
-    assert plan.plugins["system"].server_extension == "the_framework.plugins.system.server:build_server_extensions"
     assert plan.capabilities["realtime.session"].version == 1
