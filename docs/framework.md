@@ -1172,7 +1172,55 @@ from replay and renewed by a later provider sample. This supports a current
 browser screenshot without filling the conversation with successive screenshots.
 
 Add `ARTIFACTS` from `the_framework.plugins.artifacts` to the application's
-plugins for local file publication. Its optional `artifacts.show_artifact` tool
+plugins for local file publication. `artifacts.supported_artifacts` returns the
+application-wide catalogue keyed by kind, with a description, `payload_schema`
+(JSON Schema for the input to `show_artifact`) and `example`. Its instructions
+recommend consulting this tool whenever the agent is unsure about a kind or
+payload. The contract is shared by all clients; the agent does not negotiate
+artifact types with the connected device. The default catalogue advertises only
+the built-in `image` and `file` renderers.
+
+Applications declare custom kinds with `Artifact` subclasses whose `payload`
+field is a typed modict model. Register these classes explicitly in the
+extension's `artifact_types` tuple; built-in kinds remain available automatically:
+
+```python
+from modict import modict
+from the_framework.agent import Artifact
+from the_framework.plugins.artifacts import ArtifactsExtension
+
+class WeatherPayload(modict):
+    _config = modict.config(extra="forbid")
+    city: str
+    temperature: float
+
+class WeatherArtifact(Artifact):
+    """Show a city's current temperature."""
+    kind = "weather"
+    payload: WeatherPayload = modict.field(required="always")
+    payload_example = modict.attr({"city": "Paris", "temperature": 18.0})
+
+class Artifacts(ArtifactsExtension):
+    artifact_types = (WeatherArtifact,)
+```
+
+Use this subclass as the ARTIFACTS plugin's `agent_extension`, for example
+`Plugin({**ARTIFACTS, "agent_extension": Artifacts})`. The class docstring gives
+the description; `payload_example` is optional non-payload metadata. The same
+model provides the catalogue's JSON Schema and validates `show_artifact` inputs.
+Python validators remain executable validation, not inferred JSON Schema rules;
+document those extra constraints in the description. No duplicate schema is
+needed. Tools and providers may also return `WeatherArtifact(payload=...)`
+directly. Custom subclasses keep the canonical item `type="artifact"`; replay
+preserves their kind and JSON payload without needing the declaration loaded.
+
+The application must implement a matching `weather` renderer in its UI;
+declaring a kind does not install a renderer. Catalogue queries return independent
+JSON values and never mutate application declarations. Built-in image/file
+schemas describe local publication inputs (`path`); stored artifacts instead
+reference the published `src`.
+
+The optional `artifacts.show_artifact` tool
 accepts `kind="image"` or `"file"` and `payload={"path": "/local/result.png",
 "title": "Result", "description": "..."}`. It copies the bytes atomically below
 `data_root/bucket` and returns an artifact with `payload.src`, `name`, `size`

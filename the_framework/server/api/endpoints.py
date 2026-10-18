@@ -100,7 +100,7 @@ def _schema_dict(value):
     if value is None:
         return None
     if isinstance(value, type) and issubclass(value, modict):
-        from .model_schema import model_schema
+        from ...utils.model_schema import model_schema
         return model_schema(value)
     if hasattr(value, "payload"):
         value = value.payload

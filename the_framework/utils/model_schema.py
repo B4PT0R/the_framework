@@ -1,4 +1,4 @@
-"""Small OpenAPI projection of modict fields; modict owns runtime validation."""
+"""JSON Schema projection of modict fields; modict owns runtime validation."""
 
 from types import NoneType, UnionType
 from typing import Any, Literal, Union, get_args, get_origin, get_type_hints
@@ -10,10 +10,10 @@ def model_schema(model, seen=()):
     """Project supported JSON fields without constructing models or defaults.
 
     Python validators are deliberately not reverse-engineered into JSON Schema.
-    Unsupported/recursive hints require an explicit endpoint schema instead.
+    Unsupported/recursive hints require an explicit schema instead.
     """
     if model in seen:
-        raise TypeError("recursive endpoint model requires an explicit JSON Schema")
+        raise TypeError("recursive model requires an explicit JSON Schema")
     hints = get_type_hints(model)
     properties = {}
     required = []
@@ -54,6 +54,6 @@ def _hint_schema(hint, seen):
         return {"type": "array", "items": _hint_schema(args[0], seen) if args else {}}
     if hint is dict or origin is dict:
         if args and args[0] is not str:
-            raise TypeError("endpoint model mappings require string keys")
+            raise TypeError("model mappings require string keys")
         return {"type": "object", "additionalProperties": _hint_schema(args[1], seen) if args else {}}
-    raise TypeError(f"unsupported endpoint model hint {hint!r}; provide explicit JSON Schema")
+    raise TypeError(f"unsupported model hint {hint!r}; provide explicit JSON Schema")

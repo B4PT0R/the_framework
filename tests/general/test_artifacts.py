@@ -13,6 +13,110 @@ from the_framework.agent.models.responses import CompactionSummary, FunctionCall
 from the_framework.plugins.realtime import RealtimeExtension
 
 
+def test_supported_artifacts_describes_executable_builtin_payloads(tmp_path):
+    from jsonschema import Draft202012Validator
+    from PIL import Image as RasterImage
+    from the_framework.plugins.artifacts.agent import ArtifactsExtension
+    from the_framework.plugins.artifacts.server import ArtifactAssets
+
+    agent = Agent(client=object())
+    extension = agent.add_extension(ArtifactsExtension)
+    namespace = next(tool for tool in agent.registry("tools").list() if tool.name == "artifacts")
+    assert namespace.find("supported_artifacts").strict is True
+    catalogue = json.loads(json.dumps(extension.supported_artifacts()))
+    assert set(catalogue) == {"image", "file"}
+    assets = ArtifactAssets(tmp_path / "app")
+    for kind, entry in catalogue.items():
+        assert entry["description"]
+        schema = entry["payload_schema"]
+        Draft202012Validator.check_schema(schema)
+        validator = Draft202012Validator(schema)
+        validator.validate(entry["example"])
+        assert not validator.is_valid({"title": "Missing source"})
+        assert not validator.is_valid({"path": 42})
+        source = tmp_path / ("chart.png" if kind == "image" else "report.pdf")
+        if kind == "image":
+            RasterImage.new("RGB", (12, 8), "teal").save(source)
+        else:
+            source.write_bytes(b"example report")
+        payload = {**entry["example"], "path": str(source)}
+        validator.validate(payload)
+        published = assets.publish(kind, payload)
+        assert published["src"].startswith("/api/v1/bucket/")
+        assert "path" not in published
+
+
+def test_application_artifact_models_define_schemas_validation_and_canonical_items(tmp_path):
+    from jsonschema import Draft202012Validator
+    from modict import modict
+    from the_framework.plugins.artifacts.agent import ArtifactsExtension
+
+    class WeatherPayload(modict):
+        _config = modict.config(extra="forbid")
+        temperature: float
+
+    class WeatherArtifact(Artifact):
+        """Show the current temperature."""
+        kind = "weather"
+        payload: WeatherPayload = modict.field(required="always")
+        payload_example = modict.attr({"temperature": 18.0})
+
+    class Artifacts(ArtifactsExtension):
+        artifact_types = (WeatherArtifact,)
+
+    extension = Artifacts(Agent(client=object()))
+    catalogue = extension.supported_artifacts()
+    entry = catalogue["weather"]
+    Draft202012Validator(entry["payload_schema"]).validate(entry["example"])
+    artifact = asyncio.run(extension.show_artifact("weather", entry["example"]))
+    assert isinstance(artifact, WeatherArtifact)
+    assert isinstance(artifact.payload, WeatherPayload)
+    assert artifact.payload == {"temperature": 18.0}
+    assert asyncio.run(extension.show_artifact("weather", {"temperature": 18})).payload.temperature == 18.0
+    with pytest.raises((TypeError, ValueError, KeyError)):
+        WeatherArtifact()
+    assert artifact.type == "artifact"
+    assert entry["payload_schema"]["required"] == ["temperature"]
+    assert entry["payload_schema"]["additionalProperties"] is False
+    for invalid in ({}, {"temperature": "warm"}, {"temperature": 18.0, "surprise": True}):
+        assert not Draft202012Validator(entry["payload_schema"]).is_valid(invalid)
+        with pytest.raises((TypeError, ValueError, KeyError)):
+            asyncio.run(extension.show_artifact("weather", invalid))
+    session = Session.open(tmp_path / "session.json")
+    session.append(artifact)
+    restored = Session.open(session.path).history[-1]
+    assert isinstance(restored, Artifact)
+    assert restored.type == "artifact" and restored.kind == "weather"
+    assert restored.payload == artifact.payload
+    catalogue["image"]["payload_schema"]["properties"].clear()
+    catalogue.pop("file")
+    assert "file" in extension.supported_artifacts()
+    assert "path" in extension.supported_artifacts()["image"]["payload_schema"]["properties"]
+    assert "weather" not in ArtifactsExtension(Agent(client=object())).supported_artifacts()
+
+
+def test_artifact_catalogue_rejects_ambiguous_or_invalid_declarations():
+    from the_framework.plugins.artifacts.agent import ArtifactsExtension
+
+    class MissingKind(Artifact):
+        pass
+
+    class ReservedKind(Artifact):
+        kind = "image"
+
+    class Widget(Artifact):
+        kind = "widget"
+
+    for models, message in (((object,), "Artifact subclasses"),
+                            ((MissingKind,), "kind default"),
+                            ((ReservedKind,), "duplicate artifact kind"),
+                            ((Widget, Widget), "duplicate artifact kind")):
+        extension = ArtifactsExtension(Agent(client=object()))
+        extension.artifact_types = models
+        with pytest.raises((TypeError, ValueError), match=message):
+            extension.supported_artifacts()
+
+
 def test_show_artifact_allows_custom_json_in_its_tool_schema_and_output():
     from jsonschema import Draft202012Validator
     from the_framework.agent.extensions.tools import FunctionTool

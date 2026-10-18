@@ -6,6 +6,12 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Add `artifacts.supported_artifacts`: an application-wide catalogue of kinds,
+  input payload schemas and examples. Declare custom kinds with Artifact
+  subclasses and typed modict payloads, deriving schemas from the same models
+  that validate tool inputs. Keep their canonical conversation type as artifact.
+  Recommend consulting the catalogue when uncertain, without per-client negotiation.
+
 - Honor explicit `strict: false` function-tool metadata. Use it for
   `artifacts.show_artifact`, whose open JSON payload is incompatible with strict
   object schemas; preserve strict mode by default for other tools.

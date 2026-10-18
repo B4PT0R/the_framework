@@ -36,6 +36,11 @@ class Artifact(ResponseItem):
     call_id: str | None = None
     command_id: str | None = None
 
+    @modict.computed
+    def type(self):
+        # Custom artifact subclasses share the canonical conversation item type.
+        return "artifact"
+
     @modict.validator("payload", mode="before")
     def validate_payload(self, value):
         if not isinstance(value, dict):

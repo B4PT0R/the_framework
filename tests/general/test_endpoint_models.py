@@ -8,7 +8,7 @@ import pytest
 from the_framework.server import endpoint
 from the_framework.server.api.declarations import Endpoint
 from the_framework.server.api.endpoints import EndpointRegistry
-from the_framework.server.api.model_schema import model_schema
+from the_framework.utils.model_schema import model_schema
 
 
 class RequestModel(modict):
