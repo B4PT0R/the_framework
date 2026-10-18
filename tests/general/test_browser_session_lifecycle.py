@@ -142,3 +142,51 @@ def test_delayed_close_of_old_context_keeps_new_session(tmp_path):
             await session.stop()
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize('next_action', ['start', 'stop', 'cancel_start'])
+def test_native_close_finishes_profile_exit_before_driver_release_or_reopen(tmp_path, next_action):
+    import threading
+    from modict import modict
+
+    async def run():
+        drivers = []
+        loop = asyncio.get_running_loop()
+        waiting = asyncio.Event()
+        exited = threading.Event()
+        class Process:
+            def wait(self, *, timeout):
+                loop.call_soon_threadsafe(waiting.set)
+                assert exited.wait(timeout)
+        def factory():
+            driver = Driver()
+            drivers.append(driver)
+            return driver
+        session = BrowserSession(profile_dir=tmp_path, playwright_factory=factory)
+        await session.start()
+        session._browser_process = modict.attr(Process())
+        drivers[0].context.listeners['close']()
+        await waiting.wait()
+        action = asyncio.create_task(session.stop() if next_action == 'stop' else session.start())
+        try:
+            await asyncio.sleep(0)
+            assert not drivers[0].stopped
+            assert len(drivers) == 1
+            if next_action == 'cancel_start':
+                action.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await action
+                assert not drivers[0].stopped
+            exited.set()
+            if next_action == 'cancel_start':
+                await session.start()
+            else:
+                await action
+            assert drivers[0].stopped
+            if next_action != 'stop':
+                assert len(drivers) == 2
+                assert session.started
+        finally:
+            exited.set()
+            await session.stop()
+    asyncio.run(asyncio.wait_for(run(), 5))

@@ -645,6 +645,14 @@ also stalls, the caller receives `BrowserError`; the daemon never closes the who
 context or the independent application UI to recover a single tab. A warning marks
 the native retry in the browser daemon log without recording page contents/URLs.
 
+Closing the last browser window can disconnect its persistent context before the
+Chromium process has finished writing the profile. The session records that
+process through CDP `SystemInfo.getProcessInfo` and waits for its exit with
+`psutil` before stopping Playwright or reopening the profile. Cancelling a waiting
+RPC does not cancel this cleanup. A stuck exit has a 30-second deadline and logs
+a warning before driver cleanup; ordinary native closure preserves the clean-exit
+state without rewriting Chromium preferences or hiding its crash warning.
+
 Customize a complete declaration explicitly without rebuilding its internals:
 
 ```python

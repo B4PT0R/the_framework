@@ -55,3 +55,19 @@ def test_closing_web_tabs_preserves_other_pages_and_independent_ui(tmp_path):
         finally:
             await service.stop()
     asyncio.run(asyncio.wait_for(run(), 15))
+
+
+def test_native_window_close_preserves_clean_profile_and_independent_ui(tmp_path):
+    import shutil
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    if not all(shutil.which(command) for command in ('xvfb-run', 'xdotool')):
+        pytest.skip('native window-close contract requires Xvfb and xdotool')
+    fixture = Path(__file__).parents[1] / 'fixtures/native_browser_close.py'
+    result = subprocess.run(
+        ['xvfb-run', '-a', sys.executable, str(fixture), str(tmp_path)],
+        capture_output=True, text=True, timeout=45,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr

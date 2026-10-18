@@ -11,12 +11,14 @@ from typing import Any, Callable
 from urllib.parse import urlparse
 
 from modict import modict
+import psutil
 
 DEFAULT_VIEWPORT = {"width": 1365, "height": 900}
 # Persisted tool targets, profiles and DOM IDs retain their established names.
 BROWSER_AGENT_ID_ATTR = "data-harness-browser-id"
 BROWSER_TARGETS = {"web", "harness_ui"}
 _PAGE_CLOSE_TIMEOUT = 5
+_BROWSER_EXIT_TIMEOUT = 30
 logger = logging.getLogger(__name__)
 
 
@@ -144,6 +146,7 @@ class BrowserSession(modict):
     _playwright = modict.attr(None)
     _context = modict.attr(None)
     _active_page = modict.attr(None)
+    _browser_process = modict.attr(None)
     initial_cookies = modict.attr(None)
 
     def __init__(self, *args, **kwargs):
@@ -165,9 +168,13 @@ class BrowserSession(modict):
         async with self._lifecycle_lock:
             if self.started:
                 return self
+            # A native window close disconnects CDP before Chromium has released
+            # its persistent profile. Do not relaunch while that exit is pending.
+            if self._cleanup_tasks:
+                await asyncio.shield(asyncio.gather(*tuple(self._cleanup_tasks)))
             self.profile_dir.mkdir(parents=True, exist_ok=True)
             manager = self.playwright_factory()
-            playwright = context = None
+            playwright = context = process = None
             try:
                 playwright = await manager.start()
                 context = await playwright.chromium.launch_persistent_context(
@@ -178,6 +185,15 @@ class BrowserSession(modict):
                     args=list(self.extra_args),
                     ignore_default_args=list(self.ignore_default_args),
                 )
+                browser = getattr(context, "browser", None)
+                if browser is not None:
+                    cdp = await browser.new_browser_cdp_session()
+                    try:
+                        info = await cdp.send("SystemInfo.getProcessInfo")
+                        pid = next(item["id"] for item in info["processInfo"] if item["type"] == "browser")
+                        process = psutil.Process(pid)
+                    finally:
+                        await cdp.detach()
                 if self.initial_cookies:
                     await context.add_cookies(self.initial_cookies)
                 if hasattr(context, "on"):
@@ -189,42 +205,61 @@ class BrowserSession(modict):
                         await context.close()
                 finally:
                     if playwright is not None:
-                        await playwright.stop()
+                        await self._release_driver(playwright, process)
                 raise
             self._manager = modict.attr(manager)
             self._playwright = modict.attr(playwright)
             self._context = modict.attr(context)
+            self._browser_process = modict.attr(process)
         return self
 
     def _closed(self, context):
         if self._context is not context:
             return
         playwright = self._playwright
+        process = self._browser_process
         self._context = modict.attr(None)
         self._playwright = modict.attr(None)
         self._manager = modict.attr(None)
         self._active_page = modict.attr(None)
+        self._browser_process = modict.attr(None)
         if playwright is None:
             return
         # Persistent contexts may be closed by Chromium itself. Playwright does
         # not automatically stop the per-session driver in that case, and each
         # subsequent launch would otherwise leak another resident Node process.
-        task = asyncio.create_task(playwright.stop())
+        task = asyncio.create_task(self._release_driver(playwright, process))
         self._cleanup_tasks.add(task)
         task.add_done_callback(self._cleanup_tasks.discard)
 
+    @staticmethod
+    async def _release_driver(playwright, process):
+        try:
+            if process is not None:
+                try:
+                    await asyncio.to_thread(process.wait, timeout=_BROWSER_EXIT_TIMEOUT)
+                except psutil.NoSuchProcess:
+                    pass
+                except psutil.TimeoutExpired:
+                    logger.warning("Chromium did not exit within %ss; releasing its driver", _BROWSER_EXIT_TIMEOUT)
+        finally:
+            # Stopping the driver while Chromium is still exiting can send
+            # SIGKILL and leave the profile marked as crashed.
+            await playwright.stop()
+
     async def stop(self):
         async with self._lifecycle_lock:
-            context, playwright = self._context, self._playwright
+            context, playwright, process = self._context, self._playwright, self._browser_process
             self._context = self._playwright = self._manager = self._active_page = modict.attr(None)
+            self._browser_process = modict.attr(None)
             try:
                 if context is not None:
                     await context.close()
             finally:
                 if playwright is not None:
-                    await playwright.stop()
+                    await self._release_driver(playwright, process)
                 if self._cleanup_tasks:
-                    await asyncio.gather(*tuple(self._cleanup_tasks), return_exceptions=True)
+                    await asyncio.shield(asyncio.gather(*tuple(self._cleanup_tasks), return_exceptions=True))
 
     async def pages(self):
         await self.start()
