@@ -27,7 +27,7 @@ def remote(monkeypatch):
 
     def respond(request):
         requests.append(str(request.url))
-        assert request.headers["user-agent"] == "TheFramework/0.2 (local image retrieval)"
+        assert request.headers["user-agent"] == "TheFramework/0.2 (https://github.com/B4PT0R/the_framework; image retrieval)"
         assert "image/jpeg" in request.headers["accept"]
         result = responses[str(request.url)]
         if isinstance(result, Exception):
