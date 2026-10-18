@@ -745,3 +745,29 @@ succès. Ruff critique et diff propres. Bootstrap neuf sans ClientSurface vérif
 jusqu'au rendu Connected, worker sain et historique authentifié ; arrêt propre.
 Installation Harness relancée : navigateur/fenêtre et conversation conservés,
 chat/voix disponibles et Jiminy conforme à la configuration canonique.
+
+## Prochaine clarification : catalogue d'agents et session par défaut
+
+Retour de Baptiste : primary_agent confond la recette d'un agent avec le statut
+particulier d'une conversation. Cible : Application.agents est l'unique catalogue
+public d'AgentSpec ; une même spec peut alimenter plusieurs sessions/workers.
+Le rôle primary/default appartient à une session identifiée, pas à sa spec.
+
+- Retirer primary_agent des déclarations et du plan ; garder la distinction entre
+  agents applicatifs publics et spécialistes privés apportés par les plugins.
+- Au démarrage, reprendre la session par défaut et utiliser son agent_name
+  canonique. Un changement de choix initial ne doit pas transformer une session
+  existante en session d'un autre agent. Pour créer la première session, une spec
+  unique suffit implicitement ; plusieurs specs demandent un choix explicite.
+- Application retient la session par défaut par référence/identifiant ; éviter
+  un booléen primary dans chaque Session qui pourrait créer plusieurs primaires.
+- Traiter le couplage réel, pas seulement renommer le champ : le worker a encore
+  un repli plan.primary_agent ; la compilation traite séparément deux groupes
+  d'agents publics ; les routes racine et le graphe serveur sont attachés à la
+  première session, tandis que close_session ne gère que les sessions suivantes.
+  Faire du défaut un rôle de session cohérent avec les transports et le cycle de
+  vie, sans déplacer l'autorité desktop ni affaiblir l'authentification des previews.
+- Conserver le cas simple sans SessionSpec, nouveau manager ou choix superflus.
+  Pas de modification des modèles de payload ou de migration runtime implicite.
+
+Revue du code seulement dans ce tour ; proposition non implémentée.
