@@ -206,6 +206,66 @@ Aucun changement runtime, modèle, schéma, installation ou publication effectu�
   contrôles du chat et voix disponibles, santé serveur et catalogue vérifiés.
   Aucun appel de compaction au backend réel ni publication UI nécessaire.
 
+### Revue AgentSpec / AgentTrigger / WorkerProfile — 18 octobre
+
+Revue effectuée, propositions non implémentées. Sources : agent/spec.py,
+extensions/specialists.py, runtime/{worker,worker_process}.py, compilation
+Application et FleetSupervisor/AgentRunner ; plugin mémoire et recettes produit.
+
+À conserver : AgentSpec décrit identité, instructions, extensions et politique
+session/exécution ; AgentTrigger décrit sélection du travail et réception du
+résultat. Ne pas fusionner ces deux responsabilités. AgentResources fournit le
+client et les valeurs initiales locales au processus ; inutile d'ajouter un
+AgentBuildContext. QueuePolicy porte une politique cohérente. WorkerProfile est
+un payload interne, pas une seconde recette publique, et reste hors refonte avec
+AgentTask/AgentResult et les autres modèles de protocole.
+
+Priorités proposées :
+1. Centraliser la résolution des réglages au démarrage du worker. worker_process
+   reconstruit un AgentSpec depuis le profil puis superpose une liste de champs
+   à la déclaration applicative pour préserver factories/hooks ; build_agent
+   applique ensuite les ressources, puis Agent restaure Session. Deux endroits
+   indépendants définissent ainsi la priorité des mêmes réglages.
+   Reproduction isolée (sans réseau ni données utilisateur) : profil avec
+   model="resolved-model", spec applicative dont resources retourne
+   configuration={"model": "resource-default"} ; worker_process.run construit
+   réellement le worker avec "resource-default". Le profil résolu perd devant
+   une valeur initiale. Corriger avant de retirer les adaptateurs ; tester aussi
+   paramètres plugins, factories préservées et priorité de la session durable.
+   Ordre cible : déclaration < ressources initiales < réglages résolus du lancement
+   < valeurs de session sauvegardées. Sans profil, conserver l'ordre ordinaire.
+2. Retirer les profils wire de la surface de déclaration AgentSpec : champ
+   specialist_profiles et with_specialist_profiles exposent la sortie compilée.
+   Application.compile génère un premier catalogue ; Worker.run le fusionne avec
+   AgentTriggers.profiles issu des extensions chargées, les doublons étant écrasés
+   par nom. Ce second passage est utile au plugin mémoire (chemins, instructions,
+   modèle et file sont adaptés à ses réglages persistés), mais deux catalogues
+   complets et une priorité implicite ne sont pas nécessaires. Produire un seul
+   catalogue final après chargement/configuration des extensions, en conservant
+   les spécialistes explicites sans trigger. Compilation/imports restent inertes ;
+   le profil JSON est matérialisé à la frontière worker/fleet, pas dans l'API simple.
+   Préserver le mode autonome --profile et les factories de --application + --profile.
+3. Clarifier les opérations du registre de spécialistes. AgentTriggers.call n'est
+   qu'un alias de submit : il retourne un identifiant, sans attendre le résultat.
+   publish recaste puis appelle dispatch ; le worker utilise déjà dispatch. Parmi
+   les consommateurs explorés, aucun code applicatif n'appelle call/publish.
+   Préférer submit pour une requête non bloquante, dispatch pour le retour interne,
+   plutôt que conserver deux noms suggérant des mécaniques différentes.
+
+Ne pas confondre la conversion AgentSpec -> WorkerProfile avec une sérialisation
+Python complète : classes/factories/initializers ne sont pas dans le JSON. Les
+modes ephemeral/resident/durable, files bornées et journaux de tâches/résultats,
+identités privées plugin.agent, routage d'activité vers le bon appelant et état
+persisté restent des garanties distinctes. Pas de refonte des schémas wire, pas de
+nouvelle classe manager ni modification des modèles sous prétexte de réduire
+le vocabulaire runtime. Les résidus de migration dans AgentResult.from_dict et
+les champs de WorkerProfile sont hors périmètre de cette tranche.
+
+Validation de la revue : 89 tests AgentSpec/worker_process/Application/fleet
+réussis ; reproduction empirique de priorité de configuration avec un worker
+intercepté avant démarrage, client authentifié/inférence jamais sollicités.
+Aucun changement runtime ni redémarrage installé effectué.
+
 ### Secteurs à revoir
 
 - Minimiser le vocabulaire nécessaire aux cas simples et réutiliser les mêmes
@@ -228,8 +288,10 @@ Aucun changement runtime, modèle, schéma, installation ou publication effectu�
   projections vers le backend et vers les clients : revue ci-dessus.
 - [x] Implémenter la préparation du contexte et la compaction réunies dans Context,
   conserver Session canonique et les projections clientes distinctes.
-- [ ] Réexaminer AgentSpec / AgentTrigger / WorkerProfile et la construction des
-  spécialistes à partir de la déclaration et du profil résolu.
+- [x] Réexaminer AgentSpec / AgentTrigger / WorkerProfile et la construction des
+  spécialistes : revue et reproduction ci-dessus.
+- [ ] Unifier les priorités de réglages du worker, puis le catalogue final des
+  spécialistes et les opérations du registre ; conserver les payloads inchangés.
 - [x] Le plugin mémoire possède désormais le décodage de son XML depuis les
   slots de contexte retenus ; Realtime ne connaît plus les candidats mémoire.
 - [x] Retirer Portrait et MediaReference du cœur : payloads, exports et exceptions
