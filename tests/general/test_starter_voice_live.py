@@ -68,8 +68,11 @@ def test_starter_voice_audio_transcript_and_cleanup(tmp_path):
                                 return [...stats.values()].some(s => s.type === 'inbound-rtp'
                                   && s.kind === 'audio' && s.bytesReceived > 0);
                             }""")
+                            # Voice may translate the requested phrase to the
+                            # application's language. The contract is actual
+                            # audio plus a visible and persisted assistant turn.
                             await page.wait_for_function("""() => [...document.querySelectorAll('.message.assistant')]
-                                .some(node => node.textContent.toLowerCase().includes('voice ready'))""")
+                                .some(node => node.textContent.trim().length > 0)""")
                             assert await page.evaluate("window.sawLiveCaption")
                             await page.screenshot(path=str(tmp_path / "voice-response.png"))
                             await page.get_by_role("button", name="End voice", exact=True).click()
@@ -77,7 +80,20 @@ def test_starter_voice_audio_transcript_and_cleanup(tmp_path):
                             assert await page.evaluate("window.testPeer.connectionState") == "closed"
                             assert await page.get_by_text("Assistant · Live", exact=True).count() == 0
                             snapshot = await page.request.get(origin + "/api/v1/session")
-                            assert "voice ready" in (await snapshot.text()).lower()
+                            displayed = await snapshot.json()
+                            assert any(
+                                item.get("role") == "assistant" and any(
+                                    content.get("text", "").strip() for content in item.get("content", [])
+                                )
+                                for turn in displayed["turns"] for item in turn["items"]
+                            )
+                            from the_framework.agent import Session
+
+                            canonical = Session.open(tmp_path / "session.json")
+                            markers = [item for item in canonical.history if item.get("kind") == "realtime_mode"]
+                            assert [item.voice_state for item in markers] == ["started", "ended"]
+                            assert all(item.role == "developer" for item in markers)
+                            assert markers[0].voice_session_id == markers[1].voice_session_id
                         finally:
                             await browser.close()
             finally:

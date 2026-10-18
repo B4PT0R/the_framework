@@ -21,6 +21,8 @@ from ...agent.models.events import Event
 from modict import modict
 from .events import VoiceError, RealtimeDelegationUpdate
 from .live_events import LiveEvents
+from .mode import voice_mode_marker
+from ...agent.context.builder import Context
 from the_framework.utils.ids import timestamp_id
 
 logger = logging.getLogger(__name__)
@@ -56,6 +58,7 @@ class RealtimeController:
         self.client = None
         self.prepare_task = None
         self.call_id = None
+        self.voice_session_id = None
         self.sideband = None
         self.sideband_manager = None
         self.peer_ready = False
@@ -235,9 +238,18 @@ class RealtimeController:
                 raise RuntimeError("unsupported realtime projection protocol")
             try:
                 client = await self._client()
+                voice_session_id = timestamp_id()
+                start_marker = voice_mode_marker(voice_session_id, "started")
+                session = {
+                    **extension["session"],
+                    "initial_items": [
+                        *extension["session"].get("initial_items", []),
+                        *Context.project([start_marker]),
+                    ],
+                }
                 live = await asyncio.to_thread(
                     client.live.create,
-                    session=extension["session"],
+                    session=session,
                     transport={"type": "webrtc", "sdp": offer_sdp},
                 )
                 self.call_id = live.session.id
@@ -250,6 +262,8 @@ class RealtimeController:
                 self.pending_delegation_deliveries.clear()
                 self.pending_provider_contexts.clear()
                 self.start_context(extension)
+                self.voice_session_id = voice_session_id
+                await self._persist_mode_marker(start_marker)
                 return {
                     "call_id": live.session.id,
                     "answer_sdp": live.transport.sdp,
@@ -860,22 +874,24 @@ class RealtimeController:
                             )
                         except TimeoutError:
                             pass
-                if call_id is not None and drain:
-                    try:
-                        await self._worker_barrier(
-                            call_id,
-                            timeout=barrier_timeout,
-                        )
-                    except TimeoutError:
-                        logger.warning(
-                            "Realtime worker barrier timed out during shutdown; "
-                            "continuing transport cleanup"
-                        )
             finally:
                 try:
                     await self._close()
+                    if call_id is not None and drain:
+                        try:
+                            await self._worker_barrier(call_id, timeout=barrier_timeout)
+                        except TimeoutError:
+                            logger.warning("Realtime worker barrier timed out during shutdown")
                 finally:
                     self.closing = False
+
+    async def _persist_mode_marker(self, marker):
+        # Ordered canonical input only: never ask the text agent to generate.
+        await self.runtime.supervisor.send(ExternalEventRequest(
+            id=marker.id, name="realtime_mode",
+            payload={"voice_session_id": marker.voice_session_id, "state": marker.voice_state},
+            input_items=[marker],
+        ))
 
     async def _worker_barrier(self, call_id, *, timeout=5):
         command_id = f"realtime-barrier:{call_id}:{timestamp_id()}"
@@ -894,6 +910,7 @@ class RealtimeController:
     async def _close(self):
         sideband, task = self.sideband, self.reader_task
         sideband_manager = self.sideband_manager
+        voice_session_id, self.voice_session_id = self.voice_session_id, None
         self.sideband = None
         self.sideband_manager = None
         self.reader_task = None
@@ -909,8 +926,12 @@ class RealtimeController:
         self.skip_assistant_turns = 0
         self.restart_resume_input_paused = False
         self.realtime_response_active = False
-        await self.close_context()
-        await self._release_sideband(sideband, sideband_manager)
-        if task is not None and task is not asyncio.current_task():
-            task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
+        try:
+            await self.close_context()
+            await self._release_sideband(sideband, sideband_manager)
+            if task is not None and task is not asyncio.current_task():
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+        finally:
+            if voice_session_id is not None:
+                await self._persist_mode_marker(voice_mode_marker(voice_session_id, "ended"))

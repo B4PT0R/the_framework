@@ -175,6 +175,8 @@ class Worker:
                     await asyncio.to_thread(self.agent.session.clear_context)
             return
         if isinstance(command, ExternalEventRequest):
+            for item in command.input_items:
+                self.agent.add_response_item(item)
             if command.name == "realtime_turn":
                 async for event in self.agent.events.astream(self._commit_realtime_turn, command.payload):
                     yield event

@@ -1522,6 +1522,22 @@ turn (including steering), restored on completion or failure and absent from
 model API input. Realtime delegation uses `realtime_delegation`; spoken canonical
 transcripts retain `realtime`, allowing clients to distinguish both on replay.
 
+Successful voice-call creation also queues a canonical developer message of kind
+`realtime_mode`, announcing the start of realtime interaction. The same message
+is included in the voice model's initial context, reserving one initial-item
+slot. Shutdown and transport cleanup queue one matching end marker. Both carry
+a stable `voice_session_id` and `voice_state`; repeated delivery is idempotent.
+These markers remain hidden from the display projection, but are included in
+text context and later voice projections. Failed call creation emits no markers.
+
+`ExternalEventRequest.input_items` permits ordered canonical input without
+starting inference. Items are committed by the worker before dispatching the
+external event, even when its plugin binding has been removed. Realtime mode
+markers use this mechanism so disabling voice cannot discard an accepted end
+marker. Shutdown drains the worker only after final transport cleanup and marker
+submission; tool-initiated shutdown may queue these writes without waiting for
+its own command to finish.
+
 Voice accepts ordinary user prompts only: input items, suppressed prompts,
 custom roles/kinds and per-command reasoning overrides raise `ValueError` rather
 than silently losing text-only semantics. Voice submission failures also raise

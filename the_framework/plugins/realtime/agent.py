@@ -178,10 +178,15 @@ class RealtimeExtension(AgentExtension):
             item
             for item in snapshot["items"]
             if isinstance(item, Artifact) or (
-                isinstance(item, Message) and item.role in {"user", "assistant"}
+                isinstance(item, Message) and (
+                    item.role in {"user", "assistant"} or item.kind == "realtime_mode"
+                )
             )
         ]
         initial_items = self._initial_items(conversational_items)
+        # The controller adds the current call's start marker at creation time.
+        if len(initial_items) >= self.config.max_initial_items:
+            initial_items = initial_items[1:]
         if initial_items:
             session["initial_items"] = initial_items
         snapshot["extensions"][self.name] = {

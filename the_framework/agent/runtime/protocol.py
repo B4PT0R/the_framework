@@ -48,6 +48,14 @@ class PromptRequest(QueuedRequest):
 class ExternalEventRequest(QueuedRequest):
     name: str = modict.field(required="always")
     payload: object = modict.factory(dict)
+    input_items: list[ResponseItem] = modict.factory(list)
+
+    @modict.validator("input_items", mode="before")
+    def reconstruct_input_items(self, values):
+        return [
+            item if isinstance(item, ResponseItem) else ResponseItem.from_dict(dict(item))
+            for item in values
+        ]
 
 
 class TransientEventRequest(WorkerRequest):

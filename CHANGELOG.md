@@ -6,6 +6,11 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Persist voice-call start/end developer markers and include them in voice
+  context. Queue canonical items through ExternalEventRequest without starting
+  inference, including after a plugin binding is disabled. Reserve initial
+  context capacity and drain final markers after transport cleanup.
+
 - Preserve delegated voice-response provenance in canonical messages and streamed
   text events through scoped `PromptRequest.response_kind`. Ordinary text turns
   keep their standard kind; clients can distinguish spoken and backend output
