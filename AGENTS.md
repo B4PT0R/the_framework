@@ -55,6 +55,15 @@ file records the constraints to preserve when changing the framework.
   Only a plugin's binding to an agent changes live. Disabling that binding must
   leave the plugin's server routes and services available.
 
+## Agent context and compaction
+
+Session owns canonical data and atomic mutations; Context owns model projection,
+canonical preparation and compaction. Use agent.compact() for the current session,
+not a separately assembled controller. Context.project is pure; canonical input
+preparation performs recovery before projection. Generation adds ephemeral providers;
+compaction never samples/persists them. Client archive and Realtime projections stay
+separate. Keep the Compaction item/response payloads and session schema unchanged.
+
 ## Service construction
 
 Prefer a direct ServerExtension service factory over nested plugin/service builders.

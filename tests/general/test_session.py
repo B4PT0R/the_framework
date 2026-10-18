@@ -326,21 +326,6 @@ def test_sanitize_repairs_interrupted_parallel_calls_before_the_next_user(tmp_pa
     assert Session.open(path).sanitize()["changed"] is False
 
 
-def test_to_api_format_sanitizes_the_canonical_session_before_projection():
-    session = Session(history=[FunctionCall(
-        name="command",
-        arguments="{}",
-        call_id="orphan",
-    )])
-
-    projected = session.to_api_format()
-
-    assert [item["type"] for item in projected] == [
-        "function_call",
-        "function_call_output",
-    ]
-    assert projected[1]["call_id"] == "orphan"
-
 
 def test_missing_image_is_not_added_and_stale_image_is_pruned_atomically(tmp_path):
     session = Session.open(tmp_path / "session.json")

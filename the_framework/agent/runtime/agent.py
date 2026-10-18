@@ -8,7 +8,6 @@ from .agentic_loop import AgenticLoop
 from .bridge import ApplicationClient
 from ..extensions.specialists import AgentTriggers
 from ..extensions.commands import Commands
-from ..context.compaction import Compaction
 from ..models.config import Configs
 from ..models.content import ContentItem, InputText, OutputText
 from ..context.builder import Context
@@ -61,7 +60,6 @@ class Agent:
         self.configs.merge(self.session.configuration)
         self.states = States({**dict(state or {}), **self.session.state})
         self.commands = Commands()
-        self.compaction = Compaction(self)
         self.context = Context(self)
         self.events = EventLoop(self)
         self.hooks = Hooks()
@@ -321,8 +319,8 @@ class Agent:
         """Request a graceful stop after the current tool-call batch completes."""
         self.end_of_turn_requested = True
 
-    def compact(self, input=None):
-        return self.compaction.run(input=input)
+    def compact(self):
+        return self.context.compact()
 
     def chat(self, **kwargs):
         from .chat import chat

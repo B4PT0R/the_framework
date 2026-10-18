@@ -10,7 +10,7 @@ from .extensions.specialists import (
 )
 from .runtime.command_loop import CommandLoop
 from .extensions.commands import Command, Commands, command
-from .context.compaction import Compaction, CompactionResponse
+from .context.compaction import CompactionResponse
 from .models.usage import ResponseUsage, TokenDetails
 from .models.config import (
     AgentConfig,
@@ -177,7 +177,6 @@ __all__ = [
     "ConfigSnapshotRequest",
     "ConfigUpdateRequest",
     "Commands",
-    "Compaction",
     "CompactionConfig",
     "CompactionResponse",
     "Config",

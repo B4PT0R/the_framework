@@ -110,6 +110,28 @@ application = Application.current()
 `application.context` holds the root build inputs; `application.plan` holds the
 compiled assembly. `application.security` is the optional declared access policy;
 `application.access_policy` is the effective policy selected during build.
+The agent owns one `Session` and one `Context`. `Session` keeps canonical data
+and atomic mutations; `Context` prepares model input and orchestrates compaction.
+Applications do not assemble a separate compaction controller.
+
+- `agent.context.input()` / `ainput()` prepare the canonical history with its
+  dynamic prefix, then add ephemeral providers for the current generation.
+- `Context.project(items, max_input_images=..., ephemeral=...)` converts a supplied
+  sequence to Responses input without changing or saving a session. Image bytes
+  are encoded transiently; payload models keep their existing conversion logic.
+- Preparing canonical input repairs interrupted tool sequences and prunes missing
+  local references through `Session.sanitize()` before projection. Pure projection
+  alone does not perform that recovery or write to disk.
+- `agent.compact()` compacts the current canonical context using the same preparation
+  as generation, without sampling/including ephemeral providers. The Context calls
+  the backend and emits lifecycle events; `Session.commit_compaction()` atomically
+  updates the active history, archive and anchor. There is no separate runtime
+  `Compaction` object or arbitrary `input` override.
+- UI history comes from the retained archive and named `SessionProjections`;
+  Realtime owns its voice projection. They do not reuse Responses input as a
+  display format. The item model `Compaction` and `CompactionResponse` payload
+  remain distinct from runtime operations and keep their schemas.
+
 Declaration fields such as `plugins` and `server_extensions` keep their input
 shape. `application.extensions` is the read-only map of resolved server declarations.
 `application.service(name)` reads the root service registry, including the primary

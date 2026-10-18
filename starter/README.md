@@ -254,3 +254,8 @@ Use a `module:factory` reference to keep server implementation imports out of th
 agent worker. The starter uses the bundled plugins' storage defaults; only pass
 `BuildContext(plugins={...})` when overriding them. See the Framework reference for
 advanced inter-plugin contributions and session/application scopes.
+
+The worker also owns context preparation and compaction: applications use
+`agent.compact()` or the existing worker command, without constructing a compaction
+controller. The same canonical session continues to supply display history after
+compaction; ephemeral provider output belongs only to generation, not the archive.

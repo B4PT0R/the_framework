@@ -3,6 +3,8 @@ import json
 
 import pytest
 
+from the_framework.agent.context.builder import Context
+
 from the_framework.agent import (
     Agent, Artifact, Image, ResponseItem, Session, Worker,
 )
@@ -19,7 +21,7 @@ def test_artifact_roundtrip_projection_and_compaction(tmp_path):
     restored = Session.open(path)
     assert isinstance(restored.history[-1], Artifact)
     assert json.loads(json.dumps(ResponseItem.from_dict(json.loads(json.dumps(artifact))))) == json.loads(json.dumps(artifact))
-    projected = restored.to_api_format(include_images=False)
+    projected = Context.project(restored.history)
     assert projected[-1]["role"] == "developer"
     assert '"temperature":18' in projected[-1]["content"][0]["text"]
     assert "not a client rendering acknowledgement" in projected[-1]["content"][0]["text"]
@@ -131,7 +133,7 @@ def test_saved_session_contains_references_not_image_bytes(tmp_path):
     on_disk = session.path.read_text()
     assert encoded not in on_disk and "base64," not in on_disk
     # Encoding for the remote vision API is transient and never written back.
-    assert encoded in json.dumps(session.to_api_format(max_input_images=1))
+    assert encoded in json.dumps(Context.project(session.history, max_input_images=1))
     session.save()
     assert encoded not in session.path.read_text()
     image.unlink()

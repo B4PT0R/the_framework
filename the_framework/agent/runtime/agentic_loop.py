@@ -386,7 +386,7 @@ class AgenticLoop:
         ))
         payload = await self.ageneration_payload(provider_outputs)
         if self.agent.context.needs_compaction(payload):
-            await asyncio.to_thread(self.agent.compaction.run)
+            await asyncio.to_thread(self.agent.compact)
             payload = await self.ageneration_payload(provider_outputs)
             self.agent.context.local_input_tokens(payload)
         await asyncio.to_thread(self.generation, payload)

@@ -5,7 +5,6 @@ import pytest
 
 from the_framework.agent.runtime.agentic_loop import AgenticLoop
 from the_framework.agent.extensions.commands import Commands
-from the_framework.agent.context.compaction import Compaction
 from the_framework.agent.models.config import Configs
 from the_framework.agent.context.builder import Context
 from the_framework.agent.models.usage import ResponseUsage
@@ -13,7 +12,7 @@ from the_framework.agent.extensions.hooks import Hooks, hook
 from the_framework.agent.extensions.instructions import Instructions
 from the_framework.agent.extensions.providers import Providers
 from the_framework.agent.models.responses import Compaction as CompactionItem
-from the_framework.agent.models.responses import Image, Message
+from the_framework.agent.models.responses import FunctionCall, Image, Message
 from the_framework.agent.context.session import Session
 from the_framework.agent.extensions.tools import Tools
 from the_framework.agent import WebSearchTool
@@ -70,8 +69,10 @@ class Agent:
         self.tools = Tools()
         self.responses = Responses()
         self.client = type("Client", (), {"responses": self.responses})()
-        self.compaction = Compaction(self)
         self.events = []
+
+    def compact(self):
+        return self.context.compact()
 
     def registry(self, name):
         return getattr(self, name)
@@ -95,7 +96,7 @@ def test_compaction_receives_the_same_hosted_tools_as_generation(tmp_path):
     agent = Agent(tmp_path / "session.json")
     search = agent.tools.add(WebSearchTool())
     agent.add_message("user", "Research a topic")
-    agent.compaction.run()
+    agent.compact()
     assert agent.responses.compaction_requests[0]["tools"] == [search]
     payload = asyncio.run(AgenticLoop(agent).ageneration_payload())
     assert payload["tools"] == agent.responses.compaction_requests[0]["tools"]
@@ -167,7 +168,7 @@ def test_local_images_are_projected_for_generation_and_compaction_then_retired(t
     ))
 
     generation = agent.context.input()
-    agent.compaction.run()
+    agent.compact()
     after_compaction = agent.context.input()
 
     assert [item.get("type") for item in generation] == ["message", "message"]
@@ -194,7 +195,7 @@ def test_image_prefix_survives_compaction_and_obeys_image_limit(tmp_path, image_
     agent.session.append(Message(role="user", content=[]))
 
     generation = agent.context.input()
-    agent.compaction.run()
+    agent.compact()
     compacted = agent.responses.compaction_inputs[-1]
     after_compaction = agent.context.input()
 
@@ -259,7 +260,7 @@ def test_generation_uses_stable_session_cache_key_and_honors_override(tmp_path):
     assert loop.generation_payload()["prompt_cache_key"] == "explicit-cache-key"
 
     agent.configs.compaction.prompt_cache_key = "explicit-compaction-key"
-    agent.compaction.run(input=[])
+    agent.compact()
     assert agent.responses.compaction_requests[-1]["prompt_cache_key"] == (
         "explicit-compaction-key"
     )
@@ -332,10 +333,10 @@ def test_compaction_end_retires_the_previous_anchor_not_the_new_one(tmp_path):
     agent = Agent(tmp_path / "session.json")
     agent.session.append(Message(role="user", content=[]))
 
-    first = agent.compaction.run()
+    first = agent.compact()
     first_event = agent.events[-1]
     agent.session.append(Message(role="assistant", content=[]))
-    second = agent.compaction.run()
+    second = agent.compact()
     second_event = agent.events[-1]
 
     assert first_event.type == "agent.compaction.end"
@@ -405,3 +406,78 @@ def test_local_token_count_drives_the_configured_compaction_threshold(tmp_path):
 
     agent.configs.compaction.context_token_limit = measured + 1
     assert not agent.context.needs_compaction(payload)
+
+
+def test_context_repairs_the_canonical_session_before_model_input(tmp_path):
+    agent = Agent(tmp_path / "session.json")
+    agent.session.history = [FunctionCall(
+        name="command",
+        arguments="{}",
+        call_id="orphan",
+    )]
+
+    projected = agent.context.input()
+
+    assert [item["type"] for item in projected] == [
+        "function_call",
+        "function_call_output",
+    ]
+    assert projected[1]["call_id"] == "orphan"
+
+
+def test_projection_is_pure_and_does_not_repair_or_persist_canonical_items(tmp_path):
+    agent = Agent(tmp_path / "session.json")
+    agent.session.append(FunctionCall(name="command", arguments="{}", call_id="pending"))
+    before = agent.session.path.read_bytes()
+    projected = Context.project(agent.session.history)
+    assert [item["type"] for item in projected] == ["function_call"]
+    projected[0]["name"] = "changed outside the session"
+    assert agent.session.history[0].name == "command"
+    assert agent.session.path.read_bytes() == before
+    # Model preparation, rather than a pure projection, owns recovery.
+    agent.context.input()
+    assert Session.open(agent.session.path).history[-1].call_id == "pending"
+    assert agent.session.path.read_bytes() != before
+
+
+def test_compaction_uses_canonical_prefix_without_sampling_ephemeral_providers(tmp_path):
+    from the_framework.agent.models.responses import Artifact
+    agent = Agent(tmp_path / "session.json")
+    durable = Artifact(kind="widget", payload={"marker": "durable"})
+    transient = Artifact(kind="widget", payload={"marker": "ephemeral"})
+    agent.session.append(durable)
+    samples = []
+
+    @hook
+    def context_prefix(items):
+        return [Message(role="developer", content=[{"type": "input_text", "text": "prefix"}]), *items]
+
+    agent.hooks.add(context_prefix)
+
+    @agent.providers.add(channels=["text"])
+    def live():
+        samples.append(True)
+        return transient
+
+    initial = agent.context.input()
+    assert samples == [True]
+    agent.compact()
+    assert samples == [True]
+    assert agent.responses.compaction_inputs[0] == initial[:-1]
+    assert durable in agent.session.archive
+    assert transient not in agent.session.archive
+
+
+def test_failed_remote_compaction_preserves_the_canonical_session(tmp_path):
+    agent = Agent(tmp_path / "session.json")
+    agent.session.append(Message(role="user", content=[]))
+    before = agent.session.path.read_bytes()
+
+    def fail(**payload):
+        raise RuntimeError("backend unavailable")
+
+    agent.responses.compact = fail
+    with pytest.raises(RuntimeError, match="backend unavailable"):
+        agent.compact()
+    assert agent.session.path.read_bytes() == before
+    assert [event.type for event in agent.events] == ["agent.compaction.start"]

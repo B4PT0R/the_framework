@@ -1,4 +1,9 @@
-from ..models.responses import Compaction, Image
+import json
+
+from ..models.responses import Artifact, Image, Message, ResponseItem
+from ..models.lifecycle import AgentCompactionEnd, AgentCompactionStart
+from .caching import resolve_prompt_cache_key
+from .compaction import CompactionResponse
 from ...utils.tokens import token_count_payload
 from ..models.usage import ResponseUsage
 
@@ -11,39 +16,63 @@ class Context:
     def get_context_prefix(self):
         return self.agent.registry("hooks").run("context_prefix", [])
 
-    def compose_session_items(self, items=None):
-        """Place dynamic prefix items at the head of the active context epoch."""
+    def compose_session_items(self):
+        """Repair canonical history before composing its dynamic context prefix."""
         session = self.agent.session
-        canonical = items is None or items is session.history
-        if canonical:
-            session.sanitize()
-        history = list(session.history if canonical else items)
-        prefix = list(self.get_context_prefix())
-        if not prefix:
-            return history
+        session.sanitize()
+        history = list(session.history)
+        return [*self.get_context_prefix(), *history]
 
-        if canonical and session.anchor_id is not None and session.tail_start:
-            compacted_output = history[:session.tail_start]
-            if any(isinstance(item, Compaction) for item in compacted_output):
-                return [
-                    *prefix,
-                    *compacted_output,
-                    *history[session.tail_start:],
-                ]
-        return [*prefix, *history]
+    @staticmethod
+    def project(items, *, max_input_images=0, ephemeral=False):
+        """Convert items to Responses input without mutating or persisting them."""
+        if not isinstance(max_input_images, int) or max_input_images < 0:
+            raise ValueError("max_input_images must be a non-negative integer")
+        source = list(items)
+        retained = {
+            position
+            for position in [
+                index
+                for index, item in enumerate(source)
+                if isinstance(item, Image)
+            ][-max_input_images:]
+        } if max_input_images else set()
+        projected = []
+        for index, item in enumerate(source):
+            if isinstance(item, Image):
+                if index in retained:
+                    projected.append(item.to_api_format())
+                continue
+            if isinstance(item, Message):
+                payload = json.loads(json.dumps(item))
+                projected.append({
+                    "type": "message",
+                    "role": item.role,
+                    "content": payload.get("content", []),
+                })
+                continue
+            if isinstance(item, Artifact):
+                projected.append(item.to_api_format(ephemeral=ephemeral))
+                continue
+            projected.append(
+                json.loads(json.dumps(item))
+                if isinstance(item, ResponseItem)
+                else item
+            )
+        return projected
+
+    def _session_input(self):
+        return self.project(
+            self.compose_session_items(),
+            max_input_images=self.agent.configs.max_input_images,
+        )
 
     def _input(self, provider_outputs):
-        provider_image_count = sum(
-            isinstance(item, Image) for item in provider_outputs
-        )
         return [
-            *self.agent.session.to_api_format(
-                max_input_images=self.agent.configs.max_input_images,
-                items=self.compose_session_items(),
-            ),
-            *self.agent.session.to_api_format(
-                max_input_images=provider_image_count,
-                items=provider_outputs,
+            *self._session_input(),
+            *self.project(
+                provider_outputs,
+                max_input_images=sum(isinstance(item, Image) for item in provider_outputs),
                 ephemeral=True,
             ),
         ]
@@ -136,3 +165,51 @@ class Context:
         if not 0 < ratio <= 1:
             raise ValueError("compaction.trigger_ratio must be greater than 0 and at most 1")
         return self.local_input_tokens(payload) >= limit * ratio
+
+    def compact(self):
+        """Compact this agent's canonical context and commit it atomically."""
+        config = self.agent.configs.compaction.exclude(
+            "context_token_limit",
+            "trigger_ratio",
+            "archive_anchor_limit",
+        )
+        config["prompt_cache_key"] = resolve_prompt_cache_key(
+            self.agent.session.id,
+            config.get("prompt_cache_key"),
+        )
+        input_items = self._session_input()
+        retired_anchor_id = self.agent.session.anchor_id
+        retired_items = (
+            list(self.agent.session.history[:self.agent.session.tail_start])
+            if retired_anchor_id is not None
+            else []
+        )
+        # This is a lifecycle notification only. The compaction input can
+        # contain the complete canonical context, including encoded images,
+        # and must not be copied into the worker event stream.
+        self.agent.emit(AgentCompactionStart())
+        response = CompactionResponse.from_dict(
+            self.agent.client.responses.compact(
+                input=input_items,
+                # Hosted-tool history needs its tool definitions during
+                # compaction just as it does during ordinary generation.
+                tools=self.agent.registry("tools").list(),
+                **config,
+            )
+        )
+        self.agent.session.commit_compaction(
+            response.output,
+            anchor_id=response.id,
+            archive_anchor_limit=self.agent.configs.compaction.archive_anchor_limit,
+            anchor_token_count=(
+                response.usage.output_tokens
+                if response.usage is not None
+                else None
+            ),
+        )
+        self.agent.emit(AgentCompactionEnd(
+            response=response,
+            retired_anchor_id=retired_anchor_id,
+            retired_items=retired_items,
+        ))
+        return response

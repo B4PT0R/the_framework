@@ -252,46 +252,6 @@ class Session(Base):
             "repaired_function_calls": repaired,
         }
 
-    def to_api_format(self, *, max_input_images=0, include_images=True, items=None, ephemeral=False):
-        """Project lightweight local history into strict remote Responses input."""
-        if not isinstance(max_input_images, int) or max_input_images < 0:
-            raise ValueError("max_input_images must be a non-negative integer")
-        canonical = items is None or items is self.history
-        if canonical:
-            self.sanitize()
-        source = list(self.history if canonical else items)
-        retained = {
-            position
-            for position in [
-                index
-                for index, item in enumerate(source)
-                if isinstance(item, Image)
-            ][-max_input_images:]
-        } if include_images and max_input_images else set()
-        projected = []
-        for index, item in enumerate(source):
-            if isinstance(item, Image):
-                if index in retained:
-                    projected.append(item.to_api_format())
-                continue
-            if isinstance(item, Message):
-                payload = json.loads(json.dumps(item))
-                projected.append({
-                    "type": "message",
-                    "role": item.role,
-                    "content": payload.get("content", []),
-                })
-                continue
-            if isinstance(item, Artifact):
-                projected.append(item.to_api_format(ephemeral=ephemeral))
-                continue
-            projected.append(
-                json.loads(json.dumps(item))
-                if isinstance(item, ResponseItem)
-                else item
-            )
-        return projected
-
     @classmethod
     def open(cls, path):
         path = Path(path)

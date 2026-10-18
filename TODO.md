@@ -130,7 +130,7 @@ et l'avis précédent de ne pas introduire de singleton.
 
 ### Revue Session / Context / Compaction — 18 octobre
 
-Revue effectuée, propositions ci-dessous non implémentées. Sources :
+Revue effectuée avant implémentation ; tranche livrée décrite à la suite. Sources :
 agent/context/{session,builder,compaction,projections}.py, runtime/{agent,
 agentic_loop,worker}.py, projections Realtime, recettes starter/Harness et tests.
 
@@ -181,6 +181,31 @@ Framework et tests, puis vérifier le couple complet et la reprise desktop.
 Validation de la revue : 44 tests Session/contexte/compaction/artefacts réussis.
 Aucun changement runtime, modèle, schéma, installation ou publication effectué.
 
+### Tranche contexte / compaction livrée — 18 octobre
+
+- Context prépare une seule entrée canonique pour génération et compaction.
+  Context.project(items, max_input_images=..., ephemeral=...) est une conversion
+  pure ; la préparation canonique appelle explicitement Session.sanitize avant
+  de projeter. Session ne réalise plus la conversion vers Responses.
+- agent.compact() délègue à Context.compact() sur la session courante. Contrôleur
+  runtime Compaction, agent.compaction, input arbitraire et fallback sans Context
+  supprimés. Préfixe toujours avant toute sortie compactée ; branche redondante
+  liée à l'ancre supprimée, tail_start et tous les champs persistés conservés.
+- Session garde les mutations atomiques, l'archive et les ancres. Génération ajoute
+  les providers éphémères ; compaction ne les évalue pas. Projections UI/voix et
+  commande worker inchangées. Classes de payload Compaction/CompactionResponse
+  inchangées ; aucun nouveau manager ni helper public parallèle.
+- Starter/Harness n'avaient pas de câblage de contrôleur à adapter : leurs points
+  d'entrée restent le worker et les projections ; documentation alignée. Tests de
+  conversion/compaction adaptés à l'API propriétaire, trois garanties durables
+  ajoutées (pureté, providers exclus, échec backend sans écriture canonique).
+- Validation : 708 tests Framework réussis / 3 skips avec Chromium, 157 Harness,
+  puis 51 tests ciblés après simplification du préfixe ; Ruff critique et diff
+  vérifiés. Test de reprise desktop du starter exécuté. Installation relancée :
+  même Chromium et URL, conversation JSON conservée hors reçu de démarrage,
+  contrôles du chat et voix disponibles, santé serveur et catalogue vérifiés.
+  Aucun appel de compaction au backend réel ni publication UI nécessaire.
+
 ### Secteurs à revoir
 
 - Minimiser le vocabulaire nécessaire aux cas simples et réutiliser les mêmes
@@ -201,7 +226,7 @@ Aucun changement runtime, modèle, schéma, installation ou publication effectu�
   les contributions avancées gardent leur phase explicite avant les services.
 - [x] Examiner les frontières Session / Context / Compaction et la place des
   projections vers le backend et vers les clients : revue ci-dessus.
-- [ ] Implémenter la préparation du contexte et la compaction réunies dans Context,
+- [x] Implémenter la préparation du contexte et la compaction réunies dans Context,
   conserver Session canonique et les projections clientes distinctes.
 - [ ] Réexaminer AgentSpec / AgentTrigger / WorkerProfile et la construction des
   spécialistes à partir de la déclaration et du profil résolu.

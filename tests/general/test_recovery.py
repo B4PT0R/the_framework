@@ -1,6 +1,7 @@
 import json
 
-from the_framework.agent.context.compaction import Compaction
+from the_framework.agent.context.builder import Context
+from the_framework.agent.extensions.hooks import Hooks
 from the_framework.agent.models.usage import ResponseUsage
 from the_framework.agent.models.config import Configs
 from the_framework.agent.models.responses import Message
@@ -32,6 +33,8 @@ class Agent:
         self.configs = Configs()
         self.session = Session.open(path)
         self.tools = Tools()
+        self.hooks = Hooks()
+        self.context = Context(self)
 
     def registry(self, name):
         return getattr(self, name)
@@ -45,7 +48,7 @@ def test_compaction_atomically_becomes_the_recovery_anchor(tmp_path):
     agent = Agent(path)
     agent.session.append(Message(role="user", content=[]))
 
-    Compaction(agent).run()
+    agent.context.compact()
     agent.session.append(Message(role="user", content=[]))
     restored = Session.open(path)
 
@@ -74,7 +77,7 @@ def test_compaction_replaces_all_history_and_invalidates_old_usage(tmp_path):
         total_tokens=190_100,
     ))
 
-    Compaction(agent).run()
+    agent.context.compact()
     restored = Session.open(path)
 
     assert [item.type for item in restored.history] == ["compaction_summary"]
