@@ -1,6 +1,8 @@
 import asyncio
 from uuid import UUID
 
+import pytest
+
 from the_framework.agent.runtime.agentic_loop import AgenticLoop
 from the_framework.agent.extensions.commands import Commands
 from the_framework.agent.context.compaction import Compaction
@@ -11,7 +13,7 @@ from the_framework.agent.extensions.hooks import Hooks, hook
 from the_framework.agent.extensions.instructions import Instructions
 from the_framework.agent.extensions.providers import Providers
 from the_framework.agent.models.responses import Compaction as CompactionItem
-from the_framework.agent.models.responses import Image, Message, Portrait
+from the_framework.agent.models.responses import Image, Message
 from the_framework.agent.context.session import Session
 from the_framework.agent.extensions.tools import Tools
 from the_framework.agent import WebSearchTool
@@ -177,15 +179,16 @@ def test_local_images_are_projected_for_generation_and_compaction_then_retired(t
     assert [item["type"] for item in after_compaction] == ["compaction_summary"]
 
 
-def test_portrait_prefix_survives_compaction_and_ignores_zero_image_limit(tmp_path):
+@pytest.mark.parametrize("image_limit", [0, 1])
+def test_image_prefix_survives_compaction_and_obeys_image_limit(tmp_path, image_limit):
     agent = Agent(tmp_path / "session.json")
-    agent.configs.max_input_images = 0
-    portrait_path = tmp_path / "portrait.png"
-    portrait_path.write_bytes(b"portrait")
+    agent.configs.max_input_images = image_limit
+    image_path = tmp_path / "image.png"
+    image_path.write_bytes(b"image")
 
     @hook
     def context_prefix(items):
-        return [Portrait(path=str(portrait_path)), *items]
+        return [Image(path=str(image_path), description="Current visual context"), *items]
 
     agent.hooks.add(context_prefix)
     agent.session.append(Message(role="user", content=[]))
@@ -196,23 +199,27 @@ def test_portrait_prefix_survives_compaction_and_ignores_zero_image_limit(tmp_pa
     after_compaction = agent.context.input()
 
     for projected in (generation, compacted, after_compaction):
-        assert projected[0]["content"][0]["type"] == "input_image"
-        assert "current avatar" in projected[0]["content"][1]["text"]
-    assert [item["type"] for item in compacted] == ["message", "message"]
-    assert [item["type"] for item in after_compaction] == [
-        "message",
-        "compaction_summary",
-    ]
+        images = [
+            content for item in projected for content in item.get("content", [])
+            if content.get("type") == "input_image"
+        ]
+        assert len(images) == image_limit
+    assert [item["type"] for item in compacted] == ["message"] * (1 + image_limit)
+    assert [item["type"] for item in after_compaction] == (
+        ["message"] * image_limit + ["compaction_summary"]
+    )
 
 
 def test_context_prefix_precedes_every_item_in_compacted_output(tmp_path):
     agent = Agent(tmp_path / "session.json")
-    portrait_path = tmp_path / "portrait.png"
-    portrait_path.write_bytes(b"portrait")
+    prefix = Message(
+        role="developer",
+        content=[{"type": "input_text", "text": "Current application context"}],
+    )
 
     @hook
     def context_prefix(items):
-        return [Portrait(path=str(portrait_path)), *items]
+        return [prefix, *items]
 
     agent.hooks.add(context_prefix)
     preserved_recent = Message(role="assistant", content=[])
@@ -226,11 +233,11 @@ def test_context_prefix_precedes_every_item_in_compacted_output(tmp_path):
     agent.session.append(tail)
 
     composed = agent.context.compose_session_items()
-    assert isinstance(composed[0], Portrait)
+    assert composed[0] is prefix
     assert composed[1:] == [preserved_recent, anchor, tail]
 
     projected = agent.context.input()
-    assert projected[0]["content"][0]["type"] == "input_image"
+    assert projected[0]["content"][0]["text"] == "Current application context"
     assert [item["type"] for item in projected[1:]] == [
         "message",
         "compaction",

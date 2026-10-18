@@ -14,7 +14,6 @@ from the_framework.agent.models.responses import (
     FunctionCall,
     FunctionCallOutput,
     Image,
-    MediaReference,
     Message,
     ToolOutput,
 )
@@ -341,42 +340,6 @@ def test_to_api_format_sanitizes_the_canonical_session_before_projection():
         "function_call_output",
     ]
     assert projected[1]["call_id"] == "orphan"
-
-
-def test_to_api_format_projects_video_reference_as_supported_message(tmp_path):
-    path = tmp_path / "clip.mp4"
-    path.write_bytes(b"video")
-    session = Session(history=[MediaReference(
-        path=str(path),
-        title="Shared clip",
-        media_kind="video",
-        mime_type="video/mp4",
-    )])
-
-    assert session.to_api_format() == [{
-        "type": "message",
-        "role": "developer",
-        "content": [{
-            "type": "input_text",
-            "text": (
-                    f'<mentioned_media title="Shared clip" kind="video" '
-                    f'mime_type="video/mp4" rating="unrated" path="{path}">'
-                "Selected by the user for the shared conversation."
-                "</mentioned_media>"
-            ),
-        }],
-    }]
-
-
-def test_media_reference_distinguishes_a_rating_from_unrated(tmp_path):
-    path = tmp_path / "rated.png"
-    path.write_bytes(b"image")
-    reference = MediaReference(
-        path=str(path), title="Rated image", media_kind="image",
-        mime_type="image/png", rating=4,
-    )
-
-    assert 'rating="4/5"' in reference.to_api_format()["content"][1]["text"]
 
 
 def test_missing_image_is_not_added_and_stale_image_is_pruned_atomically(tmp_path):

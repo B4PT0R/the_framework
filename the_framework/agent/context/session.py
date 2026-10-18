@@ -16,9 +16,7 @@ from ..models.responses import (
     FunctionCallOutput,
     Image,
     Artifact,
-    MediaReference,
     Message,
-    Portrait,
     ResponseItem,
 )
 from ..models.base import Base
@@ -128,7 +126,7 @@ class Session(Base):
 
     @classmethod
     def _local_targets_available(cls, item):
-        if isinstance(item, (Image, MediaReference)):
+        if isinstance(item, Image):
             return Path(item.path).is_file()
         if not isinstance(item, Message) or item.kind != "copied_files":
             return True
@@ -245,15 +243,11 @@ class Session(Base):
             for position in [
                 index
                 for index, item in enumerate(source)
-                if isinstance(item, Image) and not isinstance(item, Portrait)
+                if isinstance(item, Image)
             ][-max_input_images:]
         } if include_images and max_input_images else set()
         projected = []
         for index, item in enumerate(source):
-            if isinstance(item, Portrait):
-                if include_images:
-                    projected.append(item.to_api_format())
-                continue
             if isinstance(item, Image):
                 if index in retained:
                     projected.append(item.to_api_format())
@@ -268,9 +262,6 @@ class Session(Base):
                 continue
             if isinstance(item, Artifact):
                 projected.append(item.to_api_format(ephemeral=ephemeral))
-                continue
-            if isinstance(item, MediaReference):
-                projected.append(item.to_api_format())
                 continue
             projected.append(
                 json.loads(json.dumps(item))

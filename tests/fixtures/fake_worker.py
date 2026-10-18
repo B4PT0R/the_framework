@@ -18,7 +18,7 @@ def send(payload):
 send({"type": "worker_ready", "session_id": "test", "protocol": 1})
 pending_application = {}
 config = {"model": "gpt-test", "reasoning": {"effort": "medium"}}
-state = {"succubus_satiety": {}}
+state = {"example": {}}
 if args.exit_after_ready:
     raise SystemExit(3)
 if args.malformed_after_ready:

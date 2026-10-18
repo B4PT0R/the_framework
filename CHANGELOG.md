@@ -6,6 +6,10 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Remove application-specific Portrait and MediaReference payloads and their
+  session projection exceptions. Generic Image inputs obey the same image limit,
+  including dynamic context prefixes; Artifact remains the presentation primitive.
+
 - Keep the starter following newly loaded images when layout delivers a scroll
   before the image load event. Leave follow mode on upward movement rather than
   treating content growth as a request to read older history.

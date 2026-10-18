@@ -913,9 +913,9 @@ or queued for this call. `discard_context(key)` invalidates queued state, and
 `context_blocked` lets producers postpone expensive retrieval. Closing a call
 clears queued updates. These public operations replace private transport calls
 and application-owned delivery buffers.
-Pandora's thin plugin specializations retain her prompts and defaults; her live
-controller owns video/pleasure context. No product import is required by these
-shared mechanisms. Runtime observers use `register_observer`/`unregister_observer`.
+Applications retain their own prompts, defaults and specialized context producers.
+No product import is required by these shared mechanisms. Runtime observers use
+`register_observer`/`unregister_observer`.
 
 An `ApplicationRuntime(WorkerSupervisor(session_path))` can be installed as an
 `ServerExtension` service, with `CanonicalAgentApi` endpoints in a dependent extension.

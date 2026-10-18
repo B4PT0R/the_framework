@@ -25,9 +25,13 @@ conceptuelle totale. Ces notes ne constituent pas des demandes de refonte imméd
   spécialistes à partir de la déclaration et du profil résolu.
 - [ ] Retirer la connaissance du XML mémoire de RealtimeExtension : la voix
   contient encore `_memory_candidates`, malgré les producteurs live séparés.
-- [ ] Revoir Portrait et MediaReference dans le cœur : identité incarnée et
-  notation de médias sont des politiques spécialisées, sans consommateur repéré
-  dans le starter ou le Harness actuels. Préserver les primitives vision/artefact.
+- [x] Retirer Portrait et MediaReference du cœur : payloads, exports et exceptions
+  de projection supprimés, références distantes du Harness nettoyées. Tests de
+  préfixe de contexte conservés avec des messages/images génériques et des limites
+  vision communes. Ancienne politique de notation et d'identité incarnée retirée,
+  documentation et fixture neutralisées ; primitives Image/Artifact conservées.
+  Validation : 653 tests Framework réussis (3 skips), 155 Harness, 53 tests JS
+  et build Harness réussis. Aucun alias ou migration ajouté.
 - [ ] Préciser la dégradation d'un plugin : `critical=False` concerne son start,
   mais les factories sont exécutées avant le cycle de vie et peuvent interrompre
   l'assemblage complet. Ne pas confondre composition et isolation des pannes.
