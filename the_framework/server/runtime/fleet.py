@@ -504,6 +504,8 @@ class FleetSupervisor:
         self.enabled = set(self.runners)
 
     async def observe_activity(self, task, ready, output):
+        if not self.profiles[task.profile].activity_visible:
+            return
         from ...agent.runtime.protocol import SubagentEvent
         output = SubagentEvent(
             session_id=ready.session_id, agent=ready.name,

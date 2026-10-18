@@ -463,3 +463,19 @@ def test_completion_contract_can_require_a_tool_without_retries():
     assert trigger.profile().completion_retry_limit == 0
     with pytest.raises(ValueError, match="completion tool"):
         AgentTrigger(spec=trigger.spec, completion_retry_limit=1)
+
+
+def test_specialist_activity_visibility_compiles_through_wire_profile():
+    from the_framework.agent.models.worker import WorkerProfile
+    from the_framework.plugins.memory.agent import MemoryExtension
+
+    spec = AgentSpec(name="helper", instructions="Help.")
+    assert AgentTrigger(spec=spec).profile().activity_visible is True
+
+    @agent_trigger(spec, activity_visible=False)
+    def quiet_result(result):
+        pass
+
+    profile = AgentTrigger.from_function(quiet_result).profile()
+    assert WorkerProfile(**json.loads(json.dumps(profile))).activity_visible is False
+    assert AgentTrigger.from_function(MemoryExtension.jiminy).profile().activity_visible is False

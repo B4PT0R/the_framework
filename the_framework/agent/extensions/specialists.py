@@ -44,6 +44,7 @@ def agent_trigger(
     input_item_field=None,
     durable=False,
     retain_history=False,
+    activity_visible=True,
     queue=None,
     idle_timeout_seconds=None,
     completion_tool=None,
@@ -61,6 +62,7 @@ def agent_trigger(
             "input_item_field": input_item_field,
             "durable": durable,
             "retain_history": retain_history,
+            "activity_visible": activity_visible,
             "queue": QueuePolicy() if queue is None else queue,
             "idle_timeout_seconds": idle_timeout_seconds,
             "completion_tool": completion_tool,
@@ -119,6 +121,7 @@ class AgentTrigger(Base):
     spec: AgentSpec
     durable: bool = False
     retain_history: bool = False
+    activity_visible: bool = True
     queue: QueuePolicy = modict.factory(QueuePolicy)
     idle_timeout_seconds: float | int | None = None
     completion_tool: str | None = None
@@ -175,6 +178,7 @@ class AgentTrigger(Base):
             agent_config=configuration,
             plugins=[plugin for plugin in spec.extensions if isinstance(plugin, str)],
             durable=self.durable, retain_history=self.retain_history,
+            activity_visible=self.activity_visible,
             queue_limit=self.queue.limit, queue_policy=self.queue.mode,
             durable_tasks=self.queue.durable, backlog_limit=self.queue.backlog_limit,
             idle_timeout_seconds=self.idle_timeout_seconds,

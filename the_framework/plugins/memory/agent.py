@@ -172,6 +172,7 @@ class MemoryExtension(AgentExtension):
             },
             extensions=["the_framework.plugins.memory.curator:MemoryCuratorExtension"],
         ),
+        activity_visible=False,
         idle_timeout_seconds=60, completion_tool="complete_curation",
         completion_retry_limit=4, queue=QueuePolicy(limit=32),
         observes=["agent.compaction.end", "agent.task.requested"],

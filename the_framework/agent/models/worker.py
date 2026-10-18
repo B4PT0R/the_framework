@@ -20,6 +20,7 @@ class WorkerProfile(Base):
     queue_policy: str = "fifo"
     durable: bool = False
     retain_history: bool = False
+    activity_visible: bool = True
     plugins: list[str] = modict.factory(list)
     agent_config: dict = modict.factory(dict)
     plugin_config: dict = modict.factory(dict)

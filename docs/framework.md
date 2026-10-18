@@ -976,7 +976,10 @@ input_item_field=..., durable=False, retain_history=False)` binds an `AgentSpec`
 selects what to observe and the lifetime of the session it launches. Model/plugin settings live in the spec's
 `configuration`, alongside its instructions and plugins. The trigger owns `queue`,
 `idle_timeout_seconds`, `completion_tool` and `completion_retry_limit`: these are
-invocation and result-delivery policies, not agent construction settings. A completion
+invocation and result-delivery policies, not agent construction settings.
+`activity_visible=True` controls transient client activity per specialist; set it
+to `False` to hide progress and completion notifications without suppressing task
+execution, result delivery or diagnostics. The memory curator uses this quiet policy. A completion
 tool can be required without retries; a zero retry limit means one attempt. The spec's name identifies the specialist; a handler docstring fills
 its description when the spec uses the default description.
 

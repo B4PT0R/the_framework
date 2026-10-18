@@ -661,10 +661,11 @@ def test_plugin_runtime_transition_stops_and_restarts_owned_agents(tmp_path):
     asyncio.run(scenario())
 
 
-def test_subagent_activity_returns_only_to_its_calling_session(tmp_path):
+@pytest.mark.parametrize("activity_visible", [True, False])
+def test_subagent_activity_returns_only_to_its_calling_session(tmp_path, activity_visible):
     async def run():
         fleets = [FleetSupervisor(
-            tmp_path / name / "session.json", [profile("reviewer")],
+            tmp_path / name / "session.json", [profile("reviewer", activity_visible=activity_visible)],
             supervisor_factory=FakeSupervisor,
         ) for name in ("a", "b")]
         try:
@@ -676,6 +677,10 @@ def test_subagent_activity_returns_only_to_its_calling_session(tmp_path):
                                    observation_type="explicit", metadata={"command_id": f"parent-{index}"})
             for index, fleet in enumerate(fleets):
                 result = await asyncio.wait_for(fleet.results.get(), 2)
+                assert result.status == "completed"
+                if not activity_visible:
+                    assert fleet.events.empty()
+                    continue
                 activity = await asyncio.wait_for(fleet.events.get(), 2)
                 completion = await asyncio.wait_for(fleet.events.get(), 2)
                 assert activity.task_id == result.task_id
