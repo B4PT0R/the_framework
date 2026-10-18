@@ -399,7 +399,10 @@ class AgenticLoop:
             await asyncio.to_thread(self.agent.compact)
             payload = await self.ageneration_payload(provider_outputs)
             self.agent.context.local_input_tokens(payload)
-        await asyncio.to_thread(self.generation, payload)
+        try:
+            await asyncio.to_thread(self.generation, payload)
+        finally:
+            await self.agent.registry("hooks").arun("after_generation", None)
         if self.tool_calls:
             await self.run_tool_calls(self.tool_calls)
             self.request_next_step = not self.end_turn and not getattr(

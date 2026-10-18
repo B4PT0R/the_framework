@@ -883,6 +883,14 @@ returning a transformed `AgentResponseItemAdded` changes the item to commit.
 Subscribers see that event only after persistence succeeds. Usage is recorded
 internally and exposed on generation completion, without forwarding a response.
 
+The optional `after_generation(payload)` hook runs on the worker event loop after
+stream processing, including when the stream fails, and before local tool calls.
+It receives `None` and may be synchronous or asynchronous. Plugins can use it to
+await application capabilities (for example to publish their own durable outputs).
+Keep feature-specific decoding, storage and presentation in the plugin, not the
+Responses adapter; `on_event` can first transform an output into a local reference
+before any binary payload reaches canonical history or downstream subscribers.
+
 `Event.from_dict()` reconstructs declared types and rejects unknown types;
 event fields reject undeclared keys. `CommandEvent.event`, `SubagentEvent.event`
 and `RealtimeEvent.event` all enforce this boundary. The existing command,

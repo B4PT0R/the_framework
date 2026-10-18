@@ -1,3 +1,5 @@
+import inspect
+
 from ..models.base import Base
 
 
@@ -42,4 +44,11 @@ class Hooks(Base[str, Hook]):
         if hook is None:
             return payload
         result = hook(payload)
+        return payload if result is None else result
+
+    async def arun(self, name, payload):
+        """Run a hook at an asynchronous lifecycle boundary (sync hooks also work)."""
+        result = self.run(name, payload)
+        if inspect.isawaitable(result):
+            result = await result
         return payload if result is None else result
