@@ -4,6 +4,34 @@ Relevé du 10 octobre 2026. The Harness est le cas canonique, mais une extractio
 n'est justifiée que si elle sert aussi d'autres applications et réduit la surface
 conceptuelle totale. Ces notes ne constituent pas des demandes de refonte immédiate.
 
+## Revue d'ensemble avant refonte de l'API — 18 octobre 2026
+
+- Minimiser le vocabulaire nécessaire aux cas simples et réutiliser les mêmes
+  concepts pour les cas avancés. Préférer des classes cohérentes portant données,
+  invariants et opérations utiles ; éviter les helpers d'assemblage parallèles,
+  les classes de simple transmission et les objets géants à dizaines d'options.
+- Distinguer les payloads `modict` avec logique locale, les déclarations de
+  construction et les objets runtime propriétaires de ressources/cycles de vie.
+  Le nombre de types de protocole n'est pas une mesure de complexité de l'API.
+  L'héritage `modict` seul ne classe pas un objet : Session et BrowserSession
+  mêlent actuellement données et responsabilités runtime.
+- [ ] Clarifier les propriétaires derrière ApplicationSpec, ApplicationContext,
+  ApplicationRuntime et les attributs `application` du worker et du serveur.
+- [ ] Revoir ensemble Plugin, AgentExtension, ServerExtension et BuildContext :
+  formes de déclaration, configuration, dépendances et contributions.
+- [ ] Examiner les frontières Session / Context / Compaction et la place des
+  projections vers le backend et vers les clients, sans fusionner leurs garanties.
+- [ ] Réexaminer AgentSpec / AgentTrigger / WorkerProfile et la construction des
+  spécialistes à partir de la déclaration et du profil résolu.
+- [ ] Retirer la connaissance du XML mémoire de RealtimeExtension : la voix
+  contient encore `_memory_candidates`, malgré les producteurs live séparés.
+- [ ] Revoir Portrait et MediaReference dans le cœur : identité incarnée et
+  notation de médias sont des politiques spécialisées, sans consommateur repéré
+  dans le starter ou le Harness actuels. Préserver les primitives vision/artefact.
+- [ ] Préciser la dégradation d'un plugin : `critical=False` concerne son start,
+  mais les factories sont exécutées avant le cycle de vie et peuvent interrompre
+  l'assemblage complet. Ne pas confondre composition et isolation des pannes.
+
 ## Livré dans cette passe
 
 - [x] **Chat intégré à l’hôte — 18 octobre.** `build_conversation()` assemble les
