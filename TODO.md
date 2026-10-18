@@ -42,8 +42,8 @@ conceptuelle totale. Ces notes ne constituent pas des demandes de refonte imméd
   projections vers le backend et vers les clients, sans fusionner leurs garanties.
 - [ ] Réexaminer AgentSpec / AgentTrigger / WorkerProfile et la construction des
   spécialistes à partir de la déclaration et du profil résolu.
-- [ ] Retirer la connaissance du XML mémoire de RealtimeExtension : la voix
-  contient encore `_memory_candidates`, malgré les producteurs live séparés.
+- [x] Le plugin mémoire possède désormais le décodage de son XML depuis les
+  slots de contexte retenus ; Realtime ne connaît plus les candidats mémoire.
 - [x] Retirer Portrait et MediaReference du cœur : payloads, exports et exceptions
   de projection supprimés, références distantes du Harness nettoyées. Tests de
   préfixe de contexte conservés avec des messages/images génériques et des limites
@@ -51,29 +51,37 @@ conceptuelle totale. Ces notes ne constituent pas des demandes de refonte imméd
   documentation et fixture neutralisées ; primitives Image/Artifact conservées.
   Validation : 653 tests Framework réussis (3 skips), 155 Harness, 53 tests JS
   et build Harness réussis. Aucun alias ou migration ajouté.
-- [ ] Préciser la dégradation d'un plugin : `critical=False` concerne son start,
-  mais les factories sont exécutées avant le cycle de vie et peuvent interrompre
-  l'assemblage complet. Ne pas confondre composition et isolation des pannes.
+- [x] `critical=False` couvre les erreurs des factories de services et du start.
+  Déclarations invalides et dépendants critiques restent fatals ; santé explicite
+  et aucune contribution serveur exposée pour une construction indisponible.
 
 ## Relecture avant refonte — prérequis ciblés, 18 octobre
 
-- [ ] **Navigateur agentique fiable.** Reproduction isolée avec Chromium : après
-  avoir masqué Chat et affiché Retour, le nouvel identifiant de Retour désigne
-  deux nœuds DOM. `SNAPSHOT_SCRIPT` réattribue les numéros sans nettoyer les
-  anciens attributs. Corriger capture/résolution et verrouiller le changement de
-  vue. Diagnostiquer séparément le timeout RPC de fermeture d'aperçu déjà observé
-  dans le Harness ; la cause exacte n'est pas encore établie.
-- [ ] **Finir les frontières des plugins.** Déplacer `_memory_candidates` et la
-  connaissance de `relevant_memory`/du XML mémoire hors de RealtimeExtension, dans
-  le plugin mémoire, en réutilisant les contributions de contexte existantes.
-  Supprimer la migration automatique des références `*Plugin`/`.plugin` dans
-  `AgentSpec.from_profile` et actualiser les fixtures ; ne pas intégrer de migration
-  au runtime. Le profil d'exécution lui-même sera revu avec l'API des agents.
-- [ ] **Dégradation d'un service optionnel.** Sonde confirmée : une factory qui
-  lève avec `critical=False` interrompt build(), avant le graphe de cycle de vie.
-  Distinguer déclaration invalide (erreur de composition) et service optionnel
-  indisponible (dégradation), avec traitement cohérent des dépendants et maintien
-  du chat. Fixer ce contrat avant de remodeler l'objet Application.
+- [x] **Références et RPC du navigateur.** Chaque capture invalide les anciens
+  identifiants, y compris ceux des nœuds cachés/tronqués. Déconnexion/expiration du
+  client RPC : annulation de l'opération en cours. Tests Chromium et annulation
+  couverts ; parcours Réglages/Retour et fermeture d'un aperçu authentifié vérifiés
+  sur l'installation, sans perte du chat principal.
+- [ ] **Cause du blocage historique d'un onglet.** L'ancien aperçu ne se fermait
+  plus, même après navigation vers about:blank ; un nouvel onglet et un nouvel
+  aperçu authentifié se fermaient normalement dans le même daemon. Non reproduit
+  avec un contexte neuf, headless ou visible. Le daemon a été mis à jour après
+  sauvegarde de l'état ; la cause initiale reste inconnue. Ne pas présenter
+  l'annulation des RPC abandonnés comme une correction démontrée de cette cause.
+- [x] **Frontières des plugins.** XML mémoire déplacé dans MemoryLiveContext, à
+  partir des provider_slots retenus après ajustement au budget. Migration runtime
+  des références historiques supprimée d'AgentSpec.from_profile ; profil résolu
+  à réexaminer avec l'API des agents. Aucun changement des modèles de payloads.
+- [x] **Dégradation d'un service optionnel.** Échec de construction visible dans
+  la santé, contributions indisponibles retirées, dépendants respectant critical.
+  Contrats invalides toujours fatals. Une nouvelle composition réessaie la factory.
+  Conversation et sessions supplémentaires fonctionnelles sans service optionnel.
+
+Validation des trois lots : 687 tests Framework réussis, 3 skips ; 157 tests
+Harness réussis ; Ruff critique et diff vérifiés. Serveur installé redémarré avec
+fenêtre conservée, puis daemon navigateur actualisé pour charger ses corrections.
+Historique, archive, configuration et bindings de session conservés ; commandes
+recalculées au démarrage. Aperçu neuf fermé et retour au chat contrôlés en réel.
 
 Précision de Baptiste : la correspondance entre nom de classe et `type` des modèles
 de payloads est une discipline volontaire, à conserver. Ces modèles sont hors du
