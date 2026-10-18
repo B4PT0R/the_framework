@@ -69,17 +69,16 @@ conceptuelle totale. Ces notes ne constituent pas des demandes de refonte imméd
   Supprimer la migration automatique des références `*Plugin`/`.plugin` dans
   `AgentSpec.from_profile` et actualiser les fixtures ; ne pas intégrer de migration
   au runtime. Le profil d'exécution lui-même sera revu avec l'API des agents.
-- [ ] **Décodage indépendant des noms Python.** `TypedBase.type_cls` reconstruit
-  un nom de classe à partir du tag au lieu de résoudre le `type` déclaré. Sonde
-  confirmée : `WeatherReport(type="weather.updated")` ne se reconstruit pas via
-  Event.from_dict. C'est une convention actuelle documentée, mais un couplage à
-  supprimer avant les renommages ; conserver le refus des événements inconnus
-  et des champs non déclarés. Éviter d'ajouter un nouveau vocabulaire de registre.
 - [ ] **Dégradation d'un service optionnel.** Sonde confirmée : une factory qui
   lève avec `critical=False` interrompt build(), avant le graphe de cycle de vie.
   Distinguer déclaration invalide (erreur de composition) et service optionnel
   indisponible (dégradation), avec traitement cohérent des dépendants et maintien
   du chat. Fixer ce contrat avant de remodeler l'objet Application.
+
+Précision de Baptiste : la correspondance entre nom de classe et `type` des modèles
+de payloads est une discipline volontaire, à conserver. Ces modèles sont hors du
+périmètre du refactor ; le point de nettoyage proposé sur leur décodage est retiré.
+La refonte vise les objets runtime et leur assemblage.
 
 Les propriétaires ApplicationSpec/ApplicationContext/ApplicationRuntime, les scopes
 application/session, les formes Plugin/AgentExtension/ServerExtension et le trajet
