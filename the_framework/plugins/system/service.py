@@ -1,6 +1,7 @@
 import asyncio
 import inspect
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from html import escape
@@ -10,6 +11,9 @@ from modict import modict
 
 from the_framework.agent.runtime.protocol import CommandCompleted, CommandFailed, PromptRequest
 from the_framework.agent.models.base import Base
+
+
+logger = logging.getLogger(__name__)
 
 
 def utc_timestamp():
@@ -166,6 +170,8 @@ class SystemControlService:
             created_at=utc_timestamp(),
         )
         async with self.lock:
+            if self.restart_task is not None and not self.restart_task.done():
+                raise RuntimeError("a server restart is already running")
             if self.intent is not None:
                 replaceable_realtime_resume = (
                     self.intent.status == "restart_committed"
@@ -225,9 +231,16 @@ class SystemControlService:
             result = self.restart(intent)
             if inspect.isawaitable(result):
                 await result
-        except Exception as error:
-            self.error = f"server restart failed: {error}"
-            raise
+        except Exception:
+            logger.exception("Server restart failed; cancelling its pending resume")
+            async with self.lock:
+                try:
+                    # No restart occurred: never replay this intent on startup,
+                    # and allow a new explicit request after this task finishes.
+                    await asyncio.to_thread(self._clear)
+                except Exception as error:
+                    self.error = f"could not clear failed restart state: {error}"
+                    raise
 
     async def realtime_recovery_status(self):
         async with self.lock:

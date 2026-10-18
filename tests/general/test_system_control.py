@@ -252,3 +252,89 @@ def test_reloading_after_reset_clears_stale_state_error(tmp_path):
         assert service.intent is None
 
     asyncio.run(scenario())
+
+
+def test_failed_restart_can_be_retried_without_a_phantom_resume(tmp_path):
+    async def scenario():
+        calls = []
+        async def restart(intent):
+            calls.append(intent["action_id"])
+            if len(calls) == 1:
+                raise TimeoutError("voice still active")
+        path = tmp_path / "control.json"
+        service = SystemControlService(path, lambda command: None, restart=restart)
+        for index in range(2):
+            command = PromptRequest(id=f"turn-{index}", prompt="Restart")
+            await service.handle("reboot_server", {
+                "action_id": f"restart-{index}", "resume_instruction": "Continue.",
+            }, command_id=command.id)
+            await service.observe(terminal(command))
+            await service.restart_task
+            if index == 0:
+                assert service.error is None
+                assert service.intent is None
+                assert not path.exists()
+                restored = SystemControlService(path, lambda command: None)
+                await restored.start()
+                assert restored.intent is None
+        assert calls == ["restart-0", "restart-1"]
+        assert service.intent.action_id == "restart-1"
+    asyncio.run(scenario())
+
+
+def test_running_realtime_restart_cannot_be_superseded(tmp_path):
+    async def scenario():
+        started, release = asyncio.Event(), asyncio.Event()
+        async def restart(intent):
+            started.set()
+            await release.wait()
+        service = SystemControlService(tmp_path / "control.json", lambda command: None, restart=restart)
+        command = PromptRequest(id="realtime-delegation:call:turn", prompt="Restart")
+        await service.handle("reboot_server", {
+            "action_id": "first", "resume_instruction": "Continue.",
+        }, command_id=command.id)
+        await service.observe(terminal(command))
+        await started.wait()
+        try:
+            try:
+                await service.handle("reboot_server", {
+                    "action_id": "second", "resume_instruction": "Continue.",
+                }, command_id="another-turn")
+            except RuntimeError as error:
+                assert "already" in str(error)
+            else:
+                raise AssertionError("A concurrent restart was accepted")
+            assert service.intent.action_id == "first"
+        finally:
+            release.set()
+            await service.restart_task
+    asyncio.run(scenario())
+
+
+def test_failed_restart_cleanup_error_still_blocks_retry(tmp_path):
+    async def scenario():
+        async def restart(intent):
+            raise TimeoutError("voice still active")
+        service = SystemControlService(tmp_path / "control.json", lambda command: None, restart=restart)
+        command = PromptRequest(id="turn", prompt="Restart")
+        await service.handle("reboot_server", {
+            "action_id": "first", "resume_instruction": "Continue.",
+        }, command_id=command.id)
+        def cannot_clear():
+            raise OSError("storage unavailable")
+        service._clear = cannot_clear
+        await service.observe(terminal(command))
+        try:
+            await service.restart_task
+        except OSError:
+            pass
+        else:
+            raise AssertionError("Cleanup failure was hidden")
+        assert "could not clear failed restart state" in service.error
+        try:
+            await service.handle("reboot_server", {"action_id": "retry"}, command_id="next")
+        except RuntimeError as error:
+            assert "storage unavailable" in str(error)
+        else:
+            raise AssertionError("Unsafe retry was accepted")
+    asyncio.run(scenario())
