@@ -139,6 +139,7 @@ class BrowserSession(modict):
     headless: bool = False
     viewport: dict[str, int] | None = modict.factory(lambda: dict(DEFAULT_VIEWPORT))
     no_viewport: bool = False
+    native_downloads: bool = False
     extra_args: list[str] = modict.factory(list)
     ignore_default_args: list[str] = modict.factory(list)
     playwright_factory: Callable[[], Any] = _default_playwright_factory
@@ -189,6 +190,11 @@ class BrowserSession(modict):
                 if browser is not None:
                     cdp = await browser.new_browser_cdp_session()
                     try:
+                        if self.native_downloads:
+                            # Desktop users need Chromium's normal filenames,
+                            # destination and retention, not Playwright's temporary
+                            # GUID downloads (which disappear on context shutdown).
+                            await cdp.send("Browser.setDownloadBehavior", {"behavior": "default"})
                         info = await cdp.send("SystemInfo.getProcessInfo")
                         pid = next(item["id"] for item in info["processInfo"] if item["type"] == "browser")
                         process = psutil.Process(pid)
@@ -440,6 +446,7 @@ class BrowserService:
                 headless=ui_headless,
                 viewport=None,
                 no_viewport=True,
+                native_downloads=not ui_headless,
                 ignore_default_args=["about:blank"] if self.ui_app_mode else [],
                 playwright_factory=factory,
             ),
