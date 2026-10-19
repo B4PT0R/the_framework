@@ -619,6 +619,69 @@ Scheduler and system services require the application's `runtime` service;
 plugin options `scheduler.state_path` and `system.state_path` override the files
 through `BuildContext(plugins={"system": {"state_path": path}})`. System restart
 uses the runtime's application-owned `restart_server` operation when configured.
+### Scheduler: tasks and wake-ups
+
+`SCHEDULER` keeps both tracked tasks and autonomous wakes in its session-owned
+`scheduler.json`. Existing wake-only documents remain readable. Tasks never
+complete merely because a reminder command finishes. They retain active/done/
+cancelled state, a revision, a distinct recurring occurrence and 32 recent
+history entries. Edits and resolution require `expected_revision`; obsolete
+queued reminders are revalidated by the agent before acting.
+
+Agent configuration `scheduler.timezone` is an IANA name (default `UTC`), used
+for the daily agenda, query dates and newly created tasks; `agenda_limit`
+(default 12, maximum 30) bounds the live `daily_tasks` provider. That context
+reports relevant/active counts and truncation, not a complete task list. Bridge
+failure is reported as unavailable, never as an empty agenda. Existing agent
+configurations need not change; set the timezone explicitly for local-day views.
+
+The tools `create_task(task_json)`, `get_task(task_id)`,
+`find_tasks(query_json)`, `update_task(task_id, changes_json, expected_revision)`
+and `resolve_task(task_id, action, expected_revision, at=None, scope="occurrence")`
+use JSON object strings for extensible payloads compatible with strict tool
+schemas. For example, the JSON passed to `create_task` can be:
+
+```json
+{
+  "title": "Drop off the completed dossier",
+  "timezone": "Europe/Paris",
+  "tags": ["admin"],
+  "planned_at": "2026-10-19T13:00:00+02:00",
+  "reminder_at": "2026-10-19T13:00:00+02:00"
+}
+```
+
+This creates no real deadline. `due_at` optionally records a deadline (an offset
+ISO datetime or a date valid through local midnight), while `planned_at` records
+an intended action time. Optional fields include `priority` (0..3), `next_action`,
+`notes`, `remind_before_minutes` (relative to planned time, otherwise deadline),
+`overdue_after_minutes` (one overdue alert) and `recurrence`. No reminders are
+implicit. `find_tasks` filters status, tags, text, inclusive from_date/to_date,
+timezone, overdue and undated, with limit/offset pagination. A date range matches
+any deadline, planned time or next reminder. Full details come from `get_task`.
+
+Resolution actions are done/cancel, skip for recurring occurrences, postpone
+(move planned time and any existing deadline), or snooze (defer the reminder
+without moving the deadline). The latter two require a future offset `at`.
+Updates preserve omitted fields; null clears nullable fields. A recurring task
+stays active until its occurrence is explicitly resolved; done/cancel/skip
+advance to the next future occurrence without a missed-occurrence backlog.
+Done/cancel with `scope="series"` closes the whole series. Repeated worker
+failures are limited to three attempts per reminder batch and remain visible
+as an error, not a completed task.
+
+`recurrence` and wake tool `calendar_json` share the calendar shape
+`{"time":"08:30","timezone":"Europe/Paris","weekdays":[0,1,2,3,4]}`.
+Monday is 0; no weekdays means every day. The timezone must match the recurring
+task. Its first timed deadline is computed if omitted. Calendar wakes advance
+in the server, preserving local wall time across daylight-saving changes;
+nonexistent spring times move forward by the gap and autumn folds fire once
+at the first occurrence. One-shot `at` and fixed `interval_minutes` wakes
+remain available. No frontend or mobile notification delivery guarantee is
+introduced by task tracking.
+
+### Realtime service
+
 The neutral realtime plugin exposes call creation/readiness/stop endpoints and
 its controller, with an optional `realtime.client_factory` plugin option.
 Its agent tools `start_session`, `stop_session` and `session_status` control the

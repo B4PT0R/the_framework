@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from html import escape
 from pathlib import Path
@@ -9,6 +10,9 @@ from modict import modict
 
 from the_framework.agent.runtime.protocol import CommandCompleted, CommandFailed, PromptRequest
 from the_framework.agent.models.base import Base
+
+from .calendar import calendar_schedule, next_calendar
+from .tasks import TaskBook
 
 UTC = timezone.utc
 
@@ -40,6 +44,7 @@ class ScheduledWake(Base):
     schedule_type: str = modict.field(required="always")
     next_run_at: str = modict.field(required="always")
     interval_minutes: int | None = None
+    calendar: dict | None = None
     delivery: str = "message"
     enabled: bool = True
     created_at: str = modict.field(required="always")
@@ -61,6 +66,7 @@ class SchedulerService:
         self.poll_interval = poll_interval
         self.retry_interval = retry_interval
         self.wakes = {}
+        self.tasks = TaskBook()
         self.error = None
         self.task = None
         self.lock = asyncio.Lock()
@@ -75,7 +81,7 @@ class SchedulerService:
     def health(self):
         return {
             "running": self.running, "active": self.active,
-            "error": self.error, "wakes": len(self.wakes),
+            "error": self.error, "wakes": len(self.wakes), "tasks": len(self.tasks.tasks),
         }
 
     async def start(self, *, active=True):
@@ -100,6 +106,7 @@ class SchedulerService:
 
     def _load(self):
         if not self.path.exists():
+            self.tasks = TaskBook()
             return {}
         document = json.loads(self.path.read_text(encoding="utf-8"))
         if not isinstance(document, dict) or document.get("version") != self.version:
@@ -114,6 +121,7 @@ class SchedulerService:
             if wake.id in wakes:
                 raise ValueError(f"duplicate scheduled wake: {wake.id}")
             wakes[wake.id] = wake
+        self.tasks = TaskBook(document.get("tasks", []))
         return wakes
 
     def _save(self):
@@ -122,6 +130,7 @@ class SchedulerService:
         document = {
             "version": self.version,
             "wakes": [dict(wake) for wake in self.wakes.values()],
+            "tasks": self.tasks.snapshot(),
         }
         with temporary.open("w", encoding="utf-8") as file:
             os.chmod(temporary, 0o600)
@@ -142,11 +151,17 @@ class SchedulerService:
 
     @staticmethod
     def _validate_wake(wake):
-        if wake.schedule_type not in {"once", "interval"}:
-            raise ValueError("schedule_type must be once or interval")
+        if wake.schedule_type not in {"once", "interval", "calendar"}:
+            raise ValueError("schedule_type must be once, interval or calendar")
         if wake.delivery not in {"message", "alarm"}:
             raise ValueError("delivery must be message or alarm")
         parse_datetime(wake.next_run_at, field="next_run_at")
+        if wake.schedule_type == "calendar":
+            calendar_schedule(wake.calendar)
+            if wake.interval_minutes is not None:
+                raise ValueError("calendar wakes cannot define interval_minutes")
+        elif wake.calendar is not None:
+            raise ValueError("calendar is only valid for calendar wakes")
         if wake.schedule_type == "once" and wake.interval_minutes is not None:
             raise ValueError("one-time wakes cannot define interval_minutes")
         if wake.schedule_type == "interval":
@@ -166,6 +181,8 @@ class SchedulerService:
             "delete": self.delete,
             "run_now": self.run_now,
         }
+        if method.startswith("task_"):
+            return await self.task_call(method[5:], payload)
         handler = handlers.get(method)
         if handler is None:
             raise ValueError(f"unsupported scheduler method: {method}")
@@ -180,6 +197,7 @@ class SchedulerService:
         at=None,
         interval_minutes=None,
         first_at=None,
+        calendar=None,
         delivery="message",
         max_wakes=64,
         min_interval_minutes=1,
@@ -197,10 +215,17 @@ class SchedulerService:
         prompt = self._required_text(prompt, "prompt", 16_000)
         if delivery not in {"message", "alarm"}:
             raise ValueError("delivery must be message or alarm")
-        if bool(at) == (interval_minutes is not None):
-            raise ValueError("provide exactly one of at or interval_minutes")
+        if sum((bool(at), interval_minutes is not None, calendar is not None)) != 1:
+            raise ValueError("provide exactly one of at, interval_minutes or calendar")
+        if first_at is not None and interval_minutes is None:
+            raise ValueError("first_at is only valid for interval wakes")
         now = utc_now()
-        if at:
+        if calendar is not None:
+            calendar = calendar_schedule(calendar)
+            schedule_type = "calendar"
+            next_run = next_calendar(calendar, now)
+            interval = None
+        elif at:
             schedule_type = "once"
             next_run = parse_datetime(at)
             interval = None
@@ -226,6 +251,7 @@ class SchedulerService:
             schedule_type=schedule_type,
             next_run_at=format_datetime(next_run),
             interval_minutes=interval,
+            calendar=calendar,
             delivery=delivery,
             created_at=timestamp,
             updated_at=timestamp,
@@ -277,43 +303,31 @@ class SchedulerService:
         self.changed.set()
         return dict(wake)
 
-    async def reschedule(
-        self,
-        *,
-        wake_id,
-        at=None,
-        interval_minutes=None,
-        first_at=None,
-        min_interval_minutes=1,
-    ):
+    async def reschedule(self, *, wake_id, at=None, interval_minutes=None, first_at=None,
+                         calendar=None, min_interval_minutes=1):
         self._ensure_available()
-        if bool(at) == (interval_minutes is not None):
-            raise ValueError("provide exactly one of at or interval_minutes")
+        if sum((bool(at), interval_minutes is not None, calendar is not None)) != 1:
+            raise ValueError("provide exactly one of at, interval_minutes or calendar")
+        if first_at is not None and interval_minutes is None:
+            raise ValueError("first_at is only valid for interval wakes")
+        if calendar is not None:
+            calendar = calendar_schedule(calendar)
+            kind, due = "calendar", next_calendar(calendar, utc_now())
+        elif at:
+            kind, due = "once", parse_datetime(at)
+        else:
+            if type(min_interval_minutes) is not int or min_interval_minutes < 1:
+                raise ValueError("min_interval_minutes must be positive")
+            if type(interval_minutes) is not int or interval_minutes < min_interval_minutes:
+                raise ValueError("interval_minutes is below the minimum")
+            kind = "interval"
+            due = parse_datetime(first_at, field="first_at") if first_at else utc_now() + timedelta(minutes=interval_minutes)
         async with self.lock:
             wake = self._wake(wake_id)
-            previous = ScheduledWake(**dict(wake))
-            if at:
-                wake.schedule_type = "once"
-                wake.next_run_at = format_datetime(parse_datetime(at))
-                wake.interval_minutes = None
-            else:
-                if isinstance(interval_minutes, bool) or not isinstance(interval_minutes, int):
-                    raise ValueError("interval_minutes must be an integer")
-                if interval_minutes < min_interval_minutes:
-                    raise ValueError(
-                        f"interval_minutes must be at least {min_interval_minutes}"
-                    )
-                wake.schedule_type = "interval"
-                wake.interval_minutes = interval_minutes
-                wake.next_run_at = format_datetime(
-                    parse_datetime(first_at, field="first_at")
-                    if first_at
-                    else utc_now() + timedelta(minutes=interval_minutes)
-                )
-            wake.enabled = True
-            wake.pending_occurrence_id = None
-            wake.updated_at = format_datetime(utc_now())
-            self._validate_wake(wake)
+            previous = deepcopy(wake)
+            wake.update(schedule_type=kind, next_run_at=format_datetime(due),
+                        interval_minutes=interval_minutes, calendar=calendar, enabled=True,
+                        pending_occurrence_id=None, delivery_attempt=0, updated_at=format_datetime(utc_now()))
             try:
                 await asyncio.to_thread(self._save)
             except Exception:
@@ -359,6 +373,12 @@ class SchedulerService:
         command_id = output.command.id
         try:
             async with self.lock:
+                error = output.error if isinstance(output, CommandFailed) else None
+                if self.tasks.observe(command_id, error):
+                    await asyncio.to_thread(self._save)
+                    self.last_attempts.pop(command_id, None)
+                    self.changed.set()
+                    return
                 wake = next(
                     (
                         candidate
@@ -407,6 +427,7 @@ class SchedulerService:
                     continue
                 self.last_attempts[occurrence_id] = now
                 deliveries.append((wake, occurrence_id))
+        await self.dispatch_tasks(now)
         for wake, occurrence_id in deliveries:
             body = (
                 f'<scheduled_wake id="{escape(wake.id)}" '
@@ -436,6 +457,8 @@ class SchedulerService:
         wake.delivery_attempt = 0
         if wake.schedule_type == "once":
             wake.enabled = False
+        elif wake.schedule_type == "calendar":
+            wake.next_run_at = format_datetime(next_calendar(wake.calendar, utc_now()))
         else:
             interval = timedelta(minutes=wake.interval_minutes)
             now = utc_now()
@@ -444,10 +467,79 @@ class SchedulerService:
             wake.next_run_at = format_datetime(due)
         wake.updated_at = format_datetime(utc_now())
 
+    async def task_call(self, method, payload):
+        self._ensure_available()
+        now = utc_now()
+        async with self.lock:
+            if method == "get":
+                return self.tasks.view(self.tasks.get(payload["task_id"]), now)
+            if method == "find":
+                return self.tasks.find(payload.get("query", {}), now)
+            if method == "agenda":
+                return self.tasks.agenda(now, payload.get("timezone", "UTC"), payload.get("limit", 12))
+            previous = self.tasks.snapshot()
+            try:
+                if method == "create":
+                    if len(self.tasks.tasks) >= 2000:
+                        raise ValueError("task limit reached (2000)")
+                    result = self.tasks.create(payload["task_id"], payload["task"], now)
+                elif method == "update":
+                    result = self.tasks.update(payload["task_id"], payload["changes"], payload["expected_revision"], now)
+                elif method == "resolve":
+                    result = self.tasks.resolve(payload["task_id"], payload["action"], payload["expected_revision"], now,
+                                                at=payload.get("at"), scope=payload.get("scope", "occurrence"))
+                else:
+                    raise ValueError(f"unsupported task method: {method}")
+                await asyncio.to_thread(self._save)
+            except Exception:
+                self.tasks = TaskBook(previous)
+                raise
+        self.changed.set()
+        return result
+
+    async def dispatch_tasks(self, now):
+        async with self.lock:
+            previous = self.tasks.snapshot()
+            prepared = self.tasks.prepare(now)
+            if previous != self.tasks.snapshot():
+                try:
+                    await asyncio.to_thread(self._save)
+                except Exception:
+                    self.tasks = TaskBook(previous)
+                    raise
+            deliveries = []
+            for task, occurrence_id in prepared:
+                last = self.last_attempts.get(occurrence_id)
+                if last is not None and (now - last).total_seconds() < self.retry_interval:
+                    continue
+                self.last_attempts[occurrence_id] = now
+                deliveries.append((task.id, task.revision, occurrence_id))
+        for task_id, revision, occurrence_id in deliveries:
+            async with self.lock:
+                task = self.tasks.get(task_id)
+                if task.status != "active" or task.revision != revision or not task.pending or task.pending["id"] != occurrence_id:
+                    continue
+                body = (f'<scheduled_task id="{escape(task.id)}" revision="{revision}" '
+                        f'occurrence_id="{escape(task.occurrence_id)}">'
+                        f'<title>{escape(task.title)}</title>'
+                        'A task reminder is due. Read scheduler.get_task before acting; if its revision '
+                        'or occurrence changed, or it is closed, this reminder is obsolete. '
+                        'Use the current task data and conversation to give a brief helpful reminder. '
+                        'Delivery is not completion: only explicit user confirmation resolves a task. '
+                        'Never open a microphone or escalate to an alarm automatically.'
+                        '</scheduled_task>')
+            try:
+                await self.deliver(PromptRequest(id=occurrence_id, prompt=body, prompt_role="developer", prompt_kind="scheduled_wake"))
+            except Exception:
+                continue
+
     async def _run(self):
         while True:
-            await self.dispatch_due()
             self.changed.clear()
+            try:
+                await self.dispatch_due()
+            except Exception as error:
+                self.error = f"could not dispatch scheduler reminders: {error}"
             try:
                 await asyncio.wait_for(self.changed.wait(), timeout=self.poll_interval)
             except TimeoutError:
