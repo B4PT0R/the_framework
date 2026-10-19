@@ -190,3 +190,38 @@ def test_native_close_finishes_profile_exit_before_driver_release_or_reopen(tmp_
             exited.set()
             await session.stop()
     asyncio.run(asyncio.wait_for(run(), 5))
+
+
+def test_observation_bounds_stalled_capture(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from the_framework.server.clients import browser
+
+    async def run():
+        cancelled = asyncio.Event()
+
+        async def snapshot(**kwargs):
+            return {"url": "about:blank"}
+
+        async def screenshot(*args, **kwargs):
+            try:
+                await asyncio.Future()
+            finally:
+                cancelled.set()
+
+        service = browser.BrowserService(tmp_path)
+        session = SimpleNamespace(snapshot=snapshot, screenshot=screenshot)
+        monkeypatch.setattr(service, "session", lambda target: session)
+        timeout = asyncio.timeout
+        budgets = []
+
+        def short_timeout(seconds):
+            budgets.append(seconds)
+            return timeout(0.01)
+
+        monkeypatch.setattr(browser.asyncio, "timeout", short_timeout)
+        with pytest.raises(browser.BrowserError, match="observation timed out after 5 seconds"):
+            await service.observe("web", tmp_path / "capture.png")
+        assert budgets == [5]
+        assert cancelled.is_set()
+
+    asyncio.run(run())

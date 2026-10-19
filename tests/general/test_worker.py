@@ -998,3 +998,39 @@ def test_ready_catalogue_uses_configured_inactive_triggers_and_bare_declarations
         assert observer.instructions == "Configured role"
         assert observer.observes == ["agent.response_item.added"]
     asyncio.run(run())
+
+
+def test_browser_observation_does_not_block_worker_status(tmp_path):
+    import threading
+    from the_framework.plugins.browser import ChromiumExtension
+
+    async def run():
+        entered, release = threading.Event(), threading.Event()
+        plugin = ChromiumExtension(RuntimeAgent(client=object()), runtime_root=tmp_path)
+
+        def slow_status(*args):
+            entered.set()
+            assert release.wait(2), "event loop could not release browser observation"
+            return {"open": False}
+
+        plugin.controller.session_call = slow_status
+        observation = asyncio.create_task(plugin.chromium_state())
+        outgoing = []
+
+        async def send(message):
+            outgoing.append(message)
+
+        worker = Worker(Agent(), asyncio.Queue().get, send)
+        try:
+            async with asyncio.timeout(1):
+                while not entered.is_set():
+                    await asyncio.sleep(0.001)
+                await worker.handle(StatusRequest(id="status-during-observation"))
+                assert outgoing[-1].type == "worker_status"
+                assert not observation.done()
+        finally:
+            release.set()
+            await observation
+            await asyncio.gather(*worker.tasks)
+
+    asyncio.run(run())

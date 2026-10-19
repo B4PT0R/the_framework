@@ -515,8 +515,14 @@ class BrowserService:
 
     async def observe(self, target, screenshot_path, *, max_elements=120):
         session = self.session(target)
-        snapshot = await session.snapshot(max_elements=max_elements)
-        path = await session.screenshot(Path(screenshot_path), full_page=False)
+        # Ephemeral context must not spend a full Playwright timeout waiting
+        # for an unresponsive page or pending fonts before every model step.
+        try:
+            async with asyncio.timeout(5):
+                snapshot = await session.snapshot(max_elements=max_elements)
+                path = await session.screenshot(Path(screenshot_path), full_page=False)
+        except TimeoutError as error:
+            raise BrowserError("browser observation timed out after 5 seconds") from error
         return snapshot, path
 
 

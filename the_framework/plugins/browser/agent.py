@@ -1,3 +1,4 @@
+import asyncio
 import json
 from pathlib import Path
 
@@ -165,9 +166,11 @@ class ChromiumExtension(AgentExtension):
         return "\n".join(lines)
 
     @provider
-    def chromium_state(self):
-        """Expose the active Chromium target as fresh ephemeral context."""
-        target = self.active_target
+    async def chromium_state(self):
+        """Observe without blocking worker status, input or event delivery."""
+        return await asyncio.to_thread(self._chromium_state, self.active_target)
+
+    def _chromium_state(self, target):
         try:
             status = self.controller.session_call(target, "status")
             if not status.get("open") or not status.get("tabs"):
