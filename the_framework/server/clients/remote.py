@@ -17,7 +17,7 @@ from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlparse
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from modict import modict
 
@@ -376,11 +376,43 @@ class ClientRemoteService:
         self.message_notification_listener = message_notification_listener
         self.notification_buffers = {}
         self.notification_tasks = set()
+        self.notification_writes = set()
+        self.notifications_path = Path(path).with_name("remote-notifications.json")
+        self.notification_instance_id = str(uuid4())
         self.notification_sequence = 0
         self.notification_journal = deque(maxlen=MAX_NOTIFICATION_EVENTS)
         self.notification_ids = OrderedDict()
         self.notification_condition = asyncio.Condition()
         self._load_command_receipts()
+        self._load_notifications()
+
+    def _load_notifications(self):
+        try:
+            payload = json.loads(self.notifications_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return
+        if payload.get("version") != 1:
+            raise ValueError("unsupported remote notification store")
+        instance = str(UUID(payload["instance_id"]))
+        events = payload["events"]
+        sequence = payload["sequence"]
+        if (type(sequence) is not int or sequence < 0 or not isinstance(events, list)
+                or sequence < len(events) or len(events) > MAX_NOTIFICATION_EVENTS):
+            raise ValueError("invalid remote notification journal")
+        previous = sequence - len(events)
+        for event in events:
+            if (event.get("sequence") != previous + 1 or event.get("server_instance_id") != instance
+                    or event.get("kind") not in {"message", "alarm"}
+                    or not isinstance(event.get("message_id"), str)
+                    or not isinstance(event.get("emitted_at"), str)):
+                raise ValueError("invalid remote notification event")
+            previous += 1
+        self.notification_instance_id = instance
+        self.notification_sequence = sequence
+        self.notification_journal.extend(events)
+        self.notification_ids.update(
+            ((event["message_id"], event["kind"]), None) for event in events)
+        os.chmod(self.notifications_path, 0o600)
 
     def _load_command_receipts(self):
         try:
@@ -438,6 +470,8 @@ class ClientRemoteService:
             self.lease_task.cancel()
             await asyncio.gather(self.lease_task, return_exceptions=True)
             self.lease_task = None
+        # Drain accepted journal writes; optional delivery listeners remain cancellable.
+        await asyncio.gather(*tuple(self.notification_writes), return_exceptions=True)
         for task in tuple(self.notification_tasks):
             task.cancel()
         await asyncio.gather(*self.notification_tasks, return_exceptions=True)
@@ -523,8 +557,15 @@ class ClientRemoteService:
             self._record_notification(str(message_id), kind=kind),
             name=f"remote-notification-event-{message_id}",
         )
-        self.notification_tasks.add(task)
-        task.add_done_callback(self.notification_tasks.discard)
+        self.notification_writes.add(task)
+
+        def recorded(done):
+            self.notification_writes.discard(done)
+            if not done.cancelled() and done.exception() is not None:
+                self.notification_ids.pop(notification_id, None)
+                logger.error("remote notification persistence failed", exc_info=done.exception())
+
+        task.add_done_callback(recorded)
         if self.message_notification_listener is not None:
             try:
                 result = self.message_notification_listener(str(message_id))
@@ -539,14 +580,20 @@ class ClientRemoteService:
 
     async def _record_notification(self, message_id, *, kind="message"):
         async with self.notification_condition:
-            self.notification_sequence += 1
+            sequence = self.notification_sequence + 1
             event = {
-                "sequence": self.notification_sequence,
-                "server_instance_id": self.instance_id,
+                "sequence": sequence,
+                "server_instance_id": self.notification_instance_id,
                 "message_id": message_id,
                 "kind": kind,
                 "emitted_at": _iso(_utc_now()),
             }
+            events = [*self.notification_journal, event][-MAX_NOTIFICATION_EVENTS:]
+            await asyncio.to_thread(_atomic_json, self.notifications_path, {
+                "version": 1, "instance_id": self.notification_instance_id,
+                "sequence": sequence, "events": events,
+            })
+            self.notification_sequence = sequence
             self.notification_journal.append(event)
             self.notification_condition.notify_all()
             return event
@@ -556,42 +603,31 @@ class ClientRemoteService:
     ):
         timeout = max(1, min(float(timeout), 55))
         async with self.notification_condition:
-            reset = (
-                server_instance_id is not None
-                and server_instance_id != self.instance_id
-            )
-            if after is None or reset or after > self.notification_sequence:
+            def snapshot():
+                oldest = (self.notification_journal[0]["sequence"]
+                          if self.notification_journal else self.notification_sequence + 1)
+                reset = (after is None or after < oldest - 1 or after > self.notification_sequence
+                         or server_instance_id not in {None, self.notification_instance_id})
+                events = [] if reset else [event for event in self.notification_journal if event["sequence"] > after]
                 return {
-                    "status": "reset",
-                    "server_instance_id": self.instance_id,
-                    "cursor": self.notification_sequence,
-                    "events": [],
+                    "status": "reset" if reset else "events" if events else "idle",
+                    "server_instance_id": self.notification_instance_id,
+                    "cursor": self.notification_sequence if reset else events[-1]["sequence"] if events else after,
+                    "events": events,
                 }
 
-            def available():
-                return any(
-                    event["sequence"] > after
-                    for event in self.notification_journal
-                )
-
-            if not available():
+            batch = snapshot()
+            if batch["status"] == "idle":
                 try:
                     await asyncio.wait_for(
-                        self.notification_condition.wait_for(available),
+                        self.notification_condition.wait_for(lambda: self.notification_sequence > after),
                         timeout=timeout,
                     )
                 except TimeoutError:
                     pass
-            events = [
-                event for event in self.notification_journal
-                if event["sequence"] > after
-            ]
-            return {
-                "status": "events" if events else "idle",
-                "server_instance_id": self.instance_id,
-                "cursor": events[-1]["sequence"] if events else after,
-                "events": events,
-            }
+                # Recheck the retained window after waiting; a busy writer can outrun a reader.
+                batch = snapshot()
+            return batch
 
     def purge_pairings(self):
         now = _utc_now()
