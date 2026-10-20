@@ -619,9 +619,9 @@ Scheduler and system services require the application's `runtime` service;
 plugin options `scheduler.state_path` and `system.state_path` override the files
 through `BuildContext(plugins={"system": {"state_path": path}})`. System restart
 uses the runtime's application-owned `restart_server` operation when configured.
-### Scheduler: tasks and wake-ups
+### Scheduler: tasks, wake-ups and response deadlines
 
-`SCHEDULER` keeps both tracked tasks and autonomous wakes in its session-owned
+`SCHEDULER` keeps tracked tasks, autonomous wakes and response waits in its session-owned
 `scheduler.json`. Existing wake-only documents remain readable. Tasks never
 complete merely because a reminder command finishes. They retain active/done/
 cancelled state, a revision, a distinct recurring occurrence and 32 recent
@@ -1716,3 +1716,20 @@ The reconnect signal is transient control data, never a conversation item.
 
 Keep this seam narrow: it supplies context, not another event bus or task runtime.
 Applications do not need a new controller subclass just to combine these plugins.
+
+
+Response waits use the same scheduler persistence, lock and worker queue.
+`create_wait(wait_json)` records a nonblocking reply/ACK deadline; `list_waits`,
+`get_wait` and `resolve_wait` inspect or resolve it. Optional alert occurrences
+start their ACK deadline at the alert time. A human prompt resolves at most one
+next-reply wait without an additional agent turn; native ACK/timeout dispatches a
+stable queue command. Silence is never consent or task completion. Device receipts
+and late responses remain inspectable. There is no semantic reply classifier or
+automatic urgency policy. The plugin instructions document the full contract.
+
+`SchedulerService.native_alerts()` is a read-only seven-day projection of known
+next wake occurrences, active task reminders and explicit ACK alerts. It never
+moves recurrence to clients or changes task/wake state. Truncation is explicit;
+clients must not replace a complete local schedule with a partial snapshot.
+Delivery adapters authenticate device receipts and call `wait_call("receipt", ...)`;
+the Framework does not select a mobile push vendor or assume client connectivity.

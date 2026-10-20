@@ -174,6 +174,57 @@ class SchedulerExtension(AgentExtension):
         except Exception as error:
             return {"status": "unavailable", "error": str(error), "warning": "Task state is unavailable, not empty."}
 
+    @provider
+    async def response_waits(self):
+        """Active response deadlines and recent outcomes, not proof of human receipt."""
+        try:
+            result = await self._call("wait_list", {"active_only": False})
+            records = result["waits"]
+            active = [r for r in records if r["status"] == "waiting" or r["delivery_state"] == "pending"]
+            recent = [r for r in records if r not in active][-5:]
+            def compact(record):
+                return {key: (value[:1200] if isinstance(value, str) else value)
+                        for key, value in record.items() if key not in {"receipts", "alert"}}
+            return {"active": [compact(r) for r in active[:12]],
+                    "recent": [compact(r) for r in recent],
+                    "active_total": len(active), "truncated": len(active) > 12,
+                    "details": "Use get_wait for delivery receipts and complete context."}
+        except Exception as error:
+            return {"status": "unavailable", "error": str(error)}
+
+    @tool
+    async def create_wait(self, wait_json: str):
+        """
+        description: >-
+          Create a persistent response/acknowledgement timeout without blocking.
+          JSON: name, context, timeout_seconds(1..2678400), response_kind(reply|ack),
+          criticality(low|normal|critical). Reply means the next human message, not a semantic answer;
+          only one next-reply wait can be active. Optional native alert: {at: offset datetime,
+          kind: message|alarm, title, body}; requires ack, deadline starts at alert.at.
+          Alarms require explicit user authorization. Native delivery requires a synced capable client.
+        """
+        return await self._call("wait_create", {"wait_id": timestamp_id(), "wait": json_object(wait_json, "wait_json")})
+
+    @tool
+    async def list_waits(self, active_only: bool = True):
+        """description: List response waits, optionally including resolved outcomes."""
+        return await self._call("wait_list", {"active_only": active_only})
+
+    @tool
+    async def get_wait(self, wait_id: str):
+        """description: Read a response wait, its outcome and per-device delivery receipts."""
+        return await self._call("wait_get", {"wait_id": wait_id})
+
+    @tool
+    async def resolve_wait(self, wait_id: str, action: str, response: str | None = None):
+        """
+        description: >-
+          Resolve an existing wait: answered, acknowledged or cancelled. Require actual human
+          response/acknowledgement; never infer consent or task completion from silence.
+          The current agent turn handles the resolution; no duplicate turn is queued.
+        """
+        return await self._call("wait_resolve", {"wait_id": wait_id, "action": action, "response": response})
+
     @tool
     async def create_task(self, task_json: str):
         """

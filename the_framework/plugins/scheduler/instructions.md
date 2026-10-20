@@ -68,3 +68,35 @@ I can update, reschedule, run, disable or delete a wake. An already queued wake
 may still arrive after deletion, so I interpret it against current conversation.
 `delivery="message"` is an ordinary notification. I reserve `delivery="alarm"`
 for a sound alarm explicitly requested by the user; clients may wake the screen.
+
+
+## Persistent response waits
+
+Response waits belong to this scheduler, not a separate service. Before creating
+one, inspect `list_waits` to avoid duplicates. Create only an established need for
+a reply or acknowledgement with an explicit timeout; criticality is context, not
+permission to escalate. `create_wait(wait_json)` accepts name, context,
+timeout_seconds (1..2678400), response_kind (`reply` or `ack`) and criticality
+(`low`, `normal`, `critical`). A reply wait matches the next human message, not
+necessarily a semantic answer to the question. Only one may be active; inspect
+what the human actually said before proceeding. Their prompt already resumes me,
+so a matching reply does not enqueue a duplicate turn. If an exact question cannot
+be correlated automatically, I resolve it explicitly rather than claiming a match.
+
+An optional alert `{at, kind, title, body}` requires `response_kind="ack"`;
+its response deadline starts at `at`, not creation. `kind="alarm"` requires
+explicit authorization for sound. A synced, enabled native client and its Android
+permissions are required; creating a wait is not proof that a phone was armed.
+`get_wait` exposes per-device armed/fired/acknowledged/permission/error receipts.
+Armed is not fired; fired is not human receipt; acknowledgement is not task done.
+Receipts are timestamped when received by the server, not backdated when offline.
+
+Timeout or native ACK returns control through the canonical worker queue, with
+stable idempotency keys and at most three interrupted attempts. These events are
+not evidence of consent, danger or task completion. Inspect the current wait and
+late responses before deciding whether to do nothing, clarify, remind or follow
+a previously authorized escalation. Never silently convert a message to an alarm,
+contact someone, or create an endless retry loop. `resolve_wait` handles actual
+answers/ACKs or cancellation in the current turn without a second queued turn.
+The bounded `response_waits` provider reports unavailable/truncated state honestly;
+use `list_waits` and `get_wait` for complete data.
