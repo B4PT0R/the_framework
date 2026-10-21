@@ -146,10 +146,16 @@ def test_consumed_results_do_not_queue_behind_the_calling_turn():
         ordinary.profile = "memory.jiminy"
         runtime.fleet_result_handlers = [lambda value: value.profile == "memory.consultation"]
         runtime.command = AsyncMock()
+        runtime.fleet_deliveries = asyncio.Queue()
         await runtime.fleet.results.put(consumed)
         await runtime.fleet.results.put(ordinary)
+        delivery = asyncio.create_task(runtime.deliver_fleet_results())
         relay = asyncio.create_task(runtime.relay_fleet_results())
         await asyncio.wait_for(runtime.fleet.results.join(), timeout=1)
+        await asyncio.wait_for(runtime.fleet_deliveries.join(), timeout=1)
+        delivery.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await delivery
         relay.cancel()
         with pytest.raises(asyncio.CancelledError):
             await relay
@@ -185,4 +191,43 @@ def test_timeout_is_not_an_answer_and_releases_waiter(service, monkeypatch):
         with pytest.raises(TimeoutError):
             await service.handle("ask", payload())
         assert not service.pending
+    asyncio.run(run())
+
+
+def test_inline_answer_bypasses_blocked_canonical_delivery():
+    from the_framework.server.runtime.session import SessionRuntime
+
+    async def run():
+        runtime = object.__new__(SessionRuntime)
+        runtime.fleet = SimpleNamespace(results=asyncio.Queue(), acknowledge=AsyncMock())
+        runtime.fleet_deliveries = asyncio.Queue()
+        inline_received = asyncio.Event()
+        canonical_started = asyncio.Event()
+        release = asyncio.Event()
+        def receive(value):
+            if value.profile == "memory.consultation":
+                inline_received.set()
+                return True
+        runtime.fleet_result_handlers = {receive}
+        async def command(value):
+            canonical_started.set()
+            await release.wait()
+        runtime.command = command
+        delivery = asyncio.create_task(runtime.deliver_fleet_results())
+        relay = asyncio.create_task(runtime.relay_fleet_results())
+        ordinary = result("ordinary")
+        ordinary.profile = "memory.jiminy"
+        await runtime.fleet.results.put(ordinary)
+        await asyncio.wait_for(canonical_started.wait(), timeout=1)
+        inline = result("inline")
+        await runtime.fleet.results.put(inline)
+        await asyncio.wait_for(inline_received.wait(), timeout=1)
+        await asyncio.wait_for(runtime.fleet.results.join(), timeout=1)
+        assert runtime.fleet.acknowledge.call_args.args[0] is inline
+        release.set()
+        await asyncio.wait_for(runtime.fleet_deliveries.join(), timeout=1)
+        for task in (delivery, relay):
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
     asyncio.run(run())

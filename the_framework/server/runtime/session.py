@@ -99,6 +99,8 @@ class SessionRuntime:
         self.fleet_result_handlers = set()
         self.fleet = None
         self.fleet_result_task = None
+        self.fleet_delivery_task = None
+        self.fleet_deliveries = asyncio.Queue()
         self.fleet_event_task = None
         self.ready = None
         self.responses = {}
@@ -210,6 +212,9 @@ class SessionRuntime:
             )
             await self.fleet.start()
             self.register_observer(self.fleet.observe)
+            self.fleet_delivery_task = asyncio.create_task(
+                self.deliver_fleet_results(), name="agent-fleet-delivery",
+            )
             self.fleet_result_task = asyncio.create_task(
                 self.relay_fleet_results(), name="agent-fleet-results",
             )
@@ -237,7 +242,7 @@ class SessionRuntime:
         await self.publish(WorkerExited(returncode=0, stderr=[]))
         if self.fleet is not None:
             self.unregister_observer(self.fleet.observe)
-        tasks = (self.fleet_result_task, self.fleet_event_task, self.relay_task)
+        tasks = (self.fleet_result_task, self.fleet_delivery_task, self.fleet_event_task, self.relay_task)
         for task in tasks:
             if task:
                 task.cancel()
@@ -245,7 +250,8 @@ class SessionRuntime:
             *(task for task in tasks if task),
             return_exceptions=True,
         )
-        self.fleet_result_task = self.fleet_event_task = self.relay_task = None
+        self.fleet_result_task = self.fleet_delivery_task = self.fleet_event_task = self.relay_task = None
+        self.fleet_deliveries = asyncio.Queue()
         errors = []
         for service in (self.bridge, self.fleet, self.supervisor):
             if service is None:
@@ -390,17 +396,33 @@ class SessionRuntime:
                         consumed = handled is True or consumed
                     except Exception:
                         logger.exception("specialist result handler failed")
-                # Inline specialist calls already return through their calling tool.
-                # Requeueing them behind that same turn can block parallel callers.
-                if not consumed:
-                    await self.command(ExternalEventRequest(
-                        id=f"agent-result-{result.id}",
-                        name="agent_result",
-                        payload=result,
-                    ))
-                await self.fleet.acknowledge(result)
+                if consumed:
+                    await self.fleet.acknowledge(result)
+                else:
+                    # Canonical delivery may wait for the calling turn. Keep routing
+                    # inline replies while that separate, ordered consumer waits.
+                    self.fleet_deliveries.put_nowait(result)
             finally:
                 self.fleet.results.task_done()
+
+    async def deliver_fleet_results(self):
+        while True:
+            result = await self.fleet_deliveries.get()
+            try:
+                while True:
+                    try:
+                        await self.command(ExternalEventRequest(
+                            id=f"agent-result-{result.id}",
+                            name="agent_result", payload=result,
+                        ))
+                        await self.fleet.acknowledge(result)
+                        break
+                    except Exception:
+                        # The durable outbox remains unacknowledged until delivery.
+                        logger.exception("specialist result delivery failed; retrying")
+                        await asyncio.sleep(1)
+            finally:
+                self.fleet_deliveries.task_done()
 
     def worker_directory(self):
         return [
