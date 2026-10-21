@@ -1232,6 +1232,16 @@ waiting for the next event. The framework's local and remote event streams use
 one shared routine for this, so an idle disconnected client releases its
 subscription promptly instead of lingering until a heartbeat or shutdown.
 
+Planned server restarts publish `server_restarting` (with `instance_id` and
+`phase`) to each live session before draining restart hooks. A preparation or
+supervisor failure publishes `server_restart_failed` with its error and restores
+the ready phase. `GET /api/v1/status` includes `server: {instance_id, phase}`
+after the worker has answered. Clients can confirm a restart by comparing that
+process-scoped identity with the announced old one; a reconnected socket alone
+is not proof. These are transient lifecycle signals, not conversation messages.
+Voice keeps its own post-drain restart notification so the general announcement
+does not cut an ongoing spoken turn.
+
 ## Context providers
 
 `@provider(channels=("text",))` contributes ephemeral context only to the named

@@ -42,7 +42,9 @@ class CanonicalAgentApi:
     async def status(self):
         """Return current worker, queue, context, and quota status."""
         try:
-            return await self.runtime.request(StatusRequest(id=timestamp_id()))
+            status = (await self.runtime.request(StatusRequest(id=timestamp_id()))).copy()
+            status["server"] = self.runtime.server_status()
+            return status
         except TimeoutError:
             # Preserve the established client contract for this transient
             # status probe while other controlled endpoint failures use the

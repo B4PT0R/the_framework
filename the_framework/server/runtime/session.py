@@ -8,6 +8,7 @@ import logging
 import time
 from collections.abc import Callable
 from pathlib import Path
+from uuid import uuid4
 
 from ...agent.context.session import Session
 from ...agent.models.events import Event
@@ -33,6 +34,7 @@ from .supervisor import WorkerExited, WorkerTransportError
 
 logger = logging.getLogger(__name__)
 _STREAM_CLOSED = object()
+_SERVER_INSTANCE_ID = uuid4().hex
 
 
 DEFAULT_ACTIVITY_LABELS = {
@@ -110,6 +112,7 @@ class SessionRuntime:
         self.reset_hooks = []
         self.restart_hooks = []
         self.stopping = False
+        self.server_restarting = False
         self.last_worker_output_at = None
         self.last_worker_output_type = None
         self.active_command_id = None
@@ -127,23 +130,47 @@ class SessionRuntime:
         if self.restart is None:
             raise RuntimeError("server restart is not configured")
         await self.prepare_restart(intent)
-        result = self.restart(intent)
-        if inspect.isawaitable(result):
-            await result
+        try:
+            result = self.restart(intent)
+            if inspect.isawaitable(result):
+                await result
+        except Exception as error:
+            await self._publish_restart_state(False, error=str(error))
+            raise
+
+    def server_status(self):
+        return {"instance_id": _SERVER_INSTANCE_ID,
+                "phase": "restarting" if self.server_restarting else "ready"}
+
+    def _restart_runtimes(self):
+        if self.application is None:
+            return [self]
+        return [app.state.session for app, lifespan in
+                tuple(self.application.session_apps.values()) if lifespan is not None]
+
+    async def _publish_restart_state(self, restarting, *, error=None):
+        for runtime in self._restart_runtimes():
+            runtime.server_restarting = restarting
+            await runtime.publish({
+                "type": "server_restart_failed" if error is not None else "server_restarting",
+                **runtime.server_status(),
+                **({"error": error} if error is not None else {}),
+            })
 
     async def prepare_restart(self, intent=None):
         """Quiesce live sessions while their workers and client sockets still exist."""
         intent = intent or {}
-        runtimes = [self]
-        if self.application is not None:
-            runtimes = [app.state.session for app, lifespan in
-                        tuple(self.application.session_apps.values()) if lifespan is not None]
-        for runtime in runtimes:
-            for hook in tuple(runtime.restart_hooks):
-                result = hook(intent)
-                if inspect.isawaitable(result):
-                    await result
-            await runtime.apply_event("server_restart_barrier", {}, timeout=None)
+        await self._publish_restart_state(True)
+        try:
+            for runtime in self._restart_runtimes():
+                for hook in tuple(runtime.restart_hooks):
+                    result = hook(intent)
+                    if inspect.isawaitable(result):
+                        await result
+                await runtime.apply_event("server_restart_barrier", {}, timeout=None)
+        except Exception as error:
+            await self._publish_restart_state(False, error=str(error))
+            raise
 
     def register_restart_hook(self, hook):
         """Drain a session-owned service before the server closes client transports."""
