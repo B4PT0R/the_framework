@@ -26,7 +26,7 @@ from the_framework.agent.runtime.protocol import (
 from the_framework.agent.models.responses import FunctionCall, FunctionCallOutput, Message
 from the_framework.agent.context.session import Session
 from the_framework.agent.runtime.worker import Worker
-from the_framework.plugins.system import SystemExtension
+from the_framework.plugins.agentic import AgenticExtension
 
 
 class Agent:
@@ -198,15 +198,15 @@ def test_busy_prompt_is_steered_into_the_active_turn_at_the_next_checkpoint():
     asyncio.run(test())
 
 
-def test_external_prompt_wakes_system_wait_and_resumes_the_active_turn():
+def test_external_prompt_wakes_agentic_wait_and_resumes_the_active_turn():
     async def test():
         incoming = asyncio.Queue()
         outgoing = []
         agent = RuntimeAgent(
             client=object(),
-            system={"default_wait_seconds": 1, "max_wait_seconds": 3},
+            agentic={"default_wait_seconds": 1, "max_wait_seconds": 3},
         )
-        system = agent.add_extension(SystemExtension)
+        agentic = agent.add_extension(AgenticExtension)
         waiting = asyncio.Event()
         wait_results = []
         seen = []
@@ -219,7 +219,7 @@ def test_external_prompt_wakes_system_wait_and_resumes_the_active_turn():
             ])
             if len(seen) == 1:
                 waiting.set()
-                wait_results.append(await asyncio.to_thread(system.wait, 3))
+                wait_results.append(await asyncio.to_thread(agentic.wait, 3))
                 agent.agentic_loop.checkpoint()
             else:
                 agent.agentic_loop.request_next_step = False

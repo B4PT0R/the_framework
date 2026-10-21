@@ -1,34 +1,20 @@
-import time
 from datetime import datetime
 
-from ...agent.models.config import Config
 from ...agent.extensions.extension import AgentExtension
 from ...agent.extensions.providers import provider
 from ...agent.extensions.tools import tool
 from the_framework.utils.ids import timestamp_id
 
 
-class SystemConfig(Config):
-    default_wait_seconds: int = 30
-    max_wait_seconds: int = 3600
-
-
 class SystemExtension(AgentExtension):
     name = "system"
-    description = "Graceful turn completion, controlled interface refresh, and supervised server restart."
+    description = "Controlled interface refresh, runtime inspection and supervised server restart."
     instruction_scope = "agentic"
     instructions_file = "instructions.md"
-    config = SystemConfig
 
     @staticmethod
     def _now():
         return datetime.now().astimezone()
-
-    @provider
-    def turn_timing(self):
-        """Current turn boundary and timing of the previous completed turn."""
-        timing = getattr(self.agent, "turn_timing", None)
-        return timing.context() if timing is not None else None
 
     @provider
     def current_datetime(self):
@@ -40,41 +26,6 @@ class SystemExtension(AgentExtension):
             "weekday": now.strftime("%A"),
             "timezone": now.tzname(),
             "utc_offset": now.strftime("%z")[:3] + ":" + now.strftime("%z")[3:],
-        }
-
-    @tool
-    def end_turn(self):
-        """End the current turn gracefully after the current tool-call batch."""
-        self.agent.end_turn()
-        return {"status": "end_of_turn_requested"}
-
-    @tool
-    def wait(self, timeout_seconds: int | None = None):
-        """
-        description: Wait idly until the timeout expires, the user steers the active turn, or the turn is interrupted. Worker IPC remains responsive throughout.
-        parameters:
-          properties:
-            timeout_seconds:
-              description: Optional wait duration in seconds, capped by plugin configuration. Null uses the configured default.
-        """
-        duration = (
-            self.config.default_wait_seconds
-            if timeout_seconds is None
-            else timeout_seconds
-        )
-        if (
-            isinstance(duration, bool)
-            or not isinstance(duration, int)
-            or not 0 <= duration <= self.config.max_wait_seconds
-        ):
-            raise ValueError(
-                f"wait timeout_seconds must be within 0..{self.config.max_wait_seconds}"
-            )
-        started_at = time.monotonic()
-        reason = self.agent.agentic_loop.wait_for_activity(duration)
-        return {
-            "status": "elapsed" if reason == "timeout" else reason,
-            "waited_seconds": round(time.monotonic() - started_at, 3),
         }
 
     @tool

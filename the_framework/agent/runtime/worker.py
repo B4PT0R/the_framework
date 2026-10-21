@@ -81,6 +81,12 @@ class Worker:
 
     async def dispatch(self, command):
         """Run one queued command through the configured middleware chain."""
+        if isinstance(command, PromptRequest) and command.admission is not None:
+            decision = await self.agent.bridge.call(
+                command.admission, "admit", {}, timeout_ms=10_000,
+            )
+            if not isinstance(decision, dict) or decision.get("allowed") is not True:
+                return
         execute = self.execute
         for middleware in reversed(self.command_middleware):
             next_execute = execute
@@ -324,6 +330,8 @@ class Worker:
         return (
             isinstance(request, PromptRequest)
             and isinstance(active, PromptRequest)
+            and request.priority <= active.priority
+            and request.admission is None
             and active.status == "active"
             and agentic_loop is not None
             and agentic_loop.can_steer()

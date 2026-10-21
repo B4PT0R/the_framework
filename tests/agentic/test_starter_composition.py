@@ -7,7 +7,7 @@ def test_starter_declares_general_plugins_and_memory_specialist():
     assert plan.agents["assistant"].name == "assistant"
     assert {plugin.name for plugin in application.plugins} == {
         "bash", "registry", "web_search", "memory", "scheduler", "system",
-        "realtime", "chromium", "artifacts",
+        "realtime", "chromium", "artifacts", "agentic",
     }
     assert "memory.jiminy" in plan.agents
     assert plan.capabilities["realtime.session"].version == 1

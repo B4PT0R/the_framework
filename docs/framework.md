@@ -609,7 +609,7 @@ application = Application(
 )
 ```
 
-Bundled feature packages export `BASH`, `CHROMIUM`, `MEMORY`, `REALTIME`,
+Bundled feature packages export `AGENTIC`, `BASH`, `CHROMIUM`, `MEMORY`, `REALTIME`,
 `REGISTRY`, `SCHEDULER`, `SYSTEM` and `WEB_SEARCH`. Each is an immutable `Plugin`
 declaration containing its complete feature: agent binding, private specialists,
 server services, lifecycle and capabilities where applicable. Importing or
@@ -619,6 +619,32 @@ Scheduler and system services require the application's `runtime` service;
 plugin options `scheduler.state_path` and `system.state_path` override the files
 through `BuildContext(plugins={"system": {"state_path": path}})`. System restart
 uses the runtime's application-owned `restart_server` operation when configured.
+
+### Agentic: persistent work and turn controls
+
+`AGENTIC` owns persistent goals and the agent's immediate `wait` / `end_turn`
+controls. Its `current_goal` provider exposes one open goal per conversation,
+including suspended work; unavailable state is explicit. `turn_timing` projects
+optional application-owned turn measurements. Idle waits are cancellable within
+one turn, not durable scheduler deadlines.
+
+A goal records the authorized objective, scope, success criteria and an evolving
+ordered todo. Progress tools preserve existing task identities, require evidence
+for completed/skipped tasks and use revision checks. The agent may suspend itself
+with a reason; resumption, correction and cancellation require an explicit human
+instruction. Completion requires verification evidence and resolved subtasks.
+
+The session service stores `agentic.json` beside the canonical session (override
+`agentic.state_path` through `BuildContext`). Its durable outbox submits low-priority
+continuations to the existing worker, with stable command IDs across retries and
+restarts. `PromptRequest.admission` names a bridge capability whose `admit` method
+must return `{"allowed": true}` at execution time; stale continuations fail closed.
+Guarded prompts never steer existing turns, and human prompts take priority.
+Suspension, closure or a disabled binding stops dispatch and invalidates queued
+work. Three stagnant turns or failed continuation/delivery attempts suspend the
+loop. External side effects still require inspection before retries: this is not
+an exactly-once guarantee for tools. No goal grants additional permissions.
+
 ### Scheduler: tasks, wake-ups and response deadlines
 
 `SCHEDULER` keeps tracked tasks, autonomous wakes and response waits in its session-owned

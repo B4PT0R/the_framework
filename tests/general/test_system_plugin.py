@@ -1,48 +1,8 @@
 import asyncio
-import threading
-import time
 from datetime import datetime, timedelta, timezone
 
-from the_framework.agent import Agent, AgenticLoop
+from the_framework.agent import Agent
 from the_framework.plugins.system import SystemExtension
-
-
-def test_system_wait_exposes_a_general_preemptible_idle_tool():
-    agent = Agent(
-        client=object(),
-        system={"default_wait_seconds": 1, "max_wait_seconds": 3},
-    )
-    plugin = agent.add_extension(SystemExtension)
-    namespace = agent.registry("tools")["system"]
-
-    assert namespace.find("wait") is not None
-    assert plugin.wait(0)["status"] == "elapsed"
-
-    result = []
-    waiter = threading.Thread(target=lambda: result.append(plugin.wait(3)))
-    waiter.start()
-    time.sleep(0.05)
-    agent.agentic_loop.queue_steering("new direction")
-    waiter.join(timeout=1)
-
-    assert not waiter.is_alive()
-    assert result[0]["status"] == "steering"
-    assert result[0]["waited_seconds"] < 1
-
-
-def test_system_wait_reacts_to_turn_interrupt():
-    agent = Agent(client=object())
-    plugin = agent.add_extension(SystemExtension)
-    result = []
-    waiter = threading.Thread(target=lambda: result.append(plugin.wait(3)))
-    waiter.start()
-    time.sleep(0.05)
-
-    agent.interrupt("stop waiting")
-    waiter.join(timeout=1)
-
-    assert not waiter.is_alive()
-    assert result[0]["status"] == "interrupt"
 
 
 def test_system_plugin_exposes_current_local_datetime_as_ephemeral_context(monkeypatch):
@@ -68,26 +28,6 @@ def test_system_plugin_exposes_current_local_datetime_as_ephemeral_context(monke
     assert '"weekday":"Friday"' in text
     assert '"timezone":"CEST"' in text
     assert '"utc_offset":"+02:00"' in text
-
-
-def test_graceful_end_turn_prevents_another_agent_step():
-    async def test():
-        agent = Agent(client=object())
-        loop = AgenticLoop(agent)
-        steps = []
-
-        async def step():
-            steps.append(len(steps) + 1)
-            agent.end_turn()
-            loop.request_next_step = True
-
-        loop.step = step
-        await loop.turn()
-
-        assert steps == [1]
-        assert agent.end_of_turn_requested is True
-
-    asyncio.run(test())
 
 
 def test_system_plugin_requests_reboot_then_gracefully_ends_the_turn():

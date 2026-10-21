@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 from the_framework.server.composition.application import _assemble_server
 from the_framework import Application, BuildContext, ServerExtension
+from the_framework.plugins.agentic import AGENTIC
 from the_framework.plugins.scheduler import SCHEDULER
 from the_framework.plugins.system import SYSTEM
 
@@ -27,16 +28,17 @@ from the_framework.plugins.browser import CHROMIUM
 from the_framework.plugins.memory import MEMORY
 from the_framework.plugins.realtime import REALTIME
 from the_framework.plugins.registry import REGISTRY
+from the_framework.plugins.agentic import AGENTIC
 from the_framework.plugins.scheduler import SCHEDULER
 from the_framework.plugins.system import SYSTEM
 from the_framework.plugins.web_search import WEB_SEARCH
-plugins = (BASH, CHROMIUM, MEMORY, REALTIME, REGISTRY, SCHEDULER, SYSTEM, WEB_SEARCH)
+plugins = (AGENTIC, BASH, CHROMIUM, MEMORY, REALTIME, REGISTRY, SCHEDULER, SYSTEM, WEB_SEARCH)
 assert all(isinstance(plugin, Plugin) for plugin in plugins)
 plan = Application(name="Example", version="1", plugins=plugins,
     agents=(AgentSpec(name="primary"),)).compile()
 assert "memory.jiminy" in plan.agents
 assert len(plan.agents["primary"].extensions) == len(plugins)
-for package in ("scheduler", "system", "realtime"):
+for package in ("agentic", "scheduler", "system", "realtime"):
     assert "the_framework.plugins." + package + ".server" not in sys.modules
 assert "the_framework.plugins.realtime.controller" not in sys.modules
 assert "the_framework.plugins.realtime.api" not in sys.modules
@@ -47,6 +49,7 @@ assert "the_framework.plugins.realtime.api" not in sys.modules
 def test_complete_stateful_plugins_install_handlers_and_reset_hooks(tmp_path):
     handlers, observers, hooks = {}, [], []
     runtime = SimpleNamespace(
+        plugin_host=SimpleNamespace(bindings={"agentic": True}),
         bridge=SimpleNamespace(register=lambda name, handler, **kwargs: handlers.setdefault(name, handler)),
         register_observer=observers.append,
         register_reset_hooks=lambda **kwargs: hooks.append(kwargs),
@@ -55,18 +58,24 @@ def test_complete_stateful_plugins_install_handlers_and_reset_hooks(tmp_path):
     )
     context = BuildContext(
         plugins={
+            "agentic": {"state_path": tmp_path / "custom-goals.json"},
             "scheduler": {"state_path": tmp_path / "custom-clock.json"},
             "system": {"state_path": tmp_path / "custom-control.json"},
         },
     )
-    app = Application(name="Services", version="1", plugins=(SCHEDULER, SYSTEM),
+    app = Application(name="Services", version="1", plugins=(SCHEDULER, SYSTEM, AGENTIC),
         server_extensions=(ServerExtension(name="runtime", service=runtime),)).build(context=context)
     scheduler = app.state.application.extensions["scheduler"].service
     system = app.state.application.extensions["system"].service
     assert scheduler.path == tmp_path / "custom-clock.json"
     assert system.path == tmp_path / "custom-control.json"
-    assert set(handlers) == {"scheduler", "system"}
-    assert len(observers) == len(hooks) == 2
+    agentic = app.state.application.extensions["agentic"].service
+    assert agentic.path == tmp_path / "custom-goals.json"
+    assert agentic.enabled()
+    runtime.plugin_host.bindings["agentic"] = False
+    assert not agentic.enabled()
+    assert set(handlers) == {"scheduler", "system", "agentic"}
+    assert len(observers) == len(hooks) == 3
     assert hooks[0] == {"suspend": scheduler.stop, "resume": scheduler.start}
     assert hooks[1]["resume"] == system.start
     assert scheduler.health()["wakes"] == 0

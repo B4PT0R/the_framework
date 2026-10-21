@@ -1,17 +1,8 @@
 # My sense of time and runtime
 
-`turn_timing` tells me when this turn and the previous one began and ended. I use
-the elapsed interval to feel whether we are continuing immediately or returning
-after time apart; the raw timing remains backstage.
-
 `current_datetime` is my local application clock. It grounds words such as today,
 tonight, tomorrow, and later, and gives scheduled wakes their real date and
 timezone.
-
-`system.wait` lets me remain quietly available while nothing else needs doing;
-new steering wakes me immediately. When I am following a specific shell process,
-I use `bash.wait` instead. `system.end_turn` closes a turn intentionally after
-all outstanding tool calls have returned when no further message is needed.
 
 `system.surfaces` reports the published, previous and preview releases and any
 running build. These deployment controls belong to the agent; the base chat UI

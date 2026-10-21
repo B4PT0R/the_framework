@@ -7,6 +7,7 @@ from the_framework import (
     AgentSpec,
     Plugin,
 )
+from the_framework.plugins.agentic import AGENTIC
 from the_framework.plugins.bash import BASH
 from the_framework.plugins.artifacts import ARTIFACTS
 from the_framework.plugins.browser import CHROMIUM
@@ -38,7 +39,7 @@ application = Application(
     plugins=(
         BASH, REGISTRY, WEB_SEARCH, Plugin({**MEMORY, "agent_extension": Memory}),
         ARTIFACTS,
-        SCHEDULER, SYSTEM, REALTIME, CHROMIUM,
+        AGENTIC, SCHEDULER, SYSTEM, REALTIME, CHROMIUM,
     ),
     docs_url=None,
 )

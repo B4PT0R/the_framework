@@ -97,8 +97,8 @@ and changes to the backend remain external prerequisites.
   configuration** edits the same configuration draft, including agent-plugin settings.
   Save applies and persists it. Model availability depends on the backend account.
 
-General plugins include Bash, registry, web search, memory, artifacts, scheduler,
-system, browser and realtime declarations. The host owns prompt and attachment
+General plugins include Bash, registry, web search, memory, artifacts, agentic,
+scheduler, system, browser and realtime declarations. The host owns prompt and attachment
 HTTP routes through `build()`; chat is not a plugin or a settings
 toggle. **Loaded** describes plugin runtime state,
 not confirmation of external-service availability. Inference, hosted search and

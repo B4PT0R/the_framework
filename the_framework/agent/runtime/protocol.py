@@ -20,6 +20,8 @@ class QueuedRequest(WorkerRequest):
 
 class PromptRequest(QueuedRequest):
     prompt: str = modict.field(required="always")
+    # Optional server capability that revalidates queued work at execution time.
+    admission: str | None = None
     append_prompt: bool = True
     prompt_role: str = "user"
     prompt_kind: str = "message"
