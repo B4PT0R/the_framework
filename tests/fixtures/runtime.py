@@ -16,6 +16,13 @@ class FakeRuntime:
         self.supervisor = SimpleNamespace(send=self.submit)
         self.reset_hooks = []
         self.restart_hooks = []
+        self.fleet_result_handlers = set()
+
+    def register_fleet_result_handler(self, handler):
+        self.fleet_result_handlers.add(handler)
+
+    def unregister_fleet_result_handler(self, handler):
+        self.fleet_result_handlers.discard(handler)
 
     def register_restart_hook(self, hook):
         self.restart_hooks.append(hook)

@@ -54,7 +54,7 @@ class ApplicationMemory(MemoryExtension):
     curator_instructions = 'Preserve supported facts for this application.'
 memory = Agent(client=object()).add_extension(ApplicationMemory)
 assert memory.instructions_section() is not None
-profile = next(value for kind, value in memory._contributions if kind == 'agents')
+profile = next(value for kind, value in memory._contributions if kind == 'agents' and value.name == 'memory.jiminy')
 assert profile.profile().instructions == ApplicationMemory.curator_instructions
 browser = ChromiumExtension(Agent(client=object()), runtime_root='/tmp/framework-browser-test')
 assert browser.instructions_section() is not None

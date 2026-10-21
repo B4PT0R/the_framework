@@ -164,6 +164,9 @@ class SessionRuntime:
         self.fleet_result_handlers.add(handler)
         return handler
 
+    def unregister_fleet_result_handler(self, handler):
+        self.fleet_result_handlers.discard(handler)
+
     def register_reset_hooks(
         self, *, suspend: Callable[[], object] | None = None,
         resume: Callable[[], object] | None = None,
@@ -378,18 +381,23 @@ class SessionRuntime:
         while True:
             result = await self.fleet.results.get()
             try:
+                consumed = False
                 for handler in tuple(self.fleet_result_handlers):
                     try:
                         handled = handler(result)
                         if inspect.isawaitable(handled):
-                            await handled
+                            handled = await handled
+                        consumed = handled is True or consumed
                     except Exception:
                         logger.exception("specialist result handler failed")
-                await self.command(ExternalEventRequest(
-                    id=f"agent-result-{result.id}",
-                    name="agent_result",
-                    payload=result,
-                ))
+                # Inline specialist calls already return through their calling tool.
+                # Requeueing them behind that same turn can block parallel callers.
+                if not consumed:
+                    await self.command(ExternalEventRequest(
+                        id=f"agent-result-{result.id}",
+                        name="agent_result",
+                        payload=result,
+                    ))
                 await self.fleet.acknowledge(result)
             finally:
                 self.fleet.results.task_done()

@@ -1418,6 +1418,18 @@ files ship alongside their implementations. Application-specific defaults
 
 `the_framework.plugins.memory` owns storage, retrieval, curation tools and orchestration;
 applications specialize `memory.agent.MemoryExtension.curator_instructions`.
+`memory.search` ranks individual entries; `memory.ask(question)` returns a
+read-only specialist synthesis over a complete active-memory snapshot, with
+supporting memory IDs/keys and explicit uncertainty. The quiet consultation
+profile has no tools, no retained history, and no curation checklist. It shares
+the configured memory model/reasoning settings, not mutation capabilities.
+Applications may specialize `MemoryExtension.consultation_instructions`.
+The session-scoped memory bridge correlates fleet results to the inline tool
+call; failures/timeouts are errors rather than invented answers. A session fleet
+result handler may return exactly `True` to consume a result delivered inline;
+other results retain ordered canonical delivery and all are acknowledged. This
+avoids queueing an inline result behind the turn that is awaiting it. Consultation
+does not write memories, embed entries, or substitute for the canonical session.
 Curator evidence tasks require an atomic candidate inventory with canonical source
 IDs. Maintenance without new evidence starts with `inventory([], [], [])`, rewrites
 existing entries with empty source/candidate lists to inherit their provenance,
