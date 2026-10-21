@@ -725,6 +725,21 @@ loopback. Query and fragment values are excluded from Chromium launch arguments
 and passed through navigation. The isolated UI target/profile `harness_ui` and
 its historical RPC command remain stable for saved sessions and browser processes
 that survive server or worker upgrades.
+
+The agent's observation session is separate from browser windows and tabs.
+`chromium.open_session(target="web")` (or `target="harness_ui"`) enables ephemeral
+DOM/screenshot context for that target without launching Chromium or creating a
+tab. It can observe an empty browser; the provider then reports only its empty
+status. All agent browser actions require an explicit observation session and
+operate on its selected target; web-only actions reject a UI observation session.
+`chromium.close_session()` disables the provider without contacting the browser,
+leaving all windows and tabs available to the user. Reopening observation reads
+whatever tabs now exist, including changes made while observation was closed.
+External navigation does not implicitly enable agent observation. `close_tab`
+and `close_web` remain separate, explicit web tab/window destruction operations;
+they do not close the agent's observation session. Observation starts closed on
+extension construction and is cleared on deactivation/shutdown.
+
 Browser DOM handles are opaque and valid only for their latest snapshot; taking a
 new snapshot invalidates all older handles, including hidden/truncated elements.
 If an RPC caller disconnects or times out, the daemon cancels its pending operation
@@ -733,7 +748,7 @@ has already performed.
 Opening the first web tab reuses Chromium's bootstrap page, even with
 `new_tab=True`, so no spare `about:blank` tab remains. Subsequent new-tab requests
 still create separate tabs; existing tabs (including deliberately blank ones) are
-preserved. The web session closes automatically when its last tab closes, whether
+preserved. The web browser closes automatically when its last tab closes, whether
 through an agent tool or a native/user action. Its next opening starts one fresh
 tab using the same persistent profile. The independent application UI is unaffected.
 

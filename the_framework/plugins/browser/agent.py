@@ -4,7 +4,7 @@ from pathlib import Path
 
 from the_framework.agent import Config, Image, AgentExtension, hook, provider, tool
 
-from ...server.clients.browser import BrowserController, BrowserService, validate_target
+from ...server.clients.browser import BrowserController, BrowserError, BrowserService, validate_target
 from ...server.clients.browser_rpc import BrowserRPCClient, browser_socket_path
 
 
@@ -27,7 +27,7 @@ class ChromiumExtension(AgentExtension):
         super().__init__(agent)
         self.runtime_root = Path(runtime_root).expanduser().resolve()
         self.service_factory = service_factory
-        self.active_target = "web"
+        self.active_target: str | None = None
         self._owns_controller = service_factory is not None
         self.controller = (
             BrowserController(self._service)
@@ -50,11 +50,13 @@ class ChromiumExtension(AgentExtension):
         )
 
     def deactivate(self):
+        self.active_target = None
         if self._owns_controller:
             self.controller.close()
         return super().deactivate()
 
     def shutdown(self):
+        self.active_target = None
         if self._owns_controller:
             self.controller.close()
 
@@ -76,22 +78,17 @@ class ChromiumExtension(AgentExtension):
         self.controller.call("open_web", url, new_tab=True)
         return payload
 
-    def _activate(self, target):
-        self.active_target = validate_target(target)
-        return self.active_target
+    def _require_session(self, *, web_only=False):
+        target = self.active_target
+        if target is None:
+            raise BrowserError("Open an observation session with open_session first.")
+        if web_only and target != "web":
+            raise BrowserError("This operation requires open_session(target='web').")
+        return target
 
     def _status(self, target, *, action):
-        target = self._activate(target)
         status = self.controller.session_call(target, "status")
-        tabs = status.get("tabs") or []
-        active = next((tab for tab in tabs if tab.get("active")), None)
-        return {
-            "status": "success",
-            "action": action,
-            "target": target,
-            "active_tab": active,
-            "tab_count": len(tabs),
-        }
+        return {"status": "success", "action": action, "target": target, **status}
 
     def _provider_observation(self, target):
         target = validate_target(target)
@@ -168,13 +165,17 @@ class ChromiumExtension(AgentExtension):
     @provider
     async def chromium_state(self):
         """Observe without blocking worker status, input or event delivery."""
-        return await asyncio.to_thread(self._chromium_state, self.active_target)
+        target = self.active_target
+        if target is None:
+            return None
+        result = await asyncio.to_thread(self._chromium_state, target)
+        return result if self.active_target == target else None
 
     def _chromium_state(self, target):
         try:
             status = self.controller.session_call(target, "status")
             if not status.get("open") or not status.get("tabs"):
-                return None
+                return {"target": target, "observation_open": True, **status}
             return self._provider_observation(target)
         except Exception as error:
             return {
@@ -183,80 +184,92 @@ class ChromiumExtension(AgentExtension):
             }
 
     @tool
-    def observe(self, target: str = "web"):
-        """Select a browser target for fresh provider observation on the next step."""
-        return self._status(target, action="observe")
+    def open_session(self, target: str):
+        """Observe web or harness_ui without creating or closing any browser tabs."""
+        target = validate_target(target)
+        result = self._status(target, action="open_session")
+        self.active_target = target
+        return result
 
     @tool
-    def status(self, target: str = "web"):
-        """List tabs and active state for one isolated browser target."""
-        self._activate(target)
+    def close_session(self):
+        """Remove browser observation from agent context; leave all tabs/windows intact."""
+        target = self.active_target
+        self.active_target = None
+        return {"status": "success", "action": "close_session", "target": target}
+
+    @tool
+    def status(self):
+        """List tabs and browser state in the current observation session."""
+        target = self._require_session()
         return {"target": target, **self.controller.session_call(target, "status")}
 
     @tool
     def open_web(self, url: str | None = None, new_tab: bool = False):
-        """Open the web Chromium target, optionally navigating or creating a tab."""
+        """Open the web browser, optionally navigating or creating a tab."""
+        target = self._require_session(web_only=True)
         self.controller.call("open_web", url, new_tab=new_tab)
-        return self._status("web", action="open_web")
+        return self._status(target, action="open_web")
 
     @tool
     def close_tab(self, index: int | None = None):
         """Close one web tab by index, or the active web tab when omitted."""
-        self._activate("web")
+        target = self._require_session(web_only=True)
         result = self.controller.call("close_web_tab", index)
-        return {"status": "success", "action": "close_tab", "target": "web", **result}
+        return {"status": "success", "action": "close_tab", "target": target, **result}
 
     @tool
     def close_web(self):
-        """Close the arbitrary web navigation session without closing the application UI."""
-        self._activate("web")
+        """Close all web tabs and their browser window, not the application UI."""
+        target = self._require_session(web_only=True)
         result = self.controller.call("close_web")
-        return {"status": "success", "action": "close_web", "target": "web", **result}
+        return {"status": "success", "action": "close_web", "target": target, **result}
 
     @tool
     def goto(self, url: str):
-        """Navigate the web target; arbitrary navigation is unavailable to harness_ui."""
-        self.controller.call("goto", "web", url)
-        return self._status("web", action="goto")
+        """Navigate the current web tab; arbitrary navigation is unavailable to harness_ui."""
+        target = self._require_session(web_only=True)
+        self.controller.call("goto", target, url)
+        return self._status(target, action="goto")
 
     @tool
-    def back(self, target: str = "web"):
-        """Navigate the active tab of one target backward."""
-        validate_target(target)
+    def back(self):
+        """Navigate the active tab of the current observation session backward."""
+        target = self._require_session()
         self.controller.session_call(target, "back")
         return self._status(target, action="back")
 
     @tool
-    def select_tab(self, index: int, target: str = "web"):
-        """Select a zero-based tab in one browser target."""
-        validate_target(target)
+    def select_tab(self, index: int):
+        """Select a zero-based tab in the current observation session."""
+        target = self._require_session()
         self.controller.session_call(target, "select_tab", index)
         return self._status(target, action="select_tab")
 
     @tool
-    def click(self, element_id: str, target: str = "web"):
-        """Click an element ID from the latest observation of one target."""
-        validate_target(target)
+    def click(self, element_id: str):
+        """Click an element ID from the latest observation of the current session."""
+        target = self._require_session()
         self.controller.session_call(target, "click", element_id)
         return self._status(target, action="click")
 
     @tool
-    def fill(self, element_id: str, text: str, target: str = "web"):
-        """Fill an editable element ID from the latest observation of one target."""
-        validate_target(target)
+    def fill(self, element_id: str, text: str):
+        """Fill an editable element ID from the latest observation of the current session."""
+        target = self._require_session()
         self.controller.session_call(target, "fill", element_id, text)
         return self._status(target, action="fill")
 
     @tool
-    def select(self, element_id: str, value: str | list[str], target: str = "web"):
-        """Select one or more values in a select element from the latest observation."""
-        validate_target(target)
+    def select(self, element_id: str, value: str | list[str]):
+        """Select values in a select element from the current session's latest observation."""
+        target = self._require_session()
         self.controller.session_call(target, "select", element_id, value)
         return self._status(target, action="select")
 
     @tool
-    def press(self, key: str, element_id: str | None = None, target: str = "web"):
-        """Press a Playwright key globally or on an observed element ID."""
-        validate_target(target)
+    def press(self, key: str, element_id: str | None = None):
+        """Press a Playwright key globally or on an observed element in the current session."""
+        target = self._require_session()
         self.controller.session_call(target, "press", key, element_id)
         return self._status(target, action="press")

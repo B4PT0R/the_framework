@@ -100,3 +100,38 @@ def test_ui_downloads_keep_native_names_and_survive_browser_shutdown(tmp_path):
         capture_output=True, text=True, timeout=45,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_real_browser_survives_observation_closure_and_resumes_user_tabs(tmp_path):
+    from the_framework.agent import Agent, Image
+    from the_framework.plugins.browser import ChromiumExtension
+
+    service = BrowserService(tmp_path, web_headless=True)
+    agent = Agent(client=object())
+    plugin = agent.add_extension(ChromiumExtension(agent, runtime_root=tmp_path,
+        service_factory=lambda: service))
+    try:
+        assert asyncio.run(plugin.chromium_state()) is None
+        assert plugin.open_session("web")["open"] is False
+        assert not service.sessions["web"].started
+        plugin.open_web("data:text/html,<title>Retained</title><p>First</p>", new_tab=True)
+        assert len(plugin.status()["tabs"]) == 1
+        plugin.close_session()
+        assert asyncio.run(plugin.chromium_state()) is None
+        assert service.sessions["web"].started
+        # Simulate user navigation without opening agent observation.
+        plugin.controller.call("open_web", "data:text/html,<title>User tab</title><p>New</p>", new_tab=True)
+        assert asyncio.run(plugin.chromium_state()) is None
+        assert len(plugin.open_session("web")["tabs"]) == 2
+        observation = asyncio.run(plugin.chromium_state())
+        assert isinstance(observation, tuple), observation
+        text, screenshot = observation
+        assert "User tab" in text
+        assert isinstance(screenshot, Image)
+        plugin.close_web()
+        assert plugin.active_target == "web"
+        assert asyncio.run(plugin.chromium_state())["open"] is False
+        plugin.close_session()
+        assert asyncio.run(plugin.chromium_state()) is None
+    finally:
+        plugin.shutdown()

@@ -1042,6 +1042,8 @@ def test_browser_observation_does_not_block_worker_status(tmp_path):
             assert release.wait(2), "event loop could not release browser observation"
             return {"open": False}
 
+        plugin.controller.session_call = lambda *args: {"open": False, "tabs": []}
+        plugin.open_session("web")
         plugin.controller.session_call = slow_status
         observation = asyncio.create_task(plugin.chromium_state())
         outgoing = []
