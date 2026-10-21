@@ -722,3 +722,64 @@ def test_completion_retry_follows_effective_session_retention(tmp_path, saved_re
         finally:
             await fleet.stop()
     asyncio.run(run())
+
+
+def test_request_during_idle_shutdown_waits_for_clean_restart(tmp_path):
+    async def run():
+        stopping = asyncio.Event()
+        release = asyncio.Event()
+        class SlowStopSupervisor(FakeSupervisor):
+            async def stop(self):
+                stopping.set()
+                await release.wait()
+                await super().stop()
+        fleet = FleetSupervisor(
+            tmp_path / "session.json", [profile(idle_timeout_seconds=0.01)],
+            supervisor_factory=SlowStopSupervisor,
+        )
+        await fleet.start()
+        try:
+            await fleet.observe(canonical_event())
+            first = await asyncio.wait_for(fleet.results.get(), 1)
+            await fleet.acknowledge(first)
+            await asyncio.wait_for(stopping.wait(), 1)
+            await fleet.observe(canonical_event())
+            with pytest.raises(TimeoutError):
+                await asyncio.wait_for(fleet.results.get(), 0.03)
+            release.set()
+            second = await asyncio.wait_for(fleet.results.get(), 1)
+            assert second.status == "completed"
+        finally:
+            release.set()
+            await fleet.stop()
+    asyncio.run(run())
+
+
+def test_specialist_survives_repeated_idle_process_restarts(tmp_path):
+    import sys
+    from pathlib import Path
+    from the_framework.server.runtime.supervisor import WorkerSupervisor
+
+    async def run():
+        fixture = Path(__file__).parents[1] / "fixtures" / "fake_worker.py"
+        def supervisor(session_path, command):
+            return WorkerSupervisor(session_path, command=[sys.executable, str(fixture)])
+        fleet = FleetSupervisor(
+            tmp_path / "session.json", [profile(idle_timeout_seconds=0.01)],
+            supervisor_factory=supervisor,
+        )
+        await fleet.start()
+        try:
+            runner = fleet.runners["jiminy"]
+            for _ in range(3):
+                await fleet.observe(canonical_event())
+                result = await asyncio.wait_for(fleet.results.get(), 2)
+                assert result.status == "completed", result.error
+                await fleet.acknowledge(result)
+                await asyncio.wait_for(runner.idle_task, 2)
+                assert not runner.running
+            assert not runner.pending
+            assert not runner.outbox
+        finally:
+            await fleet.stop()
+    asyncio.run(run())

@@ -122,6 +122,8 @@ class AgentRunner:
         self.supervisor = None
         self.task = None
         self.idle_task = None
+        self.idle_stopping = False
+        self.process_lock = asyncio.Lock()
         self.active_task_id = None
         self.ready = None
         self.error = None
@@ -250,18 +252,19 @@ class AgentRunner:
     async def ensure_running(self):
         if self.supervisor is None:
             return False
-        if self.supervisor.running:
-            return True
-        try:
-            self.ready = await self.supervisor.start()
-            self.error = None
-            return True
-        except Exception as error:  # noqa: BLE001 - supervisor boundary
-            self.error = str(error)
-            return False
+        async with self.process_lock:
+            if self.supervisor.running:
+                return True
+            try:
+                self.ready = await self.supervisor.start()
+                self.error = None
+                return True
+            except Exception as error:  # noqa: BLE001 - supervisor boundary
+                self.error = str(error)
+                return False
 
     def cancel_idle_shutdown(self):
-        if self.idle_task is not None:
+        if self.idle_task is not None and not self.idle_stopping:
             self.idle_task.cancel()
             self.idle_task = None
 
@@ -275,10 +278,15 @@ class AgentRunner:
     async def stop_when_idle(self, timeout):
         try:
             await asyncio.sleep(timeout)
-            if self.active_task_id is None and self.queue.empty() and self.supervisor is not None:
-                await self.supervisor.stop()
+            async with self.process_lock:
+                if self.active_task_id is None and self.queue.empty() and self.supervisor is not None:
+                    # A new request may cancel the timer, not a shutdown already
+                    # in progress. ensure_running waits for this lock to restart.
+                    self.idle_stopping = True
+                    await self.supervisor.stop()
         finally:
             if self.idle_task is asyncio.current_task():
+                self.idle_stopping = False
                 self.idle_task = None
 
     async def execute(self, task):
@@ -452,7 +460,8 @@ class AgentRunner:
                 self.queued_ids.discard(queued.id)
             self.queue.task_done()
         if self.supervisor is not None:
-            await self.supervisor.stop()
+            async with self.process_lock:
+                await self.supervisor.stop()
 
     def status(self):
         return {

@@ -113,3 +113,22 @@ def test_supervisor_accepts_json_lines_larger_than_asyncio_default(tmp_path):
         await supervisor.stop()
 
     asyncio.run(test())
+
+
+def test_new_process_does_not_inherit_outputs_from_previous_process(tmp_path):
+    async def run():
+        supervisor = WorkerSupervisor(
+            tmp_path / "session.json", command=[sys.executable, str(FIXTURE)],
+        )
+        try:
+            for index in range(3):
+                await supervisor.start()
+                await supervisor.send(StatusRequest(id=str(index)))
+                output = await asyncio.wait_for(supervisor.outputs.get(), 1)
+                assert isinstance(output, WorkerStatus)
+                assert output.request_id == str(index)
+                await supervisor.stop()
+                # Deliberately leave the old Worker's shutdown diagnostics unread.
+        finally:
+            await supervisor.stop()
+    asyncio.run(run())

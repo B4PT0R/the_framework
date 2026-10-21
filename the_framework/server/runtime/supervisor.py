@@ -83,6 +83,13 @@ class WorkerSupervisor:
     async def start(self):
         if self.running:
             return self.ready_output
+        # Finish the previous process's readers before reusing their queue. Its
+        # shutdown diagnostics must not look like failures of the new process.
+        self._begin_stop()
+        await self._finish_tasks()
+        while not self.outputs.empty():
+            self.outputs.get_nowait()
+        self.stderr.clear()
         self.stopping = False
         self.process = await asyncio.create_subprocess_exec(
             *self.command,
