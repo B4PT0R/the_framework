@@ -672,7 +672,23 @@ as an error, not a completed task.
 
 `recurrence` and wake tool `calendar_json` share the calendar shape
 `{"time":"08:30","timezone":"Europe/Paris","weekdays":[0,1,2,3,4]}`.
-Monday is 0; no weekdays means every day. The timezone must match the recurring
+Monday is 0; without date selectors the schedule is daily. Monthly selectors:
+
+| Selector | Meaning |
+| --- | --- |
+| `"weekdays":[5],"weekday_ordinals":[1]` | First Saturday of every month |
+| `"weekdays":[4],"weekday_ordinals":[-1]` | Last Friday of every month |
+| `"monthdays":[15]` | The 15th of every month |
+| `"monthdays":[-1]` | Last day of every month |
+
+`weekday_ordinals` requires explicit `weekdays` and accepts 1..5 or -1 (last).
+`monthdays` accepts 1..31 or -1 and cannot combine with weekday selectors.
+Lists are unions; ordinals apply separately to each selected weekday. An absent
+31st or fifth weekday is skipped, never clamped. Duplicate selectors fire only
+once. No annual/month-of-year selector is provided. For example, the first
+Saturday rule is `{"time":"10:00","timezone":"Europe/Paris","weekdays":[5],"weekday_ordinals":[1]}`.
+The same validated calculation serves creation, rescheduling, completion and
+persistent reload of wakes and tasks. The timezone must match the recurring
 task. Its first timed deadline is computed if omitted. Calendar wakes advance
 in the server, preserving local wall time across daylight-saving changes;
 nonexistent spring times move forward by the gap and autumn folds fire once

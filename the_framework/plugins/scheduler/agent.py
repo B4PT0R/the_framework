@@ -79,7 +79,9 @@ class SchedulerExtension(AgentExtension):
         """
         description: >-
           Create a wake at a date, interval, or calendar_json.
-          calendar_json encodes {time: HH:MM, timezone: IANA, weekdays?: [0..6]}.
+          calendar_json requires time (HH:MM), timezone (IANA); optional weekdays (0=Monday),
+          monthdays (1..31 or -1=last), or weekday_ordinals (1..5 or -1=last, requires weekdays).
+          monthdays excludes weekday fields; nonexistent dates are skipped.
           Calendar schedules preserve local wall time across daylight saving changes.
         """
         return await self._call("create", {
@@ -136,7 +138,9 @@ class SchedulerExtension(AgentExtension):
         """
         description: >-
           Replace a wake schedule with a date, interval, or local calendar_json.
-          calendar_json encodes {time: HH:MM, timezone: IANA, weekdays?: [0..6]}.
+          calendar_json requires time (HH:MM), timezone (IANA); optional weekdays (0=Monday),
+          monthdays (1..31 or -1=last), or weekday_ordinals (1..5 or -1=last, requires weekdays).
+          monthdays excludes weekday fields; nonexistent dates are skipped.
         """
         return await self._call("reschedule", {
             "wake_id": wake_id,

@@ -24,7 +24,16 @@ visible in queries and, when relevant, in the daily agenda.
 
 A recurrence is a calendar object such as
 `{"time":"08:30","timezone":"Europe/Paris","weekdays":[0,1,2,3,4]}`.
-Monday is 0; omitting weekdays means every day. The task timezone must match.
+Monday is 0; without date selectors the schedule is daily. Monthly rules use:
+- `"weekdays":[5],"weekday_ordinals":[1]`: first Saturday of each month;
+- `"weekdays":[4],"weekday_ordinals":[-1]`: last Friday of each month;
+- `"monthdays":[15]`: the 15th; `"monthdays":[-1]`: the last day of each month.
+`weekday_ordinals` accepts 1..5 and -1 (last), and requires explicit weekdays.
+`monthdays` accepts 1..31 and -1; it cannot combine with either weekday field.
+Lists select any listed value; weekday ordinals apply to each selected weekday.
+Missing dates (31st, fifth weekday) are skipped, not moved to month end. These
+rules recur monthly without agent reprogramming; annual rules are not supported.
+The task timezone must match.
 The first timed deadline is computed when omitted. Completion, skipping or
 cancellation of an occurrence advances to the next future occurrence, without
 generating a backlog. An unresolved occurrence remains active and can be overdue.
