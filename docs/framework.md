@@ -730,6 +730,13 @@ new snapshot invalidates all older handles, including hidden/truncated elements.
 If an RPC caller disconnects or times out, the daemon cancels its pending operation
 instead of leaving an orphan task. Cancellation cannot undo an action that Chromium
 has already performed.
+Opening the first web tab reuses Chromium's bootstrap page, even with
+`new_tab=True`, so no spare `about:blank` tab remains. Subsequent new-tab requests
+still create separate tabs; existing tabs (including deliberately blank ones) are
+preserved. The web session closes automatically when its last tab closes, whether
+through an agent tool or a native/user action. Its next opening starts one fresh
+tab using the same persistent profile. The independent application UI is unaffected.
+
 Tab closure first uses the ordinary Playwright close path. If Chromium acknowledges
 it without destroying the tab during a reload (Playwright issue #42068), the daemon
 retries that tab through `close(run_before_unload=True)` and waits for its actual

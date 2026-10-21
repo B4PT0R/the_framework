@@ -140,6 +140,7 @@ class BrowserSession(modict):
     viewport: dict[str, int] | None = modict.factory(lambda: dict(DEFAULT_VIEWPORT))
     no_viewport: bool = False
     native_downloads: bool = False
+    close_when_empty: bool = False
     extra_args: list[str] = modict.factory(list)
     ignore_default_args: list[str] = modict.factory(list)
     playwright_factory: Callable[[], Any] = _default_playwright_factory
@@ -217,6 +218,16 @@ class BrowserSession(modict):
             self._playwright = modict.attr(playwright)
             self._context = modict.attr(context)
             self._browser_process = modict.attr(process)
+            if self.close_when_empty:
+                def watch_page(page):
+                    async def closed(*_args):
+                        async with self._lifecycle_lock:
+                            if self._context is context and not context.pages:
+                                await self._stop()
+                    page.on("close", closed)
+                context.on("page", watch_page)
+                for page in context.pages:
+                    watch_page(page)
         return self
 
     def _closed(self, context):
@@ -255,26 +266,34 @@ class BrowserSession(modict):
 
     async def stop(self):
         async with self._lifecycle_lock:
-            context, playwright, process = self._context, self._playwright, self._browser_process
-            self._context = self._playwright = self._manager = self._active_page = modict.attr(None)
-            self._browser_process = modict.attr(None)
-            try:
-                if context is not None:
-                    await context.close()
-            finally:
-                if playwright is not None:
-                    await self._release_driver(playwright, process)
-                if self._cleanup_tasks:
-                    await asyncio.shield(asyncio.gather(*tuple(self._cleanup_tasks), return_exceptions=True))
+            await self._stop()
+
+    async def _stop(self):
+        context, playwright, process = self._context, self._playwright, self._browser_process
+        self._context = self._playwright = self._manager = self._active_page = modict.attr(None)
+        self._browser_process = modict.attr(None)
+        try:
+            if context is not None:
+                await context.close()
+        finally:
+            if playwright is not None:
+                await self._release_driver(playwright, process)
+            if self._cleanup_tasks:
+                await asyncio.shield(asyncio.gather(*tuple(self._cleanup_tasks), return_exceptions=True))
 
     async def pages(self):
         await self.start()
         return list(getattr(self.context, "pages", []))
 
     async def new_page(self):
+        opening = not self.started
         await self.start()
-        self._active_page = modict.attr(await self.context.new_page())
-        return self._active_page
+        pages = self.context.pages
+        # Persistent Chromium supplies its first tab. It is the requested tab,
+        # not a spare to leave behind when the first call asks for a new one.
+        page = pages[0] if opening and len(pages) == 1 and pages[0].url == "about:blank" else await self.context.new_page()
+        self._active_page = modict.attr(page)
+        return page
 
     async def current_page(self):
         pages = await self.pages()
@@ -347,6 +366,8 @@ class BrowserSession(modict):
         if remaining:
             self._active_page = modict.attr(remaining[min(index, len(remaining) - 1)])
             await self._active_page.bring_to_front()
+        elif self.close_when_empty:
+            await self.stop()
         return {"closed_index": index, "remaining_tabs": len(remaining)}
 
     async def status(self):
@@ -438,6 +459,7 @@ class BrowserService:
             "web": BrowserSession(
                 profile_dir=self.runtime_root / "browser" / "profiles" / "web",
                 headless=web_headless,
+                close_when_empty=True,
                 viewport=dict(viewport),
                 playwright_factory=factory,
             ),

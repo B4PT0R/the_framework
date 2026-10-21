@@ -1,4 +1,4 @@
-"""Isolated headed Chromium; native Ctrl+Shift+W closes its last window."""
+"""Isolated headed Chromium; closing its last tab releases the window/profile."""
 
 import asyncio
 import json
@@ -27,7 +27,8 @@ async def main(root):
         }])
         await web.stop()
         for index in range(3):
-            page = await web.current_page()
+            page = await service.open_web(new_tab=True)
+            assert web.context.pages == [page], "No bootstrap tab may remain"
             title = f"NativeCloseContract-{os.getpid()}-{index}"
             await page.goto(f"data:text/html,<title>{title}</title><p>Native closure test</p>")
             await page.bring_to_front()
@@ -35,7 +36,7 @@ async def main(root):
             async with web.context.expect_event("close", timeout=10000):
                 process = await asyncio.create_subprocess_exec(
                     "xdotool", "search", "--sync", "--onlyvisible", "--name", title,
-                    "windowfocus", "--sync", "key", "--clearmodifiers", "ctrl+shift+w",
+                    "windowfocus", "--sync", "key", "--clearmodifiers", "ctrl+w",
                     stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
                 )
                 try:
@@ -53,6 +54,7 @@ async def main(root):
             await web.start()
             cookies = await web.context.cookies("https://close.test")
             assert any(cookie["name"] == "retained" and cookie["value"] == "yes" for cookie in cookies)
+            await web.stop()
             if index == 2:
                 reopened = await web.current_page()
                 await reopened.goto("data:text/html,<title>Reopened cleanly</title><h1>Browser reopened</h1>")

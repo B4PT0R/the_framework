@@ -40,18 +40,31 @@ def test_closing_web_tabs_preserves_other_pages_and_independent_ui(tmp_path):
             ui = await service.session('harness_ui').new_page()
             await ui.set_content('<textarea>Retained draft</textarea>')
             web = service.session('web')
-            blank = await web.current_page()
+            first = await service.open_web("data:text/html,<title>First requested tab</title>", new_tab=True)
+            assert len(web.context.pages) == 1
+            assert web.context.pages == [first]
             preview = await service.open_web(new_tab=True)
             await preview.set_content('<p>Preview</p>')
             result = await asyncio.wait_for(service.close_web_tab(-1), 3)
             assert result['remaining_tabs'] == 1
-            assert preview.is_closed() and not blank.is_closed()
+            assert preview.is_closed() and not first.is_closed()
             assert await ui.locator('textarea').input_value() == 'Retained draft'
             result = await asyncio.wait_for(service.close_web_tab(0), 3)
             assert result['remaining_tabs'] == 0
+            assert not web.started
+            assert not web._cleanup_tasks
+            assert (await web.status())['open'] is False
             assert await ui.locator('textarea').input_value() == 'Retained draft'
             reopened = await service.open_web(new_tab=True)
             assert not reopened.is_closed()
+            assert len(web.context.pages) == 1
+            # Native/website closure takes the same empty-session path without
+            # requiring the agent's close_tab tool (also in headless Chromium).
+            await reopened.close()
+            async with asyncio.timeout(3):
+                while web.started or web._cleanup_tasks:
+                    await asyncio.sleep(0.01)
+            assert await ui.locator('textarea').input_value() == 'Retained draft'
         finally:
             await service.stop()
     asyncio.run(asyncio.wait_for(run(), 15))
