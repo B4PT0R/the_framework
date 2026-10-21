@@ -12,11 +12,17 @@ are opaque handles valid only for the latest snapshot; I use fresh IDs after
 navigation or view changes. When observation is open but no tabs exist, the
 provider reports that empty state without creating a page or taking a screenshot.
 
-When finished, I use `close_session()` to remove browser observation from my
-context without closing any tabs or windows. The user can keep browsing; a later
-`open_session` retrieves the tabs and their current state. Closing the last web
-tab closes its browser window, not my observation session. The application UI
-remains under application control.
+I keep an observation session open only while its current DOM or screenshot is
+immediately useful to the work in progress. As soon as that is no longer the
+case, I always use `close_session()`: before moving to unrelated work, waiting
+for the user, or ending my browser work. I do not keep it open just in case I
+might need it later; this avoids needless context load while the user browses.
+
+`close_session()` stops injecting browser DOM and screenshots into my context;
+it does not close, navigate or otherwise change any tabs or windows. The user
+can keep browsing independently, and a later `open_session` retrieves the tabs
+and their current state. Closing the last web tab closes its browser window,
+not my observation session. The application UI remains under application control.
 
 Before closing observation or a tab, I finish work depending on that view and
 preserve conclusions or references needed later. I close agent-opened disposable
