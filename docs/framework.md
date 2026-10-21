@@ -726,6 +726,12 @@ and passed through navigation. The isolated UI target/profile `harness_ui` and
 its historical RPC command remain stable for saved sessions and browser processes
 that survive server or worker upgrades.
 
+The visible `web` browser supports user-driven sign-in in its dedicated persistent
+profile. It launches with `--disable-blink-features=AutomationControlled`, which
+suppresses Blink's automation indicator; this does not remove Playwright control
+or guarantee acceptance by an identity provider. Headless web browsing and the
+application UI do not use this flag.
+
 The agent's observation session is separate from browser windows and tabs.
 `chromium.open_session(target="web")` (or `target="harness_ui"`) enables ephemeral
 DOM/screenshot context for that target without launching Chromium or creating a

@@ -5,7 +5,16 @@ from types import SimpleNamespace
 
 import pytest
 
-from the_framework.server.clients.browser import BrowserSession
+from the_framework.server.clients.browser import BrowserService, BrowserSession
+
+
+@pytest.mark.parametrize("web_headless", [False, True])
+def test_manual_sign_in_flag_is_scoped_to_visible_web(tmp_path, web_headless):
+    service = BrowserService(tmp_path, web_headless=web_headless)
+    assert service.session("web").extra_args == (
+        [] if web_headless else ["--disable-blink-features=AutomationControlled"]
+    )
+    assert service.session("harness_ui").extra_args == []
 
 
 class Context:
