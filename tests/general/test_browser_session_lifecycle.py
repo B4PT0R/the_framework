@@ -9,11 +9,10 @@ from the_framework.server.clients.browser import BrowserService, BrowserSession
 
 
 @pytest.mark.parametrize("web_headless", [False, True])
-def test_manual_sign_in_flag_is_scoped_to_visible_web(tmp_path, web_headless):
+def test_sign_in_flag_is_shared_by_both_web_modes(tmp_path, web_headless):
     service = BrowserService(tmp_path, web_headless=web_headless)
-    assert service.session("web").extra_args == (
-        [] if web_headless else ["--disable-blink-features=AutomationControlled"]
-    )
+    assert service.session("web").extra_args == ["--disable-blink-features=AutomationControlled"]
+    assert service.session("web").profile_dir == tmp_path / "browser" / "profiles" / "web"
     assert service.session("harness_ui").extra_args == []
 
 

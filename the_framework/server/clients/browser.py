@@ -460,9 +460,9 @@ class BrowserService:
                 profile_dir=self.runtime_root / "browser" / "profiles" / "web",
                 headless=web_headless,
                 close_when_empty=True,
-                # The visible web browser is shared with the user, including
-                # manual sign-in. Leave headless automation and the UI unchanged.
-                extra_args=[] if web_headless else ["--disable-blink-features=AutomationControlled"],
+                # Both web modes reuse the user's dedicated sign-in profile;
+                # keep the independent application UI unchanged.
+                extra_args=["--disable-blink-features=AutomationControlled"],
                 viewport=dict(viewport),
                 playwright_factory=factory,
             ),
