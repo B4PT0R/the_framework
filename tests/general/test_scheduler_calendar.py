@@ -68,6 +68,7 @@ def test_invalid_rules_are_rejected(fields):
 @pytest.mark.parametrize("fields", [
     {}, {"weekdays": [5, 0, 5]}, {"monthdays": [31, -1, 1, 31]},
     {"weekdays": [5, 5], "weekday_ordinals": [3, 1, -1, 1]},
+    {"dates": ["12-25", "02-29", "01-01", "12-25"]},
 ])
 def test_normalization_is_idempotent_and_does_not_mutate_input(fields):
     source = {**BASE, **fields}
@@ -75,7 +76,7 @@ def test_normalization_is_idempotent_and_does_not_mutate_input(fields):
     rule = calendar_schedule(source)
     assert calendar_schedule(rule) == rule
     assert repr(source) == before
-    for field in ("weekdays", "monthdays", "weekday_ordinals"):
+    for field in ("weekdays", "monthdays", "weekday_ordinals", "dates"):
         if field in rule:
             assert rule[field] == sorted(set(rule[field]))
 

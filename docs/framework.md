@@ -672,7 +672,7 @@ as an error, not a completed task.
 
 `recurrence` and wake tool `calendar_json` share the calendar shape
 `{"time":"08:30","timezone":"Europe/Paris","weekdays":[0,1,2,3,4]}`.
-Monday is 0; without date selectors the schedule is daily. Monthly selectors:
+Monday is 0; without date selectors the schedule is daily. Monthly and annual selectors:
 
 | Selector | Meaning |
 | --- | --- |
@@ -680,12 +680,19 @@ Monday is 0; without date selectors the schedule is daily. Monthly selectors:
 | `"weekdays":[4],"weekday_ordinals":[-1]` | Last Friday of every month |
 | `"monthdays":[15]` | The 15th of every month |
 | `"monthdays":[-1]` | Last day of every month |
+| `"dates":["12-25"]` | December 25 every year |
+| `"dates":["01-01","12-25"]` | January 1 and December 25 every year |
+| `"dates":["02-29"]` | February 29 in leap years only |
 
 `weekday_ordinals` requires explicit `weekdays` and accepts 1..5 or -1 (last).
 `monthdays` accepts 1..31 or -1 and cannot combine with weekday selectors.
+`dates` is a nonempty list of valid `MM-DD` strings (including `02-29`),
+exclusive of `weekdays`, `weekday_ordinals` and `monthdays`. Each date recurs
+annually, not once in a specified year; multiple dates are paired month/day
+values, not a Cartesian product of months and days.
 Lists are unions; ordinals apply separately to each selected weekday. An absent
-31st or fifth weekday is skipped, never clamped. Duplicate selectors fire only
-once. No annual/month-of-year selector is provided. For example, the first
+31st, fifth weekday or non-leap February 29 is skipped, never clamped.
+Duplicate selectors fire only once. For example, the first
 Saturday rule is `{"time":"10:00","timezone":"Europe/Paris","weekdays":[5],"weekday_ordinals":[1]}`.
 The same validated calculation serves creation, rescheduling, completion and
 persistent reload of wakes and tasks. The timezone must match the recurring

@@ -31,8 +31,12 @@ Monday is 0; without date selectors the schedule is daily. Monthly rules use:
 `weekday_ordinals` accepts 1..5 and -1 (last), and requires explicit weekdays.
 `monthdays` accepts 1..31 and -1; it cannot combine with either weekday field.
 Lists select any listed value; weekday ordinals apply to each selected weekday.
-Missing dates (31st, fifth weekday) are skipped, not moved to month end. These
-rules recur monthly without agent reprogramming; annual rules are not supported.
+For fixed annual dates, use `"dates":["12-25"]` (December 25 every year), or
+several dates such as `["01-01","12-25"]`. `dates` accepts only valid `MM-DD`
+strings and excludes all other date selectors. `"02-29"` is allowed and fires
+only in leap years, never on February 28 or March 1.
+Missing dates (31st, fifth weekday, non-leap February 29) are skipped, not moved.
+Calendar rules recur without agent reprogramming.
 The task timezone must match.
 The first timed deadline is computed when omitted. Completion, skipping or
 cancellation of an occurrence advances to the next future occurrence, without
