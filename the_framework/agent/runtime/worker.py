@@ -379,7 +379,16 @@ class Worker:
                     command=request,
                 ))
                 return True
-            if status in {"failed", "interrupted"}:
+            # Specialist results have a durable outbox owned by the server.
+            # An interrupted delivery is retried with the same identity after
+            # restart; only a completed receipt proves it was consumed. Keep
+            # ordinary user commands terminal so reconnects never replay work.
+            redeliver_result = (
+                status == "interrupted"
+                and isinstance(request, ExternalEventRequest)
+                and request.name == "agent_result"
+            )
+            if status in {"failed", "interrupted"} and not redeliver_result:
                 request.status = status
                 receipt = self.agent.session.commands[request.id]
                 await self.send(CommandFailed(

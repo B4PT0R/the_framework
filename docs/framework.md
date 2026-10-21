@@ -1135,8 +1135,12 @@ identity is rejected. Imported role text becomes an ordinary spec instruction;
 exporting uses the current instructions rather than the old profile text.
 
 Terminal private-agent results enter a durable outbox only after their terminal
-state is persisted. Delivery and acknowledgement are idempotent, so a server or
-worker crash can replay the result without losing it or applying it twice.
+state is persisted. Delivery uses a stable command identity: a completed receipt
+suppresses duplicate handling, while an interrupted delivery can run again after
+restart. Acknowledgement removes the result from its durable outbox only after
+successful delivery. Result handlers must tolerate redelivery if a crash occurs
+after their side effects but before the completion receipt is persisted; this is
+at-least-once delivery, not an atomic transaction across arbitrary plugin effects.
 
 Middleware has the small async-generator contract
 `middleware(agent, command, call_next)`. It adds cross-cutting behavior such as

@@ -1,6 +1,7 @@
 from the_framework.agent.spec import AgentSpec
 import asyncio
 from types import SimpleNamespace
+import pytest
 
 from the_framework.agent import Agent as RuntimeAgent
 from the_framework.agent.runtime.bridge import ApplicationClient
@@ -370,12 +371,15 @@ def test_prompt_input_items_enter_auxiliary_context_before_the_prompt():
     asyncio.run(test())
 
 
-def test_worker_ready_declares_auxiliary_profiles_and_results_are_dispatched():
+@pytest.mark.parametrize("receipt", [None, "interrupted", "completed", "failed"])
+def test_worker_ready_declares_auxiliary_profiles_and_results_are_dispatched(receipt):
     async def test():
         incoming = asyncio.Queue()
         outgoing = []
         agent = Agent()
         results = []
+        if receipt is not None:
+            agent.session.set_command("result", receipt)
 
         @agent_trigger(
             AgentSpec(
@@ -406,7 +410,32 @@ def test_worker_ready_declares_auxiliary_profiles_and_results_are_dispatched():
         ready = outgoing[0]
         assert ready.specialists[0].name == "jiminy"
         assert ready.specialists[0].model == "gpt-5.6-luna"
-        assert results == [{"profile": "jiminy", "status": "completed"}]
+        assert results == (
+            [{"profile": "jiminy", "status": "completed"}]
+            if receipt in {None, "interrupted"} else []
+        )
+        assert agent.session.command_status("result") == (
+            "failed" if receipt == "failed" else "completed"
+        )
+
+    asyncio.run(test())
+
+
+def test_worker_does_not_replay_an_interrupted_user_prompt():
+    async def test():
+        agent = Agent()
+        agent.session.set_command("prompt", "interrupted")
+        outgoing = []
+
+        async def send(message):
+            outgoing.append(message)
+
+        worker = Worker(agent, asyncio.Queue().get, send)
+        await worker.handle(PromptRequest(id="prompt", prompt="Do this once"))
+        assert outgoing[-1].type == "command_failed"
+        assert outgoing[-1].error == "interrupted"
+        assert not agent.prompts
+        assert worker.commands.queue.empty()
 
     asyncio.run(test())
 
