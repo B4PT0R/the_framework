@@ -75,7 +75,8 @@ class AgenticExtension(AgentExtension):
     async def current_goal(self):
         """Current open goal, subtasks and continuation state; unavailable is not empty."""
         try:
-            return await self._call("current")
+            state = await self._call("current")
+            return None if state.get("status") == "ready" and state.get("goal") is None else state
         except Exception as error:
             return {"status": "unavailable", "error": str(error)}
 

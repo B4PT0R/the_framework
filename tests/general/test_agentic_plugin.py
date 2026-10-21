@@ -244,7 +244,16 @@ def test_extension_bridge_provider_and_surface_ownership():
             calls.append(payload)
             return {"status": "ready", "goal": None}
         agent.bridge.bind(request)
-        assert await extension.current_goal() == {"status": "ready", "goal": None}
+        assert await extension.current_goal() is None
+        assert await agent.registry("providers").aoutputs() == []
+        for status in ("active", "suspended"):
+            state = {"status": "ready", "goal": {"id": "test", "status": status}}
+            async def open_goal(_payload):
+                return state
+            agent.bridge.bind(open_goal)
+            assert await extension.current_goal() == state
+            assert await agent.registry("providers").aoutputs()
+        agent.bridge.bind(request)
         await extension.create_goal(__import__("json").dumps(SPEC))
         assert calls[-1].capability == "agentic" and calls[-1].method == "create"
         namespace = agent.registry("tools")["agentic"]

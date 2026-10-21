@@ -4,7 +4,8 @@ A goal is an explicitly authorized objective, not a reminder or an expansion of
 permissions. Only one goal may remain open (active or suspended) per conversation.
 Use goals for established multi-turn work, not for every conversational exchange.
 The current_goal provider is refreshed before each step; get_goal retrieves full
-records and list_goals includes history. Unavailable state is not an empty list.
+records and list_goals includes history. With no open goal the provider emits no
+context. Unavailable state is explicit, never silently treated as no goal.
 
 While active, the server schedules low-priority continuations in the canonical
 worker queue. End a turn normally when useful; do not schedule your own wakes to
