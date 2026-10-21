@@ -81,13 +81,21 @@ class Worker:
 
     async def dispatch(self, command):
         """Run one queued command through the configured middleware chain."""
-        if isinstance(command, PromptRequest) and command.admission is not None:
-            decision = await self.agent.bridge.call(
-                command.admission, "admit", {}, timeout_ms=10_000,
-            )
-            if not isinstance(decision, dict) or decision.get("allowed") is not True:
-                return
-        execute = self.execute
+        async def execute(value):
+            # Middleware can postpone work. Revalidate its owner's admission
+            # only at the actual execution boundary, not before that wait.
+            if isinstance(value, PromptRequest) and value.admission is not None:
+                decision = await self.agent.bridge.call(
+                    value.admission, "admit", {}, timeout_ms=10_000,
+                )
+                if not isinstance(decision, dict) or decision.get("allowed") is not True:
+                    return
+            receipt = self.agent.session.commands.get(value.id)
+            if receipt is not None and receipt.deferred is not None:
+                await asyncio.to_thread(self.agent.session.set_command, value.id, "active")
+            async for event in self.execute(value):
+                yield event
+
         for middleware in reversed(self.command_middleware):
             next_execute = execute
 
@@ -147,6 +155,8 @@ class Worker:
             command.id,
             status,
             error,
+            deferred=(self.agent.session.commands[command.id].deferred
+                      if status == "active" and command.id in self.agent.session.commands else None),
         )
 
     def _commit_realtime_turn(self, payload):
@@ -409,6 +419,8 @@ class Worker:
                 self.agent.session.set_command,
                 request.id,
                 "queued",
+                deferred=(self.agent.session.commands[request.id].deferred
+                          if request.id in self.agent.session.commands else None),
             )
             if isinstance(request, PluginBindingRequest) and (
                 request.application_call_id is not None
@@ -545,6 +557,12 @@ class Worker:
             ))
             return True
         if isinstance(request, ShutdownRequest):
+            # A deliberately deferred command has not begun its effect. Stop
+            # its in-memory wait, retaining its durable payload for next boot.
+            active = self.commands.active
+            receipt = self.agent.session.commands.get(active.id) if active is not None else None
+            if receipt is not None and receipt.deferred is not None:
+                active.status = "interrupted"
             for future in self.application_calls.values():
                 if not future.done():
                     future.set_exception(ApplicationError("worker is shutting down"))
@@ -600,6 +618,9 @@ class Worker:
                 for plugin in getattr(self.agent, "extensions", [])
             ],
         ))
+        for receipt in list(self.agent.session.commands.values()):
+            if receipt.status == "waiting" and receipt.deferred is not None:
+                await self.handle(WorkerRequest.from_dict(dict(receipt.deferred)))
         self.schedule_quota_refresh()
         command_task = asyncio.create_task(self.commands.run())
         while True:

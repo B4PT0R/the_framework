@@ -46,6 +46,7 @@ class SessionWatermark(Base):
 class CommandReceipt(Base):
     status: str
     error: str | None = None
+    deferred: dict | None = None
 
 
 class Session(Base):
@@ -407,9 +408,9 @@ class Session(Base):
         return receipt.status if receipt else None
 
     @serialized_session_write
-    def set_command(self, command_id, status, error=None):
+    def set_command(self, command_id, status, error=None, *, deferred=None):
         previous = self.commands.copy()
-        self.commands[command_id] = CommandReceipt(status=status, error=error)
+        self.commands[command_id] = CommandReceipt(status=status, error=error, deferred=deferred)
         try:
             self.save()
         except Exception:
@@ -495,7 +496,10 @@ class Session(Base):
         previous = self.commands.copy()
         interrupted = False
         for command_id, receipt in self.commands.items():
-            if receipt.status in {"queued", "active"}:
+            if receipt.deferred is not None and receipt.status in {"queued", "active", "waiting"}:
+                self.commands[command_id] = CommandReceipt(status="waiting", deferred=receipt.deferred)
+                interrupted = True
+            elif receipt.status in {"queued", "active", "waiting"}:
                 self.commands[command_id] = CommandReceipt(status="interrupted")
                 interrupted = True
         if interrupted:

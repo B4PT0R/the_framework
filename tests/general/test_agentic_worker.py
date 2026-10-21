@@ -123,3 +123,74 @@ def test_real_worker_goal_lifecycle_and_late_duplicate_after_restart(tmp_path):
             await incoming.put(ShutdownRequest(id="stop"))
             await asyncio.wait_for(runner, 5)
     asyncio.run(test())
+
+
+def test_owner_admission_runs_after_middleware_wait():
+    async def run():
+        agent = Agent(client=object())
+        sequence = []
+
+        async def middleware(agent, command, call_next):
+            sequence.append("wait")
+            async for event in call_next(command):
+                yield event
+
+        async def admission(request):
+            sequence.append("admit")
+            return {"allowed": False}
+
+        worker = Worker(agent, None, None, command_middleware=(middleware,))
+        agent.bridge.bind(admission)
+        command = PromptRequest(id="delayed", prompt="do not execute", admission="owner")
+        assert [event async for event in worker.dispatch(command)] == []
+        assert sequence == ["wait", "admit"]
+    asyncio.run(run())
+
+
+def test_shutdown_preserves_deferred_work_and_recovery_executes_once(tmp_path):
+    import json
+    from the_framework.agent.context.session import Session
+
+    async def run():
+        path = tmp_path / "session.json"
+        command = PromptRequest(id="held", prompt="preserved")
+        session = Session.open(path)
+        session.set_command(command.id, "waiting", deferred=json.loads(json.dumps(command)))
+        incoming = asyncio.Queue()
+        entered = asyncio.Event()
+        async def hold(agent, command, call_next):
+            command.status = "waiting"
+            await asyncio.to_thread(agent.session.set_command, command.id, "waiting",
+                                    deferred=json.loads(json.dumps(command)))
+            entered.set()
+            await incoming.put(ShutdownRequest(id="stop"))
+            while command.status != "interrupted":
+                await asyncio.sleep(.001)
+            if False:
+                yield
+        async def send(output):
+            pass
+        first = Worker(Agent(client=object(), session=Session.open(path)), incoming.get, send,
+                       command_middleware=(hold,))
+        await asyncio.wait_for(first.run(), 3)
+        assert entered.is_set()
+        restored = Session.open(path)
+        assert restored.commands["held"].deferred["prompt"] == "preserved"
+        assert restored.command_status("held") == "waiting"
+        incoming = asyncio.Queue()
+        ran = []
+        agent = Agent(client=object(), session=restored)
+        async def stream(prompt, **options):
+            # Clear replay intent BEFORE the first potential model effect.
+            assert agent.session.commands["held"].deferred is None
+            ran.append(prompt)
+            yield Event.from_dict({"type": "agent.step.start"})
+        async def completed(output):
+            if isinstance(output, CommandCompleted):
+                await incoming.put(ShutdownRequest(id="done"))
+        agent.astream = stream
+        worker = Worker(agent, incoming.get, completed)
+        await asyncio.wait_for(worker.run(), 3)
+        assert ran == ["preserved"]
+        assert Session.open(path).command_status("held") == "completed"
+    asyncio.run(run())

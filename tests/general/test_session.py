@@ -403,3 +403,18 @@ def test_sanitize_rolls_back_all_state_when_persistence_fails(tmp_path, monkeypa
     assert session.history == previous_history
     assert session.archive == previous_archive
     assert session.revision == 7
+
+
+def test_recovery_keeps_explicitly_deferred_payloads_only(tmp_path):
+    path = tmp_path / "session.json"
+    session = Session.open(path)
+    payload = {"id": "held", "type": "prompt_request", "prompt": "preserve"}
+    session.set_command("held", "waiting", deferred=payload)
+    session.set_command("ordinary", "waiting")
+    restored = Session.open(path)
+    restored.recover_commands()
+    assert restored.command_status("held") == "waiting"
+    assert restored.commands["held"].deferred == payload
+    assert restored.command_status("ordinary") == "interrupted"
+    restored.set_command("held", "interrupted")
+    assert Session.open(path).commands["held"].deferred is None
