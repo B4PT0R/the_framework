@@ -14,6 +14,7 @@ from pathlib import Path
 from fastapi import Request
 from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.datastructures import MutableHeaders
 from modict import modict
 
 from ...utils.persistence import MappingStore
@@ -496,8 +497,15 @@ class SurfaceApplication:
                 html = marker + html
             await HTMLResponse(html, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})(scope, receive, send)
             return
+        async def send_revalidated(message):
+            if message["type"] == "http.response.start":
+                # Stable surface URLs select mutable releases: never reuse them
+                # without validation, including after a conditional 304 response.
+                MutableHeaders(scope=message)["Cache-Control"] = "no-cache"
+            await send(message)
+
         await StaticFiles(directory=directory, html=True)(
-            routed_scope, receive, send
+            routed_scope, receive, send_revalidated
         )
 
 

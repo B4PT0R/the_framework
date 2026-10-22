@@ -502,3 +502,37 @@ def test_device_surfaces_have_independent_initial_bundles_previews_and_rollbacks
         assert client.get("/mobile/").text == "Initial mobile"
         assert client.get("/quest/").text == "Initial quest"
         assert client.get("/desktop/").text == "Initial desktop"
+
+
+def test_active_surface_revalidates_cached_entry_after_publication(tmp_path):
+    """A reopened WebView must not reuse a heuristically fresh entry page."""
+    async def scenario():
+        source = source_tree(tmp_path)
+        app = _assemble_server(declaration(source), context=BuildContext({
+            "surface_root": tmp_path / "runtime",
+        }))
+        service = app.state.application.surface_service
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await service.build("main")
+            await service.publish("main")
+            for route in ("/ui/", "/ui/index.html", "/remote-ui/", "/quest-ui/"):
+                first = await client.get(route)
+                assert first.status_code == 200
+                assert first.headers["cache-control"] == "no-cache"
+                cached = await client.get(route, headers={"If-None-Match": first.headers["etag"]})
+                assert cached.status_code == 304
+                assert cached.headers["cache-control"] == "no-cache"
+            old_etag = first.headers["etag"]
+            (source / "content.txt").write_text("new release")
+            await service.build("main")
+            await service.publish("main")
+            updated = await client.get("/ui/", headers={"If-None-Match": old_etag})
+            assert updated.status_code == 200
+            assert updated.text == "<main>new release</main>"
+            assert updated.headers["cache-control"] == "no-cache"
+            await service.rollback("main")
+            restored = await client.get("/ui/", headers={"If-None-Match": updated.headers["etag"]})
+            assert restored.status_code == 200
+            assert restored.text == "<main>first</main>"
+            assert restored.headers["cache-control"] == "no-cache"
+    asyncio.run(scenario())
