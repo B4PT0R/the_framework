@@ -135,6 +135,11 @@ class ChromiumExtension(AgentExtension):
             "",
             "Elements:",
         ]
+        # The browser daemon survives server reloads; only shorten fields when
+        # that same daemon can supply their full content on demand.
+        preview = ChromiumExtension._preview if snapshot.get("read_element_available") else str
+        if not snapshot.get("read_element_available"):
+            lines.insert(-2, "Full field reader unavailable until browser daemon reload; values kept intact.")
         elements = snapshot.get("elements") or []
         if not elements:
             lines.append("  (no useful visible elements found)")
@@ -143,19 +148,19 @@ class ChromiumExtension(AgentExtension):
             name = element.get("name") or element.get("text") or ""
             parts = [f"[{element.get('id')}]", role]
             if name:
-                parts.append(json.dumps(ChromiumExtension._preview(name), ensure_ascii=False))
+                parts.append(json.dumps(preview(name), ensure_ascii=False))
             details = []
             if element.get("href"):
-                details.append(f"href={ChromiumExtension._preview(element['href'])}")
+                details.append(f"href={preview(element['href'])}")
             if element.get("placeholder"):
                 details.append(
-                    f"placeholder={json.dumps(ChromiumExtension._preview(element['placeholder']), ensure_ascii=False)}"
+                    f"placeholder={json.dumps(preview(element['placeholder']), ensure_ascii=False)}"
                 )
             if element.get("value") and role in {
                 "input", "textarea", "select", "search", "textbox", "searchbox", "combobox",
             }:
                 details.append(
-                    f"value={json.dumps(ChromiumExtension._preview(element['value']), ensure_ascii=False)}"
+                    f"value={json.dumps(preview(element['value']), ensure_ascii=False)}"
                 )
             if element.get("checked"):
                 details.append("checked")

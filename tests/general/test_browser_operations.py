@@ -151,6 +151,7 @@ def test_long_form_previews_and_paginated_reads_preserve_page_and_handles(tmp_pa
             session = service.session('web')
             snapshot = await session.snapshot()
             preview = ChromiumExtension._format_snapshot('web', snapshot)
+            assert snapshot['read_element_available'] is True
             assert 'read_element' in preview and 'FIN' in preview
             assert len(preview) < 2500
             for name in ('Draft', 'Editor'):

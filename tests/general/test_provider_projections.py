@@ -58,7 +58,7 @@ def test_oversized_goal_projection_has_constraints_lookup_and_task_count(tmp_pat
 
 def test_browser_long_fields_keep_both_ends_and_explicit_lookup():
     value = "HEAD" + "x" * 20000 + "TAIL"
-    snapshot = {"elements": [{"id": "fresh-1", "role": "textarea", "name": "Draft", "value": value},
+    snapshot = {"read_element_available": True, "elements": [{"id": "fresh-1", "role": "textarea", "name": "Draft", "value": value},
                              {"id": "fresh-2", "role": "link", "href": value, "placeholder": value}]}
     before = deepcopy(snapshot)
     result = ChromiumExtension._format_snapshot("web", snapshot)
@@ -85,3 +85,11 @@ def test_agenda_only_omits_empty_fields_and_preserves_false_flags():
     assert agenda["timezone"] == "Europe/Paris" and not agenda["truncated"]
     assert book.tasks == before
     assert book.view(book.get("today"), now)["due_at"] is None
+
+
+def test_browser_keeps_full_values_until_daemon_can_read_them():
+    value = "unsaved draft " * 1000
+    snapshot = {"elements": [{"id": "fresh-1", "role": "textarea", "name": "Draft", "value": value}]}
+    result = ChromiumExtension._format_snapshot("web", snapshot)
+    assert value in result and "values kept intact" in result
+    assert "use read_element" not in result

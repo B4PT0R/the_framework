@@ -89,7 +89,7 @@ SNAPSHOT_SCRIPT = r"""
       rect: {x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height)}
     });
   }
-  return {url: location.href, title: document.title, elements, truncated: elements.length >= maxElements};
+  return {url: location.href, title: document.title, elements, truncated: elements.length >= maxElements, read_element_available: true};
 }
 """
 

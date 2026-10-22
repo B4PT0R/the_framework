@@ -12,7 +12,9 @@ are opaque handles valid only for the latest snapshot; I use fresh IDs after
 navigation or view changes. Long form values and link attributes are explicitly
 truncated in observations; `read_element(element_id, field, offset, limit)` reads
 value/text/href/placeholder without changing the page. Follow `next_offset` to
-retrieve more; ordinary values remain inline. When observation is open but no tabs exist, the
+retrieve more; ordinary values remain inline. If the daemon has not loaded the
+reader yet, observation explicitly reports it and leaves values intact; do not
+call `read_element` or restart that daemon implicitly. When observation is open but no tabs exist, the
 provider reports that empty state without creating a page or taking a screenshot.
 
 I keep an observation session open only while its current DOM or screenshot is
