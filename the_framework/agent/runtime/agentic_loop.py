@@ -3,6 +3,7 @@ import inspect
 import json
 import time
 from collections import deque
+from contextlib import ExitStack
 from threading import Condition, Lock
 from threading import Event as ThreadEvent
 
@@ -43,6 +44,7 @@ _STREAM_LIFECYCLE_EVENTS = {
     "response.queued",
     "response.created",
     "response.in_progress",
+    "response.metadata",
 }
 
 
@@ -136,6 +138,7 @@ class AgenticLoop:
         self.request_next_step = False
         self.tool_calls = []
         self.stream = None
+        self.responses = None
         self.retry_wake = ThreadEvent()
         self.pending = deque()
         self.pending_lock = Lock()
@@ -328,7 +331,8 @@ class AgenticLoop:
                 if self.end_turn:
                     return
                 try:
-                    events = self.agent.client.responses.create(**payload)
+                    responses = self.responses if self.responses is not None else self.agent.client.responses
+                    events = responses.create(**payload)
                     if events is None:
                         raise MissingResponseStream("OpenAI returned no response stream")
                     self.stream = events
@@ -622,6 +626,8 @@ class AgenticLoop:
             raise ValueError("prompt_role must be user or developer")
         previous_reasoning_effort = self.reasoning_effort_override
         previous_response_kind = self.response_kind
+        previous_responses = self.responses
+        transport = ExitStack()
         self.reasoning_effort_override = reasoning_effort
         self.response_kind = response_kind
         try:
@@ -642,6 +648,10 @@ class AgenticLoop:
                     self.agent.add_message(prompt_role, prompt)
                 else:
                     self.agent.add_message(prompt_role, prompt, kind=prompt_kind)
+            self.responses = getattr(self.agent.client, "responses", None)
+            turn = getattr(self.responses, "turn", None)
+            if callable(turn):
+                self.responses = transport.enter_context(turn())
             await self.step()
             while (
                 self.request_next_step
@@ -652,8 +662,10 @@ class AgenticLoop:
             self.checkpoint(request_model_step=False)
             self.agent.emit(AgentTurnEnd())
         finally:
+            self.responses = previous_responses
             self.reasoning_effort_override = previous_reasoning_effort
             self.response_kind = previous_response_kind
+            transport.close()
 
     def turn_sync(self, prompt=None):
         return asyncio.run(self.turn(prompt))

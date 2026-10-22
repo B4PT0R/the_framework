@@ -248,3 +248,83 @@ def test_steering_checkpoint_preserves_fifo_and_requests_another_step():
         "second",
     ]
     assert loop.request_next_step is True
+
+
+def test_sdk_routing_scope_spans_retries_and_steps_but_not_turns(tmp_path, monkeypatch):
+    import json
+    from codex_backend_sdk import CodexClient
+
+    class SSE:
+        headers = {}
+
+        def __init__(self, events):
+            self.events = events
+
+        def iter_lines(self):
+            for event in self.events:
+                yield "data: " + json.dumps(event)
+                yield ""
+
+        def close(self):
+            pass
+
+    metadata = {"type": "response.metadata", "headers": {"x-codex-turn-state": "opaque-route"}}
+    overloaded = {"type": "error", "error": {"type": "service_unavailable_error", "message": "retry"}}
+    completed = {"type": "response.completed", "response": {"id": "resp-test", "model": "test"}}
+    replies = iter([SSE([metadata, overloaded]), SSE([completed]), SSE([completed]), SSE([completed])])
+    posts = []
+    client = CodexClient(model="test")
+
+    def post(_path, **kwargs):
+        posts.append(kwargs)
+        return next(replies)
+
+    monkeypatch.setattr(client, "_post", post)
+    agent = Agent(client=client, session_path=tmp_path / "session.json")
+    loop = agent.agentic_loop
+    monkeypatch.setattr(loop.retry_wake, "wait", lambda _delay: False)
+    steps = []
+
+    async def step():
+        steps.append(True)
+        loop.generation({"input": "hello", "stream": True, "prompt_cache_key": "conversation"})
+        loop.request_next_step = len(steps) == 1
+
+    monkeypatch.setattr(loop, "step", step)
+    asyncio.run(loop.turn("First turn"))
+    assert loop.responses is None
+    asyncio.run(loop.turn("Next turn"))
+    assert [post["headers"].get("x-codex-turn-state") for post in posts] == [
+        None, "opaque-route", "opaque-route", None,
+    ]
+    assert all(post["body"] == posts[0]["body"] for post in posts)
+    assert "opaque-route" not in agent.session.path.read_text()
+    assert loop.responses is None
+
+
+def test_routing_scope_closes_on_turn_failure(monkeypatch):
+    from contextlib import contextmanager
+
+    closed = []
+    scoped = SimpleNamespace(create=lambda **kwargs: [])
+
+    class Responses:
+        @contextmanager
+        def turn(self):
+            try:
+                yield scoped
+            finally:
+                closed.append(True)
+
+    agent = Agent(client=SimpleNamespace(responses=Responses()))
+    loop = agent.agentic_loop
+
+    async def fail():
+        assert loop.responses is scoped
+        raise RuntimeError("interrupted")
+
+    monkeypatch.setattr(loop, "step", fail)
+    with pytest.raises(RuntimeError, match="interrupted"):
+        asyncio.run(loop.turn("question"))
+    assert closed == [True]
+    assert loop.responses is None

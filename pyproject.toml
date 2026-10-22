@@ -23,7 +23,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "codex-backend-sdk>=0.5.3",
+    "codex-backend-sdk>=0.5.5",
     "fastapi",
     "httpx",
     "jsonschema>=4.26.0",
@@ -59,3 +59,7 @@ exclude = ["/starter/ui/dist/**", "/starter/ui/node_modules/**", "**/__pycache__
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+# Local SDK development; wheel consumers use the public dependency above.
+[tool.uv.sources]
+codex-backend-sdk = { path = "../codex-backend-sdk", editable = true }
