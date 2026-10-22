@@ -17,7 +17,7 @@ from ...agent.extensions.tools import tool
 
 
 class RegistryConfig(Config):
-    max_tokens: int = 16_000
+    max_tokens: int = 4_000
     max_depth: int = 32
     max_file_bytes: int = 1_000_000
 

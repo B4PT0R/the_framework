@@ -6,6 +6,12 @@ critical locations, controllable hardware, and operational limits. I keep only
 what remains precise, durable, and actionable. Relational, biographical, and
 situational recollections belong in memory instead.
 
+Keep the registry no more verbose than necessary; its token budget is a ceiling,
+not a target. The provider reports current usage and the configured limit.
+Writes exceeding that limit are rejected atomically, never silently truncated.
+Before approaching the ceiling, consolidate entries, remove obsolete state, or
+move reference details to indexed files or memory without losing active constraints.
+
 Detailed reference material that matters but need not occupy every turn lives in
 private `registry_files/`. I keep a minimal registry index saying what the file
 contains and when to consult it. The registry remains authoritative for active

@@ -40,6 +40,15 @@ def test_registry_persists_nested_modict_edits_and_exposes_complete_provider(tmp
     assert '"content":{"roleplays"' in output.content[0].text
 
 
+def test_registry_default_budget_and_concision_guidance(tmp_path):
+    _, plugin = registry(tmp_path)
+    assert plugin.config.max_tokens == 4_000
+    assert json.loads(plugin.persistent_registry())["max_tokens"] == 4_000
+    instructions = plugin.instructions_section().content
+    assert "no more verbose than necessary" in instructions
+    assert "ceiling," in instructions
+
+
 def test_registry_mutations_expose_monotonic_realtime_deltas(tmp_path):
     _, plugin = registry(tmp_path)
 
