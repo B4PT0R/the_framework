@@ -315,7 +315,8 @@ class TaskBook:
             days = task_days(row, zone)
             if row["overdue"] or row["last_error"] or any(day <= today for day in days):
                 relevant.append(row)
-        return {"now": iso(now), "timezone": timezone_name, "date": today.isoformat(), "tasks": relevant[:limit], "total_relevant": len(relevant), "active_total": sum(t.status == "active" for t in self.tasks.values()), "truncated": len(relevant) > limit, "lookup": "scheduler.find_tasks"}
+        return {"now": iso(now), "timezone": timezone_name, "date": today.isoformat(), "tasks": [{k: v for k, v in row.items() if v is not None and v != "" and v != []}
+                  for row in relevant[:limit]], "total_relevant": len(relevant), "active_total": sum(t.status == "active" for t in self.tasks.values()), "truncated": len(relevant) > limit, "lookup": "scheduler.find_tasks"}
 
     def prepare(self, now):
         prepared = []

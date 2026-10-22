@@ -120,6 +120,13 @@ class ChromiumExtension(AgentExtension):
         )
 
     @staticmethod
+    def _preview(text, limit=600):
+        if len(text) <= limit:
+            return text
+        half = limit // 2
+        return f"{text[:half]}… [truncated; {len(text)} chars; use read_element] …{text[-half:]}"
+
+    @staticmethod
     def _format_snapshot(target, snapshot):
         lines = [
             f"Target: {target}",
@@ -136,19 +143,19 @@ class ChromiumExtension(AgentExtension):
             name = element.get("name") or element.get("text") or ""
             parts = [f"[{element.get('id')}]", role]
             if name:
-                parts.append(json.dumps(name, ensure_ascii=False))
+                parts.append(json.dumps(ChromiumExtension._preview(name), ensure_ascii=False))
             details = []
             if element.get("href"):
-                details.append(f"href={element['href']}")
+                details.append(f"href={ChromiumExtension._preview(element['href'])}")
             if element.get("placeholder"):
                 details.append(
-                    f"placeholder={json.dumps(element['placeholder'], ensure_ascii=False)}"
+                    f"placeholder={json.dumps(ChromiumExtension._preview(element['placeholder']), ensure_ascii=False)}"
                 )
             if element.get("value") and role in {
-                "input", "textarea", "select", "search", "textbox",
+                "input", "textarea", "select", "search", "textbox", "searchbox", "combobox",
             }:
                 details.append(
-                    f"value={json.dumps(element['value'], ensure_ascii=False)}"
+                    f"value={json.dumps(ChromiumExtension._preview(element['value']), ensure_ascii=False)}"
                 )
             if element.get("checked"):
                 details.append("checked")
@@ -197,6 +204,14 @@ class ChromiumExtension(AgentExtension):
         target = self.active_target
         self.active_target = None
         return {"status": "success", "action": "close_session", "target": target}
+
+    @tool
+    def read_element(self, element_id: str, field: str = "value", offset: int = 0, limit: int = 4000):
+        """Read value/text/href/placeholder by fresh element ID; paginate long content."""
+        target = self._require_session()
+        return self.controller.session_call(
+            target, "read_element", element_id, field=field, offset=offset, limit=limit,
+        )
 
     @tool
     def status(self):

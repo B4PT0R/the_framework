@@ -40,6 +40,7 @@ SNAPSHOT_SCRIPT = r"""
   const roleFor = el => {
     const explicit = clean(el.getAttribute('role')).toLowerCase();
     if (explicit) return explicit;
+    if (el.hasAttribute('contenteditable') && el.isContentEditable) return 'textbox';
     const type = clean(el.getAttribute('type')).toLowerCase();
     if (el.tagName === 'A') return 'link';
     if (el.tagName === 'BUTTON') return 'button';
@@ -82,7 +83,7 @@ SNAPSHOT_SCRIPT = r"""
       id, role, name, tag: el.tagName.toLowerCase(),
       text: clean(el.innerText).slice(0, maxTextLength),
       href: el.href || null, type: el.getAttribute('type') || null,
-      value: el.value || null, placeholder: el.getAttribute('placeholder') || null,
+      value: (el.isContentEditable ? el.innerText : el.value) || null, placeholder: el.getAttribute('placeholder') || null,
       disabled: !!el.disabled || el.getAttribute('aria-disabled') === 'true',
       checked: !!el.checked,
       rect: {x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height)}
@@ -414,6 +415,22 @@ class BrowserSession(modict):
     async def locator(self, element_id):
         page = await self.current_page()
         return page.locator(f'[{BROWSER_AGENT_ID_ATTR}="{element_id}"]')
+
+    async def read_element(self, element_id, *, field="value", offset=0, limit=4000):
+        if field not in {"value", "text", "href", "placeholder"}:
+            raise BrowserError("field must be value, text, href or placeholder")
+        if type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= 16000:
+            raise BrowserError("offset must be nonnegative; limit must be 1..16000")
+        content = await (await self.locator(element_id)).evaluate(
+            """(el, field) => String(field === 'text' ? el.innerText || '' :
+                field === 'value' ? (el.isContentEditable ? el.innerText : el.value) || '' :
+                field === 'href' ? el.href || '' : el.getAttribute('placeholder') || '')""",
+            field,
+        )
+        end = offset + limit
+        return {"element_id": element_id, "field": field, "offset": offset,
+                "total_chars": len(content), "content": content[offset:end],
+                "next_offset": end if end < len(content) else None}
 
     async def click(self, element_id):
         await (await self.locator(element_id)).click()

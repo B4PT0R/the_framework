@@ -135,3 +135,46 @@ def test_real_browser_survives_observation_closure_and_resumes_user_tabs(tmp_pat
         assert asyncio.run(plugin.chromium_state()) is None
     finally:
         plugin.shutdown()
+
+
+def test_long_form_previews_and_paginated_reads_preserve_page_and_handles(tmp_path):
+    from the_framework.plugins.browser import ChromiumExtension
+
+    async def run():
+        service = BrowserService(tmp_path, web_headless=True)
+        try:
+            page = await service.open_web(new_tab=True)
+            await page.set_content('<textarea aria-label="Draft"></textarea><div contenteditable="true" aria-label="Editor"></div><a href="https://example.test/">Link</a>')
+            value = 'Début 🐈\n' + 'long draft line\n' * 1000 + 'FIN'
+            await page.locator('textarea').fill(value)
+            await page.locator('[contenteditable]').fill(value)
+            session = service.session('web')
+            snapshot = await session.snapshot()
+            preview = ChromiumExtension._format_snapshot('web', snapshot)
+            assert 'read_element' in preview and 'FIN' in preview
+            assert len(preview) < 2500
+            for name in ('Draft', 'Editor'):
+                element = next(e for e in snapshot['elements'] if e['name'] == name)
+                assert element['value'] == value
+                chunks, offset = [], 0
+                while True:
+                    result = await session.read_element(element['id'], offset=offset, limit=777)
+                    chunks.append(result['content'])
+                    assert result['total_chars'] == len(value)
+                    offset = result['next_offset']
+                    if offset is None:
+                        break
+                assert ''.join(chunks) == value
+                assert await (await session.locator(element['id'])).count() == 1
+            link = next(e for e in snapshot['elements'] if e['role'] == 'link')
+            assert (await session.read_element(link['id'], field='href'))['content'] == 'https://example.test/'
+            assert (await session.read_element(link['id'], field='text'))['content'] == 'Link'
+            assert (await session.read_element(link['id'], offset=500))['content'] == ''
+            for kwargs in ({'field': 'bad'}, {'limit': 0}, {'limit': 16001}, {'offset': -1}, {'limit': True}):
+                with pytest.raises(Exception, match='field must|offset must'):
+                    await session.read_element(link['id'], **kwargs)
+            await session.fill(next(e['id'] for e in snapshot['elements'] if e['name'] == 'Draft'), 'Still editable')
+            assert await page.locator('textarea').input_value() == 'Still editable'
+        finally:
+            await service.stop()
+    asyncio.run(asyncio.wait_for(run(), 20))

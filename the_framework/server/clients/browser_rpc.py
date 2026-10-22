@@ -24,6 +24,7 @@ SERVICE_METHODS = {
     "observe",
 }
 SESSION_METHODS = {
+    "read_element",
     "back",
     "click",
     "fill",

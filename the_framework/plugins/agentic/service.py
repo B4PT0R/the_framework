@@ -169,14 +169,27 @@ class AgenticService:
         async with self.lock:
             if method == "current":
                 goal = next((g for g in self.goals.values() if g.status in {"active", "suspended"}), None)
-                projection = deepcopy(goal)
-                truncated = goal is not None and len(json.dumps(goal, ensure_ascii=False)) > 20000
-                if truncated:
-                    projection = {k: deepcopy(goal[k]) for k in ("id", "status", "revision", "stalled_turns", "failures")}
-                    projection.update(objective=goal.objective[:2000], summary=goal.summary[:2000], outcome=goal.outcome[:2000],
-                                      tasks=[{"id": t.id, "title": t.title[:300], "status": t.status} for t in goal.tasks[:20]])
+                projection = None
+                truncated = False
+                if goal is not None:
+                    projection = {k: deepcopy(goal[k]) for k in (
+                        "id", "status", "revision", "objective", "scope", "success_criteria",
+                        "summary", "outcome", "stalled_turns", "failures")}
+                    projection["tasks"] = [
+                        {**{k: t[k] for k in ("id", "title", "status")},
+                         **({"evidence": t.evidence} if t.evidence and t.status in {"pending", "in_progress"} else {})}
+                        for t in goal.tasks]
+                    truncated = len(json.dumps(projection, ensure_ascii=False)) > 20000
+                    if truncated:
+                        for key in ("objective", "scope", "summary", "outcome"):
+                            projection[key] = projection[key][:1000]
+                        projection["success_criteria"] = [c[:200] for c in goal.success_criteria]
+                        projection["tasks"] = [{"id": t.id, "title": t.title[:200], "status": t.status}
+                                               for t in goal.tasks[:10]]
+                        projection["task_total"] = len(goal.tasks)
                 return {"status": "ready", "goal": projection, "truncated": truncated,
-                        "lookup": "agentic.get_goal; read full objective, scope and criteria before acting" if truncated else None,
+                        "lookup": ("agentic.get_goal; read full objective, scope and criteria before acting"
+                                   if truncated else "agentic.get_goal for full evidence and history") if goal else None,
                         "automatic_continuation": bool(goal and goal.status == "active" and self.enabled())}
             if method == "get":
                 return deepcopy(self._goal(payload["goal_id"]))

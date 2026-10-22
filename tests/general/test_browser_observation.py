@@ -56,7 +56,7 @@ def test_resume_reads_existing_tabs_without_changing_them(plugin):
     ("status", ()), ("open_web", ()), ("close_tab", ()), ("close_web", ()),
     ("goto", ("https://example.com",)), ("back", ()), ("select_tab", (0,)),
     ("click", ("id",)), ("fill", ("id", "text")),
-    ("select", ("id", "value")), ("press", ("Enter",)),
+    ("select", ("id", "value")), ("press", ("Enter",)), ("read_element", ("id",)),
 ])
 def test_actions_require_explicit_observation_session(plugin, method, args):
     with pytest.raises(BrowserError, match="open_session"):
@@ -98,3 +98,12 @@ def test_external_navigation_does_not_enable_observation(plugin):
     assert plugin.active_target is None
     assert asyncio.run(plugin.chromium_state()) is None
     plugin.controller.session_call.assert_not_called()
+
+
+def test_read_element_uses_active_session_and_does_not_refresh_handles(plugin):
+    plugin.open_session("harness_ui")
+    plugin.controller.reset_mock()
+    plugin.read_element("fresh-1", field="text", offset=4000, limit=8000)
+    plugin.controller.session_call.assert_called_once_with(
+        "harness_ui", "read_element", "fresh-1", field="text", offset=4000, limit=8000)
+    plugin.controller.call.assert_not_called()
