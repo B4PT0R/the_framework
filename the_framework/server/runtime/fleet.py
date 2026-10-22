@@ -291,7 +291,7 @@ class AgentRunner:
 
     async def execute(self, task):
         if not await self.ensure_running():
-            return AgentResult(
+            result = AgentResult(
                 id=timestamp_id(),
                 task_id=task.id,
                 profile=self.profile.name,
@@ -300,6 +300,8 @@ class AgentRunner:
                 error=self.error or "specialist worker is unavailable",
                 metadata=task.metadata,
             )
+            result.set_attr("_retryable", True)
+            return result
         output_text = None
         completion_tool = self.profile.completion_tool
         maximum_passes = 1 + self.profile.completion_retry_limit
@@ -383,7 +385,7 @@ class AgentRunner:
                         metadata=task.metadata,
                     )
                 if isinstance(output, (WorkerExited, WorkerTransportError)):
-                    return AgentResult(
+                    result = AgentResult(
                         id=timestamp_id(),
                         task_id=task.id,
                         profile=self.profile.name,
@@ -393,6 +395,8 @@ class AgentRunner:
                         agent_session_id=(self.ready.session_id if self.ready else None),
                         metadata=task.metadata,
                     )
+                    result.set_attr("_retryable", True)
+                    return result
         return AgentResult(
             id=timestamp_id(),
             task_id=task.id,
@@ -419,11 +423,10 @@ class AgentRunner:
             self.active_task_id = task.id
             try:
                 result = await self.execute(task)
-                terminal = (
-                    result.status == "completed"
-                    or result.error == "interrupted"
-                    or not self.profile.durable_tasks
-                )
+                # Worker/transport loss can be recovered. An explicit command
+                # failure or exhausted completion passes is already terminal:
+                # replaying that same failed receipt cannot do new work.
+                terminal = not getattr(result, "_retryable", False) or not self.profile.durable_tasks
                 if terminal:
                     self.pending = [value for value in self.pending if value.id != task.id]
                     self.outbox.append(result)
@@ -431,6 +434,8 @@ class AgentRunner:
                 else:
                     await asyncio.sleep(1)
                 self.enqueue_available()
+                if not terminal:
+                    continue
                 # A terminal result must never become externally observable
                 # while its task is still durable.  A crash after publication
                 # would otherwise replay work the caller has already seen finish.

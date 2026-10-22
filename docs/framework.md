@@ -1177,6 +1177,11 @@ have changed. The trigger owns these defaults and its queue/completion/idle poli
 contains only the reusable agent recipe.
 Reconstructing a recipe from a profile does not attach hosting or history policy to it.
 Task journaling (`durable_tasks`) remains independent of conversation persistence.
+Durable tasks survive temporary worker startup or transport failures without
+publishing an intermediate result to the caller. An explicit worker command
+failure, interruption, or exhausted completion retry budget is terminal: its
+failure enters the durable result outbox and the task leaves the pending queue.
+It is not resubmitted forever against the same terminal command receipt.
 
 `AgentSpec` is the public in-process construction recipe; `AgentTrigger` binds a
 specialist's task/result handling to its plugin. `WorkerProfile`, under

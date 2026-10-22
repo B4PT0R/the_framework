@@ -409,23 +409,29 @@ def test_stateless_nondurable_auxiliary_does_not_persist_pending_tasks(tmp_path)
     asyncio.run(test())
 
 
-def test_interrupted_auxiliary_task_is_retired_instead_of_retried_forever(tmp_path):
+@pytest.mark.parametrize("error", ["interrupted", "invalid tool arguments"])
+def test_failed_auxiliary_command_is_retired_instead_of_retried_forever(tmp_path, error):
     async def test():
-        InterruptedSupervisor.instances = []
+        class FailedSupervisor(InterruptedSupervisor):
+            async def send(self, request):
+                self.sent.append(request)
+                await self.outputs.put(CommandFailed(
+                    request_id=request.id, command=request, error=error,
+                ))
+
         fleet = FleetSupervisor(
             tmp_path / "session.json",
             [profile()],
-            supervisor_factory=InterruptedSupervisor,
+            supervisor_factory=FailedSupervisor,
         )
         await fleet.start()
 
         await fleet.observe(canonical_event())
         result = await asyncio.wait_for(fleet.results.get(), 1)
-        while fleet.runners["jiminy"].pending:
-            await asyncio.sleep(0)
+        await asyncio.wait_for(fleet.runners["jiminy"].queue.join(), 1)
 
         assert result.status == "failed"
-        assert result.error == "interrupted"
+        assert result.error == error
         assert fleet.runners["jiminy"].pending == []
         document = json.loads(fleet.runners["jiminy"].tasks_path.read_text())
         assert document["pending"] == []
@@ -435,6 +441,43 @@ def test_interrupted_auxiliary_task_is_retired_instead_of_retried_forever(tmp_pa
             "pending": [], "outbox": [],
         }
         await fleet.stop()
+
+    asyncio.run(test())
+
+
+def test_worker_loss_retries_durable_task_without_publishing_intermediate_failure(tmp_path):
+    from the_framework.server.runtime.supervisor import WorkerExited
+
+    async def test():
+        class RecoveringSupervisor(FakeSupervisor):
+            attempts = 0
+
+            async def send(self, request):
+                self.attempts += 1
+                if self.attempts == 1:
+                    self.sent.append(request)
+                    self.running = False
+                    await self.outputs.put(WorkerExited(returncode=1, stderr=[]))
+                else:
+                    await super().send(request)
+
+        fleet = FleetSupervisor(
+            tmp_path / "session.json", [profile()],
+            supervisor_factory=RecoveringSupervisor,
+        )
+        await fleet.start()
+        try:
+            await fleet.observe(canonical_event())
+            result = await asyncio.wait_for(fleet.results.get(), 3)
+            runner = fleet.runners["jiminy"]
+            assert result.status == "completed"
+            assert runner.pending == []
+            assert runner.supervisor.attempts == 2
+            assert runner.supervisor.sent[0].id == runner.supervisor.sent[1].id
+            assert fleet.results.empty()
+            assert [item.id for item in runner.outbox] == [result.id]
+        finally:
+            await fleet.stop()
 
     asyncio.run(test())
 
@@ -486,14 +529,15 @@ def test_auxiliary_requires_successful_completion_tool_before_finishing(tmp_path
     asyncio.run(test())
 
 
-def test_auxiliary_completion_retries_are_bounded(tmp_path):
+@pytest.mark.parametrize("durable_tasks", [False, True])
+def test_auxiliary_completion_retries_are_bounded(tmp_path, durable_tasks):
     async def test():
         FakeSupervisor.instances = []
         fleet = FleetSupervisor(
             tmp_path / "session.json",
             [profile(
                 durable=False, retain_history=False,
-                durable_tasks=False,
+                durable_tasks=durable_tasks,
                 completion_tool="complete_curation",
                 completion_retry_limit=1,
             )],

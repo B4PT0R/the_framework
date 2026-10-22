@@ -4,6 +4,7 @@ import json
 import math
 import os
 import sqlite3
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from html import escape
 from pathlib import Path
@@ -74,13 +75,19 @@ class MemoryStore:
             self.path.parent.mkdir(parents=True, exist_ok=True)
         self.initialize()
 
+    @contextmanager
     def connect(self):
         connection = self._connection or sqlite3.connect(self.path)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA journal_mode = WAL")
-        connection.execute("PRAGMA synchronous = FULL")
-        return connection
+        try:
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA foreign_keys = ON")
+            connection.execute("PRAGMA journal_mode = WAL")
+            connection.execute("PRAGMA synchronous = FULL")
+            with connection:
+                yield connection
+        finally:
+            if self._connection is None:
+                connection.close()
 
     def initialize(self):
         with self.connect() as connection:

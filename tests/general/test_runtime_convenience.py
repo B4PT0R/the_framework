@@ -49,6 +49,24 @@ def test_runtime_operations_wait_for_completion_and_preserve_retry_ids():
     asyncio.run(run())
 
 
+def test_command_wait_ignores_unrelated_plugin_events():
+    from the_framework.agent.models.events import Event
+    from the_framework.agent.runtime.protocol import ExternalEventRequest
+
+    async def run():
+        async def send(command):
+            await runtime.publish(Event(type="plugin.activity"))
+            await runtime.publish({"type": "application.activity"})
+            await runtime.publish(CommandCompleted(request_id="other", command=command))
+            await runtime.publish(CommandCompleted(request_id=command.id, command=command))
+
+        runtime = SessionRuntime(SimpleNamespace(send=send))
+        assert await runtime.command(ExternalEventRequest(id="result", name="agent_result")) is None
+        assert not runtime.subscribers
+
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize("failed", [False, True])
 def test_config_update_rejects_missing_result_and_preserves_worker_failure(failed):
     async def run():

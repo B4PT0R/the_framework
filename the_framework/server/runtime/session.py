@@ -693,6 +693,8 @@ class SessionRuntime:
                         raise RuntimeError("application runtime stopped")
                     if isinstance(output, WorkerTransportError):
                         raise RuntimeError(f"worker transport failed: {output.error}")
+                    if not isinstance(output, (CommandEvent, CommandCompleted, CommandFailed)):
+                        continue
                     if output.request_id != payload.id:
                         continue
                     if isinstance(output, CommandEvent):
