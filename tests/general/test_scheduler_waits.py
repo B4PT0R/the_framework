@@ -157,3 +157,70 @@ def test_native_projection_is_read_only_and_occurrence_scoped(tmp_path, monkeypa
         assert len((await service.native_alerts())["alerts"]) == 2
         assert service.waits.get("w")["status"] == "waiting"
     asyncio.run(run())
+
+
+@pytest.mark.parametrize('action', ['answered', 'acknowledged', 'cancelled', 'timed_out'])
+def test_wait_provider_drops_settled_outcomes_but_keeps_pending_delivery(tmp_path, monkeypatch, action):
+    from the_framework.agent import Agent
+    from the_framework.agent.extensions.providers import Provider
+    from the_framework.plugins.scheduler import SchedulerExtension
+
+    async def run():
+        monkeypatch.setattr('the_framework.plugins.scheduler.service.utc_now', lambda: NOW)
+        service = SchedulerService(tmp_path / 'state.json', None)
+        agent = Agent(client=object())
+        calls = []
+
+        async def request(call):
+            calls.append(call)
+            return await service.wait_call(call.method.removeprefix('wait_'), call.payload)
+
+        agent.bridge.bind(request)
+        plugin = agent.add_extension(SchedulerExtension)
+        provider = Provider.from_function(plugin.response_waits)
+        assert await provider.aoutputs() == []
+        kind = 'ack' if action == 'acknowledged' else 'reply'
+        await service.wait_call('create', {'wait_id': 'w', 'wait': {
+            'name': 'Wait', 'context': 'Useful now', 'timeout_seconds': 60, 'response_kind': kind}})
+        assert (await plugin.response_waits())['active'][0]['id'] == 'w'
+        if action == 'timed_out':
+            service.waits.due(NOW + timedelta(seconds=60))
+        else:
+            service.waits.resolve('w', action, NOW, resume=action == 'acknowledged')
+        if action in {'acknowledged', 'timed_out'}:
+            result = await plugin.response_waits()
+            assert result['active'][0]['status'] == action
+            assert 'recent' not in result
+            record = service.waits.get('w')
+            service.waits.observe(service.waits.command_id(record), None)
+        assert await provider.aoutputs() == []
+        assert all(c.payload == {'active_only': True} for c in calls)
+        # Removal from model context is not deletion of history or receipt evidence.
+        assert len((await service.wait_call('list', {'active_only': False}))['waits']) == 1
+        assert (await service.wait_call('get', {'wait_id': 'w'}))['status'] == action
+    asyncio.run(run())
+
+
+def test_wait_provider_bounds_current_context_and_reports_unavailable_state():
+    from the_framework.agent import Agent
+    from the_framework.plugins.scheduler import SchedulerExtension
+
+    async def run():
+        agent = Agent(client=object())
+        records = [{'id': str(i), 'status': 'waiting', 'context': 'x' * 16000,
+                    'alert': {'body': 'private'}, 'receipts': {'phone': {}}} for i in range(13)]
+        async def request(call):
+            assert call.payload == {'active_only': True}
+            return {'waits': records}
+        agent.bridge.bind(request)
+        plugin = agent.add_extension(SchedulerExtension)
+        result = await plugin.response_waits()
+        assert result['active_total'] == 13 and result['truncated']
+        assert len(result['active']) == 12
+        assert all(len(r['context']) == 1200 and 'alert' not in r and 'receipts' not in r
+                   for r in result['active'])
+        async def fail(call):
+            raise RuntimeError('scheduler offline')
+        agent.bridge.bind(fail)
+        assert await plugin.response_waits() == {'status': 'unavailable', 'error': 'scheduler offline'}
+    asyncio.run(run())

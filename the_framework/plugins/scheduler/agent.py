@@ -182,17 +182,16 @@ class SchedulerExtension(AgentExtension):
 
     @provider
     async def response_waits(self):
-        """Active response deadlines and recent outcomes, not proof of human receipt."""
+        """Active response deadlines and pending deliveries; absent when empty."""
         try:
-            result = await self._call("wait_list", {"active_only": False})
-            records = result["waits"]
-            active = [r for r in records if r["status"] == "waiting" or r["delivery_state"] == "pending"]
-            recent = [r for r in records if r not in active][-5:]
+            result = await self._call("wait_list", {"active_only": True})
+            active = result["waits"]
+            if not active:
+                return None
             def compact(record):
                 return {key: (value[:1200] if isinstance(value, str) else value)
                         for key, value in record.items() if key not in {"receipts", "alert"}}
             return {"active": [compact(r) for r in active[:12]],
-                    "recent": [compact(r) for r in recent],
                     "active_total": len(active), "truncated": len(active) > 12,
                     "details": "Use get_wait for delivery receipts and complete context."}
         except Exception as error:

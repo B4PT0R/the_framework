@@ -111,5 +111,7 @@ late responses before deciding whether to do nothing, clarify, remind or follow
 a previously authorized escalation. Never silently convert a message to an alarm,
 contact someone, or create an endless retry loop. `resolve_wait` handles actual
 answers/ACKs or cancellation in the current turn without a second queued turn.
-The bounded `response_waits` provider reports unavailable/truncated state honestly;
-use `list_waits` and `get_wait` for complete data.
+The bounded `response_waits` provider contains only active waits and pending
+result deliveries, and emits nothing when empty. Settled outcomes leave this
+context automatically; history remains available through `list_waits(active_only=False)`
+and `get_wait`. Unavailable/truncated state is reported explicitly.
