@@ -8,7 +8,7 @@ from xml.etree import ElementTree
 
 from modict import modict
 
-from ..models.usage import ResponseUsage
+from ..models.usage import CacheHitStats, ResponseUsage
 from ...utils.persistence import atomic_text_writer
 from ..models.responses import (
     Compaction as CompactionItem,
@@ -60,6 +60,7 @@ class Session(Base):
     anchor_token_count: int | None = None
     tail_start: int = 0
     context_usage: ResponseUsage | None = None
+    cache_hit: CacheHitStats = modict.factory(CacheHitStats)
     commands: dict[str, CommandReceipt] = modict.factory(dict)
     plugins: dict[str, bool] = modict.factory(dict)
     agent_name: str | None = None
@@ -396,11 +397,14 @@ class Session(Base):
     @serialized_session_write
     def set_context_usage(self, usage):
         previous = self.context_usage
+        previous_cache_hit = self.cache_hit
         self.context_usage = usage
+        self.cache_hit = self.cache_hit.observe(usage)
         try:
             self.save()
         except Exception:
             self.context_usage = previous
+            self.cache_hit = previous_cache_hit
             raise
 
     def command_status(self, command_id):

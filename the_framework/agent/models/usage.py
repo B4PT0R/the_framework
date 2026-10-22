@@ -1,3 +1,5 @@
+from time import time
+
 from .base import Base
 
 
@@ -23,6 +25,41 @@ class ResponseUsage(Base):
         elif hasattr(payload, "model_dump"):
             payload = payload.model_dump()
         return cls(payload)
+
+
+class CacheHitStats(Base):
+    """Per-response EMA of API-reported cached/input tokens (not local estimates).
+
+    alpha=0.1 gives a 19-sample conventional span, ~6.6-sample half-life.
+    Missing/invalid observations leave the EMA unchanged, never count as misses.
+    """
+
+    alpha: float = 0.1
+    ema_percent: float | None = None
+    last_percent: float | None = None
+    samples: int = 0
+    unreported: int = 0
+    updated_at: float | None = None
+
+    def observe(self, usage):
+        result = self.copy()
+        result.last_percent = None
+        tokens = usage.input_tokens if usage is not None else None
+        details = usage.input_tokens_details if usage is not None else None
+        cached = details.cached_tokens if details is not None else None
+        if (type(tokens) is not int or tokens <= 0
+                or type(cached) is not int or not 0 <= cached <= tokens):
+            result.unreported += 1
+            return result
+        percent = 100.0 * cached / tokens
+        result.last_percent = percent
+        result.ema_percent = (
+            percent if self.ema_percent is None
+            else self.alpha * percent + (1 - self.alpha) * self.ema_percent
+        )
+        result.samples += 1
+        result.updated_at = time()
+        return result
 
 
 class UsageWindow(Base):

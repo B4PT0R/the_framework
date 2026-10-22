@@ -488,6 +488,7 @@ class Worker:
                 foreground_pending=self.foreground_pending_count(),
                 local_input_tokens=self.agent.context.last_local_input_tokens,
                 context_token_limit=context_limit,
+                cache_hit=self.agent.session.cache_hit.copy(),
                 compaction_active=self.compaction_command_id is not None,
                 compaction_pending=sum(
                     isinstance(command, CompactRequest) and command.status == "queued"

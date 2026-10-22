@@ -96,7 +96,7 @@ class Context:
         return self.agent.session.context_usage
 
     def record_usage(self, usage):
-        usage = ResponseUsage.from_dict(usage)
+        usage = ResponseUsage.from_dict(usage) if usage is not None else None
         self.agent.session.set_context_usage(usage)
         return usage
 
@@ -106,7 +106,7 @@ class Context:
         elif hasattr(response, "model_dump"):
             response = response.model_dump()
         usage = response.get("usage") if isinstance(response, dict) else None
-        return self.record_usage(usage) if usage is not None else None
+        return self.record_usage(usage)
 
     def local_token_payload(self, payload):
         def sanitize(value):

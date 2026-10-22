@@ -5,7 +5,7 @@ from ..models.events import Event
 from ..models.responses import ResponseItem
 from ..context.session import SessionWatermark
 from ..models.base import TypedBase
-from ..models.usage import UsageWindow
+from ..models.usage import CacheHitStats, UsageWindow
 
 
 class WorkerRequest(TypedBase):
@@ -189,6 +189,7 @@ class WorkerStatus(WorkerOutput):
     context_saturation: float = 0.0
     compaction_active: bool = False
     compaction_pending: int = 0
+    cache_hit: CacheHitStats = modict.factory(CacheHitStats)
     quota_5h: UsageWindow | None = None
     quota_7d: UsageWindow | None = None
     quota_updated_at: int | None = None

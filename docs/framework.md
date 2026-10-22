@@ -1297,6 +1297,22 @@ is not proof. These are transient lifecycle signals, not conversation messages.
 Voice keeps its own post-drain restart notification so the general announcement
 does not cut an ongoing spoken turn.
 
+Worker status also includes durable `cache_hit`: `ema_percent`, `last_percent`,
+`samples`, `unreported`, `updated_at` (Unix seconds of the last valid sample), and
+`alpha` (0.1). Each completed/incomplete Responses generation with valid usage
+contributes `100 * input_tokens_details.cached_tokens / input_tokens`; the first
+sample seeds the EMA, then `EMA = alpha * sample + (1 - alpha) * EMA`. This is an
+average of per-call percentages, not weighted by request size and not a quota
+savings estimate. The conventional span is 19 samples (half-life ~6.6 samples).
+Absent/invalid usage clears `last_percent` and increments `unreported`, leaving the
+EMA, sample count and measurement time unchanged. An unmeasured EMA is `null`,
+not zero. The worker owns observation and session persistence; reconnect/status
+polling never samples again. Metrics are not inserted into the model prompt.
+Each worker/session measures its own generations, not separate subagent sessions,
+Realtime voice or the distinct compaction endpoint. Failed/interrupted streams
+without a completed/incomplete response are not observations.
+
+
 ## Context providers
 
 `@provider(channels=("text",))` contributes ephemeral context only to the named
