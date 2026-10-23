@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from the_framework.server.clients.browser import BrowserService, BrowserSession
+from the_framework.server.clients.browser import BrowserError, BrowserService, BrowserSession
 
 
 @pytest.mark.parametrize("web_headless", [False, True])
@@ -108,6 +108,39 @@ def test_concurrent_starts_share_one_driver(tmp_path):
         finally:
             await session.stop()
         assert all(driver.stopped for driver in drivers)
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("phase", ["driver", "chromium"])
+def test_stalled_start_is_bounded_releases_driver_and_can_retry(tmp_path, monkeypatch, phase):
+    monkeypatch.setattr("the_framework.server.clients.browser._BROWSER_START_TIMEOUT", 0.02)
+
+    async def run():
+        drivers = []
+
+        class StalledManager(Driver):
+            async def start(self):
+                if phase == "driver":
+                    await asyncio.Event().wait()
+                return await super().start()
+
+            async def __aexit__(self, *_exc):
+                await self.stop()
+
+        def factory():
+            driver = StalledManager(gate=asyncio.Event()) if not drivers else Driver()
+            drivers.append(driver)
+            return driver
+
+        session = BrowserSession(profile_dir=tmp_path, playwright_factory=factory)
+        with pytest.raises(BrowserError, match="startup timed out"):
+            await asyncio.wait_for(session.start(), 1)
+        assert drivers[0].stopped
+        assert not session.started
+        await session.start()
+        assert session.started
+        await session.stop()
 
     asyncio.run(run())
 

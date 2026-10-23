@@ -19,6 +19,7 @@ BROWSER_AGENT_ID_ATTR = "data-harness-browser-id"
 BROWSER_TARGETS = {"web", "harness_ui"}
 _PAGE_CLOSE_TIMEOUT = 5
 _BROWSER_EXIT_TIMEOUT = 30
+_BROWSER_START_TIMEOUT = 20
 logger = logging.getLogger(__name__)
 
 
@@ -179,41 +180,46 @@ class BrowserSession(modict):
             manager = self.playwright_factory()
             playwright = context = process = None
             try:
-                playwright = await manager.start()
-                context = await playwright.chromium.launch_persistent_context(
-                    user_data_dir=str(self.profile_dir),
-                    headless=self.headless,
-                    viewport=self.viewport,
-                    no_viewport=self.no_viewport,
-                    args=list(self.extra_args),
-                    ignore_default_args=list(self.ignore_default_args),
-                )
-                browser = getattr(context, "browser", None)
-                if browser is not None:
-                    cdp = await browser.new_browser_cdp_session()
-                    try:
-                        if self.native_downloads:
-                            # Desktop users need Chromium's normal filenames,
-                            # destination and retention, not Playwright's temporary
-                            # GUID downloads (which disappear on context shutdown).
-                            await cdp.send("Browser.setDownloadBehavior", {"behavior": "default"})
-                        info = await cdp.send("SystemInfo.getProcessInfo")
-                        pid = next(item["id"] for item in info["processInfo"] if item["type"] == "browser")
-                        process = psutil.Process(pid)
-                    finally:
-                        await cdp.detach()
-                if self.initial_cookies:
-                    await context.add_cookies(self.initial_cookies)
-                if hasattr(context, "on"):
-                    # Ignore late close events from an earlier incarnation.
-                    context.on("close", lambda *_args: self._closed(context))
-            except BaseException:
+                async with asyncio.timeout(_BROWSER_START_TIMEOUT):
+                    playwright = await manager.start()
+                    context = await playwright.chromium.launch_persistent_context(
+                        user_data_dir=str(self.profile_dir),
+                        headless=self.headless,
+                        viewport=self.viewport,
+                        no_viewport=self.no_viewport,
+                        args=list(self.extra_args),
+                        ignore_default_args=list(self.ignore_default_args),
+                    )
+                    browser = getattr(context, "browser", None)
+                    if browser is not None:
+                        cdp = await browser.new_browser_cdp_session()
+                        try:
+                            if self.native_downloads:
+                                # Keep ordinary filenames and user-owned downloads.
+                                await cdp.send("Browser.setDownloadBehavior", {"behavior": "default"})
+                            info = await cdp.send("SystemInfo.getProcessInfo")
+                            pid = next(item["id"] for item in info["processInfo"] if item["type"] == "browser")
+                            process = psutil.Process(pid)
+                        finally:
+                            await cdp.detach()
+                    if self.initial_cookies:
+                        await context.add_cookies(self.initial_cookies)
+                    if hasattr(context, "on"):
+                        # Ignore late close events from an earlier incarnation.
+                        context.on("close", lambda *_args: self._closed(context))
+            except BaseException as error:
+                logger.warning("Browser startup failed for %s (%s)", self.profile_dir.name, type(error).__name__)
                 try:
                     if context is not None:
                         await context.close()
                 finally:
                     if playwright is not None:
                         await self._release_driver(playwright, process)
+                    elif hasattr(manager, "__aexit__"):
+                        # start() may have spawned its driver before hanging.
+                        await manager.__aexit__(None, None, None)
+                if isinstance(error, TimeoutError):
+                    raise BrowserError(f"Browser startup timed out after {_BROWSER_START_TIMEOUT}s; retry opening it") from error
                 raise
             self._manager = modict.attr(manager)
             self._playwright = modict.attr(playwright)
