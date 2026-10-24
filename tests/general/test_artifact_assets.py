@@ -55,3 +55,36 @@ def test_asset_route_rejects_symlink_escape(tmp_path):
     from the_framework.server.api.endpoints import HttpError
     with pytest.raises(HttpError):
         asyncio.run(ArtifactAssets(tmp_path).content("linked"))
+
+
+def test_audio_asset_is_durable_authenticated_and_seekable(tmp_path):
+    import wave
+
+    source = tmp_path / "speech.wav"
+    with wave.open(str(source), "wb") as audio:
+        audio.setparams((1, 2, 22050, 0, "NONE", "not compressed"))
+        audio.writeframes(b"\x01\x00" * 2205)
+    original = source.read_bytes()
+    root = tmp_path / "app"
+    assets = ArtifactAssets(root)
+    payload = assets.publish("audio", {"path": str(source), "title": "Speech"})
+    assert payload["mime_type"] in {"audio/x-wav", "audio/wav"}
+    assert payload["size"] == len(original)
+    assert "path" not in payload
+    source.unlink()
+    app = create_app(root, token="test", origin="http://testserver", runtime=FakeRuntime())
+    with TestClient(app) as client:
+        assert client.get(payload["src"]).status_code == 401
+        client.headers["authorization"] = "Bearer test"
+        response = client.get(payload["src"])
+        assert response.content == original
+        assert response.headers["content-type"].startswith("audio/")
+        partial = client.get(payload["src"], headers={"range": "bytes=0-43"})
+        assert partial.status_code == 206
+        assert partial.content == original[:44]
+    invalid = tmp_path / "not-audio.txt"
+    invalid.write_text("not audio")
+    before = list(assets.root.iterdir())
+    with pytest.raises(ValueError, match="recognized audio filename"):
+        assets.publish("audio", {"path": str(invalid)})
+    assert list(assets.root.iterdir()) == before

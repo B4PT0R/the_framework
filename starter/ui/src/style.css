@@ -305,3 +305,5 @@ h1 {
 .artifact-fallback pre { overflow: auto; max-height: 20rem; }
 
 .preview-badge { color: #80b7ff; font-size: .8rem; }
+
+.artifact-audio audio { display: block; width: 100%; min-width: 0; margin-bottom: var(--space-3, 12px); }

@@ -24,7 +24,7 @@ def test_supported_artifacts_describes_executable_builtin_payloads(tmp_path):
     namespace = next(tool for tool in agent.registry("tools").list() if tool.name == "artifacts")
     assert namespace.find("supported_artifacts").strict is True
     catalogue = json.loads(json.dumps(extension.supported_artifacts()))
-    assert set(catalogue) == {"image", "file"}
+    assert set(catalogue) == {"image", "audio", "file"}
     assets = ArtifactAssets(tmp_path / "app")
     for kind, entry in catalogue.items():
         assert entry["description"]
@@ -34,9 +34,14 @@ def test_supported_artifacts_describes_executable_builtin_payloads(tmp_path):
         validator.validate(entry["example"])
         assert not validator.is_valid({"title": "Missing source"})
         assert not validator.is_valid({"path": 42})
-        source = tmp_path / ("chart.png" if kind == "image" else "report.pdf")
+        source = tmp_path / {"image": "chart.png", "audio": "speech.wav", "file": "report.pdf"}[kind]
         if kind == "image":
             RasterImage.new("RGB", (12, 8), "teal").save(source)
+        elif kind == "audio":
+            import wave
+            with wave.open(str(source), "wb") as audio:
+                audio.setparams((1, 2, 22050, 0, "NONE", "not compressed"))
+                audio.writeframes(b"\x01\x00" * 2205)
         else:
             source.write_bytes(b"example report")
         payload = {**entry["example"], "path": str(source)}

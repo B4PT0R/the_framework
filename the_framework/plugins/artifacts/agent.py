@@ -26,6 +26,11 @@ _BUILTIN_ARTIFACTS = {
         },
         "example": {"path": "/tmp/chart.png", "title": "Chart", "alt": "Quarterly sales"},
     },
+    "audio": {
+        "description": "Offer a local audio file with manual playback controls in the chat (no autoplay).",
+        "payload_schema": _FILE_PAYLOAD_SCHEMA,
+        "example": {"path": "/tmp/speech.wav", "title": "Speech", "description": "A spoken reminder"},
+    },
     "file": {
         "description": "Offer an existing local file as a download in the chat.",
         "payload_schema": _FILE_PAYLOAD_SCHEMA,
@@ -36,7 +41,7 @@ _BUILTIN_ARTIFACTS = {
 
 class ArtifactsExtension(AgentExtension):
     name = "artifacts"
-    description = "Show images, files and application-defined widgets in the conversation."
+    description = "Show images, audio, files and application-defined widgets in the conversation."
     # Explicit application-wide declarations, never discovered from connected clients.
     artifact_types: tuple[type[Artifact], ...] = ()
     instructions = (
@@ -44,9 +49,9 @@ class ArtifactsExtension(AgentExtension):
         "whenever unsure which kinds are supported or how to compose their payloads. "
         "Its catalogue is the application's contract for every client; do not adapt "
         "artifact choices to the connected client or invent widget payloads. "
-        "For image/file, pass "
+        "For image/audio/file, pass "
         "payload.path pointing to an existing local file; it is copied to durable "
-        "storage. Optional payload.title and payload.description label it. For "
+        "storage. Optional payload.title and payload.description label it. Audio uses manual playback controls, never autoplay. For "
         "widgets, pass a JSON description supported by the application's renderer. "
         "Unknown kinds remain readable as JSON. Artifacts request presentation; "
         "they do not prove the user has seen it. Image items and browser screenshots "
@@ -89,10 +94,10 @@ class ArtifactsExtension(AgentExtension):
     @tool
     async def show_artifact(self, kind: str, payload: dict):
         """
-        description: Present a durable artifact; image/file with payload.path, or custom JSON.
+        description: Present a durable artifact; image/audio/file with payload.path, or custom JSON.
         strict: false
         """
-        if kind in {"image", "file"}:
+        if kind in {"image", "audio", "file"}:
             payload = await self.agent.bridge.call(
                 "artifacts", "publish", {"kind": kind, "payload": payload},
                 timeout_ms=120_000,

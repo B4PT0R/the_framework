@@ -17,8 +17,8 @@ class ArtifactAssets(FileBucket):
         return await asyncio.to_thread(self.publish, **payload)
 
     def publish(self, kind, payload):
-        if kind not in {"image", "file"}:
-            raise ValueError("only image/file artifacts need asset publication")
+        if kind not in {"image", "audio", "file"}:
+            raise ValueError("only image/audio/file artifacts need asset publication")
         source = Path(payload["path"]).expanduser().resolve()
         if not source.is_file():
             raise ValueError("artifact path must be an existing regular file")
@@ -26,6 +26,8 @@ class ArtifactAssets(FileBucket):
         # Unique names freeze each publication, even when a source is overwritten.
         asset = f"{uuid4().hex}-{name.encode('utf-8')[:180].decode('utf-8', errors='ignore')}"
         mime_type = mimetypes.guess_type(name)[0] or "application/octet-stream"
+        if kind == "audio" and not mime_type.startswith("audio/"):
+            raise ValueError("audio artifacts require a recognized audio filename (e.g. .wav, .mp3, .ogg, .flac, .m4a)")
         with source.open("rb") as stream:
             copied = copy_uploaded_files([SimpleNamespace(
                 file=stream, filename=asset, content_type=mime_type,

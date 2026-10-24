@@ -1,5 +1,5 @@
 import React, { Component, useState } from "react";
-const copy = { artifactTemporary: "Current turn view", artifact: "Artifact", artifactImage: "Shared image", artifactFile: "File",
+const copy = { artifactTemporary: "Current turn view", artifact: "Artifact", artifactImage: "Shared image", artifactFile: "File", artifactAudio: "Audio",
   artifactUnavailable: "This content is unavailable.", artifactDownload: "Download {name}",
   artifactDetails: "{kind} content — show data" };
 const useLocale = () => ({ t: (key, values = {}) => copy[key].replace(/\{(\w+)\}/g, (_, name) => values[name]) });
@@ -42,6 +42,20 @@ function FileArtifact({ payload }) {
   </>;
 }
 
+function AudioArtifact({ payload }) {
+  const { t } = useLocale();
+  const [failedSource, setFailedSource] = useState(null);
+  const src = artifactSource(payload.src);
+  return <>
+    {src && failedSource !== src
+      ? <audio key={src} controls preload="none"
+          aria-label={String(payload.title || payload.name || t("artifactAudio"))}
+          src={src} onError={() => setFailedSource(src)} />
+      : src && <p role="status">{t("artifactUnavailable")}</p>}
+    <FileArtifact payload={payload} />
+  </>;
+}
+
 function Fallback({ kind, payload }) {
   const { t } = useLocale();
   return <details className="artifact-fallback"><summary>{t("artifactDetails", { kind })}</summary>
@@ -58,7 +72,7 @@ class RenderBoundary extends Component {
   render() { return this.state.failed ? this.props.fallback : this.props.children; }
 }
 
-const builtins = { image: ImageArtifact, file: FileArtifact };
+const builtins = { image: ImageArtifact, audio: AudioArtifact, file: FileArtifact };
 
 export function Artifact({ kind, payload = {}, renderers = {}, temporary = false }) {
   const { t } = useLocale();
