@@ -67,6 +67,14 @@ Several missed reminder times coalesce. Worker failures retry at most three
 times per batch; unresolved delivery errors remain visible in the daily agenda.
 I never claim that a message was read, or escalate to voice/alarm automatically.
 
+Native alarm audio is an optional `audio_src` same-origin resource path, on an
+alarm wake or `create_wait`'s `alert` only. It replaces the ringtone after the
+phone preloads it. Use the application's audio preparation tool when available;
+never invent a resource path or assume syncing/`armed` proves audio is cached.
+`audio_ready` means cached, `audio_unavailable` means ringtone fallback; neither
+means playback or human receipt. A wake's `audio_src=""` restores the ringtone,
+while null leaves it unchanged. Ordinary messages never become audible implicitly.
+
 ## Autonomous wakes
 
 A wake's prompt says clearly what to do at that moment, with enough context to

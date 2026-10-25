@@ -1,6 +1,7 @@
 """Persistent response deadlines; the scheduler owns timing, the agent owns policy."""
 
 from copy import deepcopy
+import re
 from datetime import datetime, timedelta, timezone
 
 
@@ -21,6 +22,17 @@ def text(value, field, maximum=16000):
     if not isinstance(value, str) or not value.strip() or len(value) > maximum:
         raise ValueError(f"{field} must be nonempty text, at most {maximum} characters")
     return value.strip()
+
+
+def alarm_audio(value, kind):
+    """A same-origin immutable audio resource, never an external fetch or credential URL."""
+    if value is None:
+        return None
+    if (kind != "alarm" or not isinstance(value, str) or len(value) > 2048
+            or not re.fullmatch(r"/(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_.-]+", value)
+            or any(part in {".", ".."} for part in value.split("/"))):
+        raise ValueError("audio_src requires an alarm and a plain same-origin resource path")
+    return value
 
 
 class WaitBook:
@@ -61,16 +73,19 @@ class WaitBook:
         alert = payload.get("alert")
         start = now
         if alert is not None:
-            if not isinstance(alert, dict) or set(alert) - {"at", "kind", "title", "body"}:
+            if not isinstance(alert, dict) or set(alert) - {"at", "kind", "title", "body", "audio_src"}:
                 raise ValueError("alert must contain at, kind, title and optional body")
             if alert.get("kind") not in {"message", "alarm"} or kind != "ack":
                 raise ValueError("native alerts require response_kind ack and kind message or alarm")
             start = date(alert.get("at"))
             if start < now:
                 raise ValueError("alert.at must be in the future")
+            audio_src = alarm_audio(alert.get("audio_src"), alert["kind"])
             alert = {"at": stamp(start), "kind": alert["kind"],
                      "title": text(alert.get("title"), "alert.title", 200),
                      "body": text(alert.get("body", "Open your conversation for details."), "alert.body", 1000)}
+            if audio_src is not None:
+                alert["audio_src"] = audio_src
         # Retain recent outcomes for late receipts, without an unbounded permanent log.
         cutoff = now - timedelta(days=30)
         self.records = {k: r for k, r in self.records.items()
@@ -113,7 +128,7 @@ class WaitBook:
                 return self.resolve(item["id"], "answered", now, response=response, resume=False)
 
     def receipt(self, wait_id, client_id, event, now):
-        if event not in {"armed", "fired", "acknowledged", "permission_denied", "error", "auto_stopped"}:
+        if event not in {"armed", "fired", "acknowledged", "permission_denied", "error", "auto_stopped", "audio_ready", "audio_unavailable"}:
             raise ValueError("invalid alert receipt")
         item = self.get(wait_id)
         if item["alert"] is None:

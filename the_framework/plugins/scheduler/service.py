@@ -14,7 +14,7 @@ from the_framework.agent.models.base import Base
 
 from .calendar import calendar_schedule, next_calendar
 from .tasks import TaskBook
-from .waits import WaitBook
+from .waits import WaitBook, alarm_audio
 
 UTC = timezone.utc
 
@@ -48,6 +48,7 @@ class ScheduledWake(Base):
     interval_minutes: int | None = None
     calendar: dict | None = None
     delivery: str = "message"
+    audio_src: str | None = None
     enabled: bool = True
     created_at: str = modict.field(required="always")
     updated_at: str = modict.field(required="always")
@@ -161,6 +162,7 @@ class SchedulerService:
             raise ValueError("schedule_type must be once, interval or calendar")
         if wake.delivery not in {"message", "alarm"}:
             raise ValueError("delivery must be message or alarm")
+        alarm_audio(wake.audio_src, wake.delivery)
         parse_datetime(wake.next_run_at, field="next_run_at")
         if wake.schedule_type == "calendar":
             calendar_schedule(wake.calendar)
@@ -207,6 +209,7 @@ class SchedulerService:
         first_at=None,
         calendar=None,
         delivery="message",
+        audio_src=None,
         max_wakes=64,
         min_interval_minutes=1,
     ):
@@ -261,6 +264,7 @@ class SchedulerService:
             interval_minutes=interval,
             calendar=calendar,
             delivery=delivery,
+            audio_src=audio_src,
             created_at=timestamp,
             updated_at=timestamp,
         )
@@ -285,11 +289,12 @@ class SchedulerService:
             wakes = sorted(self.wakes.values(), key=lambda wake: wake.next_run_at)
             return {"wakes": [dict(wake) for wake in wakes]}
 
-    async def update(self, *, wake_id, name=None, prompt=None, delivery=None, enabled=None):
+    async def update(self, *, wake_id, name=None, prompt=None, delivery=None, enabled=None, audio_src=None):
         self._ensure_available()
         async with self.lock:
             wake = self._wake(wake_id)
-            previous = ScheduledWake(**dict(wake))
+            previous = wake
+            wake = ScheduledWake(**dict(wake))
             if name is not None:
                 wake.name = self._required_text(name, "name", 160)
             if prompt is not None:
@@ -302,7 +307,11 @@ class SchedulerService:
                 if not isinstance(enabled, bool):
                     raise ValueError("enabled must be a boolean")
                 wake.enabled = enabled
+            if audio_src is not None:
+                wake.audio_src = None if audio_src == "" else audio_src
+            self._validate_wake(wake)
             wake.updated_at = format_datetime(utc_now())
+            self.wakes[wake.id] = wake
             try:
                 await asyncio.to_thread(self._save)
             except Exception:
@@ -495,13 +504,14 @@ class SchedulerService:
         async with self.lock:
             alerts = [{**r, "ack_required": True} for r in self.waits.alerts(now)
                       if parse_datetime(r["at"]) <= horizon]
-            def append(source, occurrence, when, kind, title, body):
+            def append(source, occurrence, when, kind, title, body, audio_src=None):
                 if now - timedelta(minutes=5) <= when <= horizon:
                     key = sha256(f"{source}:{occurrence}".encode()).hexdigest()[:32]
                     alerts.append({"id": f"{source}-{key}", "at": format_datetime(when),
                                    "deadline_at": format_datetime(when + timedelta(hours=1)),
                                    "kind": kind, "title": title, "body": body,
-                                   "ack_required": False, "cancelled": False})
+                                   "ack_required": False, "cancelled": False,
+                                   **({"audio_src": audio_src} if audio_src else {})})
             for task in self.tasks.tasks.values():
                 if task.status == "active":
                     for key, when in self.tasks.events(task):
@@ -511,7 +521,7 @@ class SchedulerService:
             for wake in self.wakes.values():
                 if wake.enabled:
                     append("wake", f"{wake.id}:{wake.next_run_at}", parse_datetime(wake.next_run_at),
-                           wake.delivery, wake.name[:200], "Open your conversation for details.")
+                           wake.delivery, wake.name[:200], "Open your conversation for details.", wake.audio_src)
             alerts.sort(key=lambda item: item["at"])
             return {"alerts": alerts[:512], "truncated": len(alerts) > 512,
                     "server_time": format_datetime(now), "horizon_at": format_datetime(horizon)}

@@ -75,6 +75,7 @@ class SchedulerExtension(AgentExtension):
         first_at: str | None = None,
         delivery: str = "message",
         calendar_json: str | None = None,
+        audio_src: str | None = None,
     ):
         """
         description: >-
@@ -83,6 +84,7 @@ class SchedulerExtension(AgentExtension):
           monthdays (1..31 or -1=last), or weekday_ordinals (1..5 or -1=last, requires weekdays).
           Annual dates:["MM-DD",...] excludes all other date selectors (e.g. dates:["12-25"]).
           monthdays excludes weekday fields; nonexistent dates, including non-leap February 29, are skipped.
+          audio_src optionally replaces the alarm ringtone with preloaded audio (alarm delivery only).
           Calendar schedules preserve local wall time across daylight saving changes.
         """
         return await self._call("create", {
@@ -93,6 +95,7 @@ class SchedulerExtension(AgentExtension):
             "interval_minutes": interval_minutes,
             "first_at": first_at,
             "delivery": delivery,
+            "audio_src": audio_src,
             "calendar": json_object(calendar_json, "calendar_json") if calendar_json is not None else None,
             "max_wakes": self.config.max_wakes,
             "min_interval_minutes": self.config.min_interval_minutes,
@@ -114,10 +117,12 @@ class SchedulerExtension(AgentExtension):
         prompt: str | None = None,
         delivery: str | None = None,
         enabled: bool | None = None,
+        audio_src: str | None = None,
     ):
         """
         description: >-
-          Update a wake's label, instruction, or enabled state.
+          Update a wake's label, instruction, audio or enabled state.
+          audio_src: same-origin audio resource; empty string restores ringtone; null leaves unchanged.
         """
         return await self._call("update", {
             "wake_id": wake_id,
@@ -125,6 +130,7 @@ class SchedulerExtension(AgentExtension):
             "prompt": prompt,
             "delivery": delivery,
             "enabled": enabled,
+            "audio_src": audio_src,
         })
 
     @tool
@@ -205,7 +211,7 @@ class SchedulerExtension(AgentExtension):
           JSON: name, context, timeout_seconds(1..2678400), response_kind(reply|ack),
           criticality(low|normal|critical). Reply means the next human message, not a semantic answer;
           only one next-reply wait can be active. Optional native alert: {at: offset datetime,
-          kind: message|alarm, title, body}; requires ack, deadline starts at alert.at.
+          kind: message|alarm, title, body, optional audio_src}; requires ack, deadline starts at alert.at.
           Alarms require explicit user authorization. Native delivery requires a synced capable client.
         """
         return await self._call("wait_create", {"wait_id": timestamp_id(), "wait": json_object(wait_json, "wait_json")})
