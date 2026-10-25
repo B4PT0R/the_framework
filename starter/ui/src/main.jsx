@@ -1,3 +1,4 @@
+import { clientEventsUrl, clientOutput } from "./client-output.js";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { RemoteRealtimeTranscriptAssembler } from "./realtime-transcript.js";
@@ -101,6 +102,10 @@ function App({ artifactRenderers }) {
       revision = 0;
     const controller = new AbortController();
     const transcripts = new RemoteRealtimeTranscriptAssembler();
+    const media = clientOutput({
+      send: (value) => { if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(value)); },
+      onError: (message) => { if (!disposed) setError(message); },
+    });
     async function reconcile() {
       const requested = ++revision;
       const [page, status] = await Promise.all([
@@ -119,7 +124,7 @@ function App({ artifactRenderers }) {
     }
     function connect() {
       const active = new WebSocket(
-        `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/api/v1/events`,
+        clientEventsUrl(`${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/api/v1/events`),
       );
       socket = active;
       const current = () => !disposed && socket === active;
@@ -134,6 +139,7 @@ function App({ artifactRenderers }) {
       active.onmessage = ({ data }) => {
         if (!current()) return;
         const output = JSON.parse(data);
+        void media.handle(output).catch(fail);
         if (["worker_exited", "worker_transport_error"].includes(output.type)) setSubagents({});
         if (output.type === "subagent_event") setSubagents((items) => subagentActivities(items, output));
         if (output.type === "realtime_control_requested") {
@@ -187,6 +193,7 @@ function App({ artifactRenderers }) {
       active.onclose = () => {
         if (!current()) return;
         transportReady = false;
+        media.stop();
         setArtifacts([]);
         void voice.current?.suspend();
         transcripts.reset();
@@ -208,6 +215,7 @@ function App({ artifactRenderers }) {
       disposed = true;
       controller.abort();
       clearTimeout(retry);
+      media.stop();
       socket?.close();
     };
   }, []);

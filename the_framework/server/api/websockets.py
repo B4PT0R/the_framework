@@ -4,19 +4,27 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
 
 from fastapi import WebSocket
 from modict import modict
 from starlette.websockets import WebSocketDisconnect
 
 
-async def serve_event_stream_until_disconnect(socket, send_events):
+async def serve_event_stream_until_disconnect(socket, send_events, *, on_message=None):
     """Run a server-push stream until the client disconnects or sending ends."""
     async def wait_for_disconnect():
         while True:
             message = await socket.receive()
             if message["type"] == "websocket.disconnect":
                 return
+            text = message.get("text", "")
+            if on_message is not None and len(text) <= 4096:
+                try:
+                    payload = json.loads(text)
+                except (ValueError, TypeError):
+                    continue
+                on_message(socket, payload)
 
     sender = asyncio.create_task(send_events())
     receiver = asyncio.create_task(wait_for_disconnect())

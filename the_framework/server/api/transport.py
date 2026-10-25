@@ -1,5 +1,6 @@
 """Canonical event and application-bridge WebSocket transports."""
 
+from ..clients.activity import ActiveClients, client_key
 from .websockets import WebSocketEndpoint, serve_event_stream_until_disconnect
 
 
@@ -8,6 +9,7 @@ class CanonicalTransportSockets:
 
     def __init__(self, runtime, *, event_handshake, application_handshake):
         self.runtime = runtime
+        self.clients = ActiveClients()
         self._event_connections = 0
         self._sockets = set()
         self._primary_socket = None
@@ -44,9 +46,11 @@ class CanonicalTransportSockets:
             return
         if primary:
             self._primary_socket = socket
+        key = client_key(connection.get("principal_id"), socket.query_params.get("client_instance")) if primary and connection.get("principal_id") else None
         accepted = False
         try:
             await socket.accept(subprotocol=connection["subprotocol"])
+            self.clients.connect(key, socket)
             accepted = True
             self._sockets.add(socket)
             self._event_connections += 1
@@ -56,8 +60,9 @@ class CanonicalTransportSockets:
                 async for output in self.runtime.stream():
                     await socket.send_json(output)
 
-            await serve_event_stream_until_disconnect(socket, send_events)
+            await serve_event_stream_until_disconnect(socket, send_events, on_message=self.clients.receive)
         finally:
+            self.clients.disconnect(key, socket)
             if accepted:
                 self._sockets.discard(socket)
                 self._event_connections -= 1

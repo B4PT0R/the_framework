@@ -9,6 +9,7 @@ from the_framework.server.api.endpoints import HttpError
 from the_framework.server.api.uploads import copied_files_message, copy_uploaded_files
 
 from ..runtime.ingress import ChatIngress
+from ..clients.activity import request_client
 from .declarations import endpoint
 
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
@@ -31,8 +32,9 @@ def prepare_attachments(files, workfolder):
 
 
 class ChatApi:
-    def __init__(self, runtime, workfolder, voice=None, *, text_lock=None):
+    def __init__(self, runtime, workfolder, voice=None, *, text_lock=None, clients=None):
         self.runtime = runtime
+        self.clients = clients
         self.workfolder = workfolder
         self.voice = voice
         self.ingress = ChatIngress(runtime, voice, text_lock=text_lock)
@@ -42,13 +44,15 @@ class ChatApi:
                   "id": {"type": "string", "minLength": 1, "maxLength": 200},
                   "prompt": {"type": "string", "minLength": 1},
               }, "required": ["id", "prompt"], "additionalProperties": False},
-              response={"type": "object"})
-    async def prompt(self, id: str, prompt: str):
+              response={"type": "object"}, context="call")
+    async def prompt(self, id: str, prompt: str, call=None):
         """Submit a client-correlated turn to the canonical single-writer queue."""
         try:
             await self.ingress.submit(PromptRequest(id=id, prompt=prompt))
         except ValueError as error:
             raise HttpError(409, "voice_unavailable", str(error)) from error
+        if self.clients is not None:
+            await self.clients.activate(request_client(call))
         return {"id": id, "status": "submitted"}
 
     @endpoint("post", "/api/v1/agent/attachments", status_code=202,
@@ -57,8 +61,8 @@ class ChatApi:
                   "prompt": {"type": "string"},
                   "files": {"type": "array", "minItems": 1, "maxItems": 32},
               }, "required": ["id", "files"], "additionalProperties": False},
-              response={"type": "object"})
-    async def attachments(self, id: str, files: list, prompt: str = ""):
+              response={"type": "object"}, context="call")
+    async def attachments(self, id: str, files: list, prompt: str = "", call=None):
         """Store attachments before submitting one ordered conversation turn."""
         voice = self.voice
         async with self.ingress.lock:
@@ -66,7 +70,10 @@ class ChatApi:
                 for upload in files:
                     await upload.close()
                 raise HttpError(409, "voice_active", "Stop voice before sending attachments")
-            return await self._attachments(id, files, prompt)
+            result = await self._attachments(id, files, prompt)
+            if self.clients is not None:
+                await self.clients.activate(request_client(call))
+            return result
 
     async def _attachments(self, id, files, prompt):
         try:

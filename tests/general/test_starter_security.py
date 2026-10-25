@@ -31,7 +31,7 @@ def test_browser_cookie_and_websocket_origin():
     assert asyncio.run(security.handshake(request(*headers))) is None
     assert asyncio.run(security.handshake(request(
         *headers, ("origin", "http://127.0.0.1:8123"),
-    ))) == {"subprotocol": None}
+    ))) == {"subprotocol": None, "principal_id": "local"}
 
 
 def test_browser_cookie_survives_control_token_rotation_without_crossing_channels():

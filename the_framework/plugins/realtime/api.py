@@ -6,6 +6,7 @@ import logging
 from the_framework import endpoint
 from the_framework.agent.runtime.protocol import CommandCompleted, CommandFailed, SessionSnapshotRequest, StatusRequest
 from the_framework.server.api.endpoints import HttpError
+from the_framework.server.clients.activity import request_client
 from the_framework.utils.ids import timestamp_id
 
 from .events import (RealtimeControlFailed, RealtimeControlRequested,
@@ -160,10 +161,11 @@ class RealtimeApi:
 
     @endpoint("post", "/api/v1/realtime/calls", request={
         **CALL_REQUEST, "properties": {**CALL_REQUEST["properties"],
-                                      "offer_sdp": {"type": "string", "minLength": 1}},
+                                      "offer_sdp": {"type": "string", "minLength": 1},
+                                      "resume_call_id": CALL_REQUEST["properties"]["call_id"]},
         "required": ["call_id", "offer_sdp"],
-    }, response={"type": "object"}, authorization={"scope": "realtime:write"})
-    async def start(self, offer_sdp: str, call_id: str):
+    }, response={"type": "object"}, authorization={"scope": "realtime:write"}, context="call")
+    async def start(self, offer_sdp: str, call_id: str, resume_call_id: str | None = None, call=None):
         """Join the canonical conversation after any active text turn finishes."""
         async with self.lock:
             if self.restarting:
@@ -175,8 +177,11 @@ class RealtimeApi:
                 raise HttpError(409, "text_turn_active", "Finish or interrupt the current text turn before starting voice")
             snapshot = await self.runtime.request(SessionSnapshotRequest(id=timestamp_id()))
             try:
-                result = await self.controller.start(offer_sdp, snapshot)
+                result = await self.controller.start(offer_sdp, snapshot, resume_call_id=resume_call_id)
                 self.call_id = call_id
+                # Automatic recovery is not a fresh human interaction.
+                if self.transport is not None and resume_call_id is None:
+                    await self.transport.clients.activate(request_client(call))
                 return result
             except RuntimeError as error:
                 raise HttpError(409, "voice_unavailable", str(error)) from error

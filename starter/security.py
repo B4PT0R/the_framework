@@ -59,4 +59,4 @@ class LocalSecurity:
         role = 'preview' if is_preview(principal) else 'primary'
         if role == 'preview' and socket.url.path != '/api/v1/events':
             return None
-        return {"subprotocol": None, **({"client_role": "preview"} if role == "preview" else {})}
+        return {"subprotocol": None, "principal_id": principal.id, **({"client_role": "preview"} if role == "preview" else {})}

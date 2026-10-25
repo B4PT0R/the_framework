@@ -1,3 +1,4 @@
+import { clientInstance } from "./client-output.js";
 export async function api(path, { method = "GET", body, signal } = {}) {
   const multipart = body instanceof FormData;
   const response = await fetch(`/api/v1/${path}`, {
@@ -6,8 +7,8 @@ export async function api(path, { method = "GET", body, signal } = {}) {
     credentials: "same-origin",
     headers:
       body === undefined || multipart
-        ? {}
-        : { "Content-Type": "application/json" },
+        ? { "X-Client-Instance": clientInstance() }
+        : { "Content-Type": "application/json", "X-Client-Instance": clientInstance() },
     body: multipart
       ? body
       : body === undefined
