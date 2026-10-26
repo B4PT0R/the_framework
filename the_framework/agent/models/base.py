@@ -4,7 +4,7 @@ from modict import modict
 
 
 class Base(modict):
-    _config = modict.config(enforce_json=True, require_all="never")
+    _config = modict.config(enforce_json=True, default_required="never")
 
 
 class TypedBase(Base):

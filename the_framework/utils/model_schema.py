@@ -22,9 +22,10 @@ def model_schema(model, seen=()):
         if isinstance(hint, str):
             hint = hints.get(name, hint)
         properties[name] = _hint_schema(hint, (*seen, model))
-        if field.default is MISSING and (
-            field.required != "never" or model._config.require_all != "never"
-        ):
+        requirement = (
+            model._config.default_required if field.required is MISSING else field.required
+        )
+        if field.default is MISSING and requirement != "never":
             required.append(name)
     return {
         "type": "object", "properties": properties, "required": required,

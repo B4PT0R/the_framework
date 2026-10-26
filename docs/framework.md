@@ -1470,6 +1470,14 @@ Use this subclass as the ARTIFACTS plugin's `agent_extension`, for example
 `Plugin({**ARTIFACTS, "agent_extension": Artifacts})`. The class docstring gives
 the description; `payload_example` is optional non-payload metadata. The same
 model provides the catalogue's JSON Schema and validates `show_artifact` inputs.
+Requirement projection follows `modict.config(default_required=...)` when a
+field's `required` is omitted (`MISSING`). An explicit field setting overrides
+that default, including `required="never"` under `default_required="always"`.
+Framework `Base` models use `default_required="never"`; the explicit
+`required="always"` above is intentional: the payload must remain present even
+after construction. Standalone modict payload models inherit `"at_init"` unless
+configured otherwise. Defaults/factories do not require an input property.
+
 Python validators remain executable validation, not inferred JSON Schema rules;
 document those extra constraints in the description. No duplicate schema is
 needed. Tools and providers may also return `WeatherArtifact(payload=...)`

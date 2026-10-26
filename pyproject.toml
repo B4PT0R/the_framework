@@ -62,4 +62,5 @@ pythonpath = ["."]
 
 # Local SDK development; wheel consumers use the public dependency above.
 [tool.uv.sources]
+modict = { path = "../modict", editable = true }
 codex-backend-sdk = { path = "../codex-backend-sdk", editable = true }
