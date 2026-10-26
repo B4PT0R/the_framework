@@ -149,8 +149,8 @@ class AgenticService:
         try:
             await asyncio.to_thread(self.store.save, records)
         except BaseException:
-            # Replacement may have happened before an fsync error/cancellation.
-            # Disable dispatch until a fresh lifecycle load reconciles disk.
+            # Cancelling the thread await cannot cancel the write: replacement
+            # may still happen. Reconcile disk on reload before dispatching again.
             self.error = "agentic persistence failed; reload required before continuing"
             raise
         self.goals = records

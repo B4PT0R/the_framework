@@ -44,6 +44,15 @@ Modules are grouped by responsibility, not by implementation size:
 not belong to an agent execution loop or server owner. General plugins retain
 their existing capability-oriented packages under `plugins/`.
 
+`atomic_text_writer` commits at `os.replace`: serialization, file flush/fsync or
+replacement errors preserve the previous snapshot and propagate, so owners can
+roll back memory. After replacement, directory open/fsync/close failures are
+logged at ERROR without raising: the new snapshot is committed and owners must
+retain it, although crash durability is uncertain. This shared contract applies
+to Session, MappingStore, registry, worker journals and application settings;
+a failed directory sync must never cause a stale in-memory snapshot to overwrite
+the committed file on the next mutation.
+
 The `the_framework`, `the_framework.agent` and `the_framework.server` facades retain
 the concise public construction API. Internal imports target the owning module directly; the
 subpackages introduce no forwarding services or legacy module aliases.
@@ -1261,7 +1270,7 @@ do not restart services or alter server routes.
 and directory synchronization, and cleanup. Session, registry, mapping and fleet
 stores keep their own serialization, validation and writer ordering. The primitive
 is not a locking or multi-file transaction API; a directory-sync failure after
-replacement reports uncertain durability rather than pretending to roll back.
+replacement logs uncertain durability at ERROR, without raising or rolling back.
 
 ## Security and endpoint contracts
 

@@ -1,6 +1,7 @@
 """Private, atomically replaced JSON mapping documents for application settings/state."""
 
 import json
+import logging
 import os
 import tempfile
 from collections.abc import Mapping
@@ -10,11 +11,14 @@ from pathlib import Path
 
 @contextmanager
 def atomic_text_writer(path):
-    """Replace a private UTF-8 file durably after a successful write.
+    """Atomically commit a private UTF-8 snapshot; fsync it before replacement.
 
-    Serialization and writer ordering belong to the caller. A failure before
-    replacement preserves the old file; a directory-sync failure is propagated
-    after replacement, when durability is uncertain.
+    Serialization and writer ordering belong to the caller. Exceptions before
+    os.replace preserve the old snapshot and permit the caller to roll back.
+    Replacement is the commit point: callers must then retain their new state.
+    A subsequent directory-sync failure is logged, not raised: the new snapshot
+    is visible, but its survival across a machine crash is uncertain. Retrying
+    the mutation or rolling back memory would misrepresent the committed file.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -30,11 +34,17 @@ def atomic_text_writer(path):
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)
-        directory = os.open(path.parent, os.O_RDONLY)
         try:
-            os.fsync(directory)
-        finally:
-            os.close(directory)
+            directory = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        except OSError:
+            logging.getLogger(__name__).error(
+                "Snapshot committed to %s, but directory sync failed; crash durability is uncertain",
+                path, exc_info=True,
+            )
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)

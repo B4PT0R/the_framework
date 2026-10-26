@@ -59,7 +59,7 @@ def test_overlapping_writers_have_independent_temporaries(tmp_path):
     assert list(tmp_path.iterdir()) == [path]
 
 
-def test_directory_sync_failure_reports_uncertain_durability(tmp_path, monkeypatch):
+def test_directory_sync_failure_reports_uncertain_durability(tmp_path, monkeypatch, caplog):
     path = tmp_path / "snapshot.json"
     path.write_text("old")
     sync = os.fsync
@@ -70,9 +70,9 @@ def test_directory_sync_failure_reports_uncertain_durability(tmp_path, monkeypat
         sync(descriptor)
 
     monkeypatch.setattr(persistence.os, "fsync", fail_directory_sync)
-    with pytest.raises(OSError, match="directory sync failed"):
-        with persistence.atomic_text_writer(path) as stream:
-            stream.write("new")
-    # Replacement already happened; the primitive must not pretend to roll back.
+    with persistence.atomic_text_writer(path) as stream:
+        stream.write("new")
+    # Replacement already happened; callers must finish committing memory too.
+    assert "committed" in caplog.text and "durability is uncertain" in caplog.text
     assert path.read_text() == "new"
     assert list(tmp_path.iterdir()) == [path]
