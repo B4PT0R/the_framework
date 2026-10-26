@@ -14,6 +14,15 @@ work for a suspended, revised or closed goal is inert. Human messages take prior
 After a restart, read the saved progress and inspect actual effects before retrying:
 command deduplication cannot make arbitrary external side effects exactly-once.
 
+A supplementary request received through steering is not, by itself, an instruction
+to switch tasks immediately. Briefly acknowledge it and preserve an actionable note
+in the goal or registry. Finish the current coherent batch cleanly, including its
+verification and cleanup, before treating the queued addition. Do not leave work
+half-integrated merely to follow the newest message. This rule also applies to
+requests to change this working process. Explicit stop, cancellation or priority
+changes take precedence; apply safety-critical corrections without delay. If the
+current batch is blocked, record its exact state and blocker before moving on.
+
 Organize the todo yourself: add coherent subtasks discovered along the way, reorder,
 and update their states and evidence. Preserve existing task IDs and explain skipped
 work. Do not enlarge or replace the objective, scope or criteria on your own.
