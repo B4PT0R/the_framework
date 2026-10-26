@@ -29,6 +29,7 @@ class ServerRestartIntent(Base):
     committed_at: str | None = None
     resume_command_id: str | None = None
     resume_route: str = "agent"
+    resume_call_id: str | None = None
 
 
 class SystemControlService:
@@ -42,11 +43,18 @@ class SystemControlService:
         deliver,
         restart=None,
         resume_realtime=None,
+        realtime_call_id=None,
+        cancel_realtime_resume=None,
+        resume_timeout=45,
     ):
         self.path = Path(path)
         self.deliver = deliver
         self.restart = restart
         self.resume_realtime = resume_realtime
+        self.realtime_call_id = realtime_call_id
+        self.cancel_realtime_resume = cancel_realtime_resume
+        self.resume_timeout = resume_timeout
+        self.resume_task = None
         self.intent = None
         self.error = None
         self.lock = asyncio.Lock()
@@ -59,14 +67,6 @@ class SystemControlService:
         if not isinstance(document, dict) or document.get("version") != self.version:
             raise ValueError("unsupported system-control document")
         payload = dict(document.get("restart", {}))
-        if "resume_route" not in payload:
-            payload["resume_route"] = (
-                "realtime_delegation"
-                if str(payload.get("source_command_id") or "").startswith(
-                    "realtime-delegation:"
-                )
-                else "agent"
-            )
         intent = ServerRestartIntent(**payload)
         self._validate_intent(intent)
         return intent
@@ -136,6 +136,41 @@ class SystemControlService:
             return
         await self._deliver_resume(intent)
 
+    @property
+    def awaiting_realtime_resume(self):
+        intent = self.intent
+        return bool(intent and intent.status == "restart_committed"
+                    and intent.resume_route == "realtime_delegation"
+                    and not intent.resume_command_id)
+
+    async def stop(self):
+        task, self.resume_task = self.resume_task, None
+        if task is not None:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+    async def _fallback_to_agent(self, action_id):
+        try:
+            await asyncio.sleep(self.resume_timeout)
+            async with self.lock:
+                if not self.awaiting_realtime_resume or self.intent.action_id != action_id:
+                    return
+                intent = self.intent
+                intent.resume_route = "agent"
+                intent.resume_command_id = f"system-resume-{action_id}"
+                await asyncio.to_thread(self._save)
+                if self.cancel_realtime_resume is not None:
+                    result = self.cancel_realtime_resume(action_id)
+                    if inspect.isawaitable(result):
+                        await result
+            logger.warning("Voice restart resume timed out; continuing through the canonical agent")
+            await self._deliver_resume(intent)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            self.error = f"could not resume after voice recovery timeout: {error}"
+            logger.exception("Voice restart fallback failed")
+
     async def handle(self, method, payload, *, command_id=None):
         if method != "reboot_server":
             raise ValueError(f"unsupported system method: {method}")
@@ -162,11 +197,6 @@ class SystemControlService:
             action_id=action_id,
             source_command_id=self._required_text(command_id, "command_id", 200),
             resume_instruction=instruction,
-            resume_route=(
-                "realtime_delegation"
-                if command_id.startswith("realtime-delegation:")
-                else "agent"
-            ),
             created_at=utc_timestamp(),
         )
         async with self.lock:
@@ -216,6 +246,10 @@ class SystemControlService:
             if not completed:
                 await asyncio.to_thread(self._clear)
                 return
+            # Decide at the completed-turn boundary, not from the command ID.
+            # A user may have stopped voice since requesting the restart.
+            intent.resume_call_id = self.realtime_call_id() if self.realtime_call_id else None
+            intent.resume_route = "realtime_delegation" if intent.resume_call_id else "agent"
             intent.status = "restart_committed"
             intent.committed_at = utc_timestamp()
             intent.resume_command_id = (
@@ -264,6 +298,7 @@ class SystemControlService:
                 or intent.status != "restart_committed"
                 or intent.resume_route != "realtime_delegation"
                 or intent.action_id != action_id
+                or intent.resume_command_id is not None
             ):
                 return False
             intent.resume_command_id = self._required_text(command_id, "command_id", 200)
@@ -272,12 +307,14 @@ class SystemControlService:
 
     async def _deliver_resume(self, intent):
         if intent.resume_route == "realtime_delegation":
-            if self.resume_realtime is None:
-                self.error = "Realtime delegation resume is unavailable"
-                return
-            result = self.resume_realtime(dict(intent))
-            if inspect.isawaitable(result):
-                await result
+            self.resume_task = asyncio.create_task(self._fallback_to_agent(intent.action_id))
+            if self.resume_realtime is not None:
+                try:
+                    result = self.resume_realtime(dict(intent))
+                    if inspect.isawaitable(result):
+                        await result
+                except Exception:
+                    logger.exception("Voice restart recovery unavailable; waiting for text fallback")
             return
         body = (
             f'<server_restart action_id="{escape(intent.action_id)}" '

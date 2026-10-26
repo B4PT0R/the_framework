@@ -245,7 +245,8 @@ def test_extension_bridge_provider_and_surface_ownership():
             return {"status": "ready", "goal": None}
         agent.bridge.bind(request)
         assert await extension.current_goal() is None
-        assert await agent.registry("providers").aoutputs() == []
+        outputs = await agent.registry("providers").aoutputs()
+        assert [output.name for output in outputs] == ["context_occupancy"]
         for status in ("active", "suspended"):
             state = {"status": "ready", "goal": {"id": "test", "status": status}}
             async def open_goal(_payload):
@@ -294,3 +295,26 @@ def test_live_projection_and_history_listing_are_bounded(tmp_path):
         assert len(listing["goals"][0]["objective"]) == 300
         assert len((await service.handle("get", {"goal_id": goal.id})).tasks) == 100
     run(test)
+
+
+def test_server_defers_goal_delivery_until_voice_restart_resume_is_bound(tmp_path):
+    from types import SimpleNamespace
+    from unittest.mock import Mock, AsyncMock
+    from the_framework.plugins.agentic.server import build_service
+
+    async def scenario():
+        system = SimpleNamespace(awaiting_realtime_resume=True)
+        sent = AsyncMock()
+        runtime = SimpleNamespace(
+            submit=sent, plugin_host=SimpleNamespace(bindings={"agentic": True}),
+            bridge=SimpleNamespace(register=Mock()), register_observer=Mock(), register_reset_hooks=Mock(),
+        )
+        context = SimpleNamespace(plugin=lambda name: {"state_path": tmp_path / "goals.json"})
+        service = build_service(context, runtime, system)
+        await create(service)
+        await service.dispatch()
+        sent.assert_not_awaited()
+        system.awaiting_realtime_resume = False
+        await service.dispatch()
+        sent.assert_awaited_once()
+    run(scenario)

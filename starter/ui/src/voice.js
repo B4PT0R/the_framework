@@ -16,9 +16,10 @@ export function voiceSession(
   let wanted = saved?.wanted === true;
   let suspended = wanted, suspension = 0, resuming;
   callId = saved?.callId;
-  const remember = () => {
+  let resumeCallId = saved?.resumeCallId || callId;
+  const remember = (clear = false) => {
     try {
-      if (wanted) storage?.setItem(storageKey, JSON.stringify({ wanted, callId }));
+      if (wanted && !clear) storage?.setItem(storageKey, JSON.stringify({ wanted, callId, resumeCallId }));
       else storage?.removeItem(storageKey);
     } catch { /* Voice still works when browser storage is disabled. */ }
   };
@@ -50,7 +51,7 @@ export function voiceSession(
     })();
     return stopping;
   }
-  function startCurrent() {
+  function startCurrent(previousCallId) {
     if (suspended || attempt || connection || stopping) return;
     const controller = new AbortController();
     callId = crypto.randomUUID();
@@ -63,7 +64,7 @@ export function voiceSession(
         const result = await connect(
           {
             startRealtime: (offer_sdp) =>
-              api("realtime/calls", { method: "POST", body: { offer_sdp, call_id: callId }, signal: controller.signal }),
+              api("realtime/calls", { method: "POST", body: { offer_sdp, call_id: callId, ...(previousCallId ? { resume_call_id: previousCallId } : {}) }, signal: controller.signal }),
             readyRealtime: () =>
               api("realtime/calls/current/ready", { method: "POST", body: { call_id: callId }, signal: controller.signal }),
           },
@@ -76,11 +77,18 @@ export function voiceSession(
         if (controller.signal.aborted) result.close();
         else {
           connection = result;
+          resumeCallId = null;
+          remember();
           changed("live");
         }
       } catch (error) {
         if (["text_turn_active", "server_restarting"].includes(error.code)) suspended = true;
-        if (error.name !== "AbortError" && !suspended) report(error.message);
+        if (error.name !== "AbortError" && !suspended) {
+          // Keep explicit, correlated reconnect events usable in this tab, but
+          // never reopen a failed call automatically on a later page reload.
+          remember(true);
+          report(error.message);
+        }
         // Cleanup after failure, including failures after server call creation.
         if (!controller.signal.aborted) {
           try {
@@ -112,7 +120,9 @@ export function voiceSession(
   }
   function suspend(request) {
     if (request && request.call_id !== callId) return;
+    if (!suspended || request) resumeCallId = callId;
     suspended = true;
+    remember();
     suspension++;
     if (wanted) changed("connecting");
     return stopCurrent({ releaseCall: false });
@@ -129,7 +139,7 @@ export function voiceSession(
       await release();
       if (!wanted || version !== suspension) return;
       suspended = false;
-      await startCurrent();
+      await startCurrent(resumeCallId || callId);
     })().catch(error => { report(error.message); }).finally(() => { resuming = null; });
     return resuming;
   }

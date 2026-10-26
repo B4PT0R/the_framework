@@ -23,7 +23,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "codex-backend-sdk>=0.5.5",
+    "codex-backend-sdk>=0.5.8",
     "fastapi",
     "httpx",
     "jsonschema>=4.26.0",

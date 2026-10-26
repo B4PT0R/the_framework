@@ -1,5 +1,8 @@
 import asyncio
 
+import pytest
+from unittest.mock import AsyncMock
+
 from the_framework.agent.runtime.protocol import CommandCompleted, CommandFailed, PromptRequest
 
 from the_framework.plugins.system.service import ServerRestartIntent, SystemControlService
@@ -50,7 +53,7 @@ def test_realtime_recovery_status_reflects_committed_intent(tmp_path):
 def test_new_restart_supersedes_unbound_committed_realtime_resume(tmp_path):
     async def test():
         path = tmp_path / "system-control.json"
-        service = SystemControlService(path, lambda command: None, restart=lambda intent: None)
+        service = SystemControlService(path, lambda command: None, restart=lambda intent: None, realtime_call_id=lambda: "old-call")
         await service.handle(
             "reboot_server",
             {"action_id": "restart-old", "resume_instruction": "Old resume."},
@@ -82,7 +85,7 @@ def test_new_restart_supersedes_unbound_committed_realtime_resume(tmp_path):
 def test_new_restart_supersedes_bound_committed_realtime_resume(tmp_path):
     async def test():
         path = tmp_path / "system-control.json"
-        service = SystemControlService(path, lambda command: None, restart=lambda intent: None)
+        service = SystemControlService(path, lambda command: None, restart=lambda intent: None, realtime_call_id=lambda: "old-call")
         await service.handle(
             "reboot_server",
             {"action_id": "restart-old", "resume_instruction": "Old resume."},
@@ -161,20 +164,21 @@ def test_reboot_waits_for_turn_completion_then_resumes_once(tmp_path):
     asyncio.run(test())
 
 
-def test_realtime_delegation_restart_waits_for_realtime_and_rebinds(tmp_path):
+@pytest.mark.parametrize("source_id", ["realtime-delegation:old-call:old-delegation", "goal-123-4", "text-turn"])
+def test_active_voice_restart_waits_for_owning_client_and_rebinds(tmp_path, source_id):
     async def test():
         delivered = []
         queued = []
         restarted = []
         path = tmp_path / "system-control.json"
-        service = SystemControlService(path, delivered.append, restart=restarted.append)
+        service = SystemControlService(path, delivered.append, restart=restarted.append, realtime_call_id=lambda: "old-call")
         await service.handle(
             "reboot_server",
             {"action_id": "restart-voice", "resume_instruction": "Continue le test."},
-            command_id="realtime-delegation:old-call:old-delegation",
+            command_id=source_id,
         )
         source = PromptRequest(
-            id="realtime-delegation:old-call:old-delegation",
+            id=source_id,
             prompt="test",
         )
         await service.observe(terminal(source))
@@ -192,6 +196,7 @@ def test_realtime_delegation_restart_waits_for_realtime_and_rebinds(tmp_path):
         assert len(queued) == 1
         assert queued[0]["resume_route"] == "realtime_delegation"
         assert restored.intent.resume_command_id is None
+        assert queued[0]["resume_call_id"] == "old-call"
 
         command_id = "realtime-delegation:new-call:new-delegation"
         assert await restored.bind_realtime_resume("restart-voice", command_id) is True
@@ -288,7 +293,7 @@ def test_running_realtime_restart_cannot_be_superseded(tmp_path):
         async def restart(intent):
             started.set()
             await release.wait()
-        service = SystemControlService(tmp_path / "control.json", lambda command: None, restart=restart)
+        service = SystemControlService(tmp_path / "control.json", lambda command: None, restart=restart, realtime_call_id=lambda: "old-call")
         command = PromptRequest(id="realtime-delegation:call:turn", prompt="Restart")
         await service.handle("reboot_server", {
             "action_id": "first", "resume_instruction": "Continue.",
@@ -338,3 +343,75 @@ def test_failed_restart_cleanup_error_still_blocks_retry(tmp_path):
         else:
             raise AssertionError("Unsafe retry was accepted")
     asyncio.run(scenario())
+
+
+def test_stopping_voice_before_restart_commit_resumes_text(tmp_path):
+    async def run():
+        active = "owning-tab"
+        path = tmp_path / "control.json"
+        service = SystemControlService(path, lambda command: None, restart=lambda intent: None,
+                                       realtime_call_id=lambda: active)
+        command = PromptRequest(id="realtime-delegation:call:turn", prompt="restart")
+        await service.handle("reboot_server", {"action_id": "restart"}, command_id=command.id)
+        active = None
+        await service.observe(terminal(command))
+        await service.restart_task
+        assert service.intent.resume_route == "agent"
+        assert service.intent.resume_call_id is None
+        delivered, queued = [], []
+        restored = SystemControlService(path, AsyncMock(side_effect=delivered.append), resume_realtime=queued.append)
+        await restored.start()
+        assert len(delivered) == 1 and not queued
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("bind", [False, True])
+def test_voice_resume_timeout_releases_agentic_work_without_duplicate_resume(tmp_path, bind):
+    async def run():
+        delivered, queued, cancelled = [], [], []
+        path = tmp_path / "control.json"
+        service = SystemControlService(path, lambda command: None, restart=lambda intent: None,
+                                       realtime_call_id=lambda: "owning-tab")
+        command = PromptRequest(id="goal-123-4", prompt="restart")
+        await service.handle("reboot_server", {"action_id": "restart"}, command_id=command.id)
+        await service.observe(terminal(command))
+        await service.restart_task
+        restored = SystemControlService(path, AsyncMock(side_effect=delivered.append), resume_realtime=queued.append,
+                                        cancel_realtime_resume=cancelled.append, resume_timeout=0)
+        await restored.start()
+        assert restored.awaiting_realtime_resume
+        if bind:
+            assert await restored.bind_realtime_resume("restart", "realtime-delegation:new:resume")
+        await restored.resume_task
+        assert not restored.awaiting_realtime_resume
+        if bind:
+            assert not delivered and not cancelled
+        else:
+            assert len(delivered) == 1 and cancelled == ["restart"]
+            assert delivered[0].id == "system-resume-restart"
+            assert restored.intent.resume_route == "agent"
+            assert not await restored.bind_realtime_resume("restart", "late-delegation")
+        assert restored.error is None
+        await restored.stop()
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("unavailable", [True, False])
+def test_voice_recovery_unavailable_still_falls_back_to_text(tmp_path, unavailable):
+    async def run():
+        service = SystemControlService(tmp_path / "control.json", AsyncMock(),
+                                       restart=lambda intent: None,
+                                       realtime_call_id=lambda: "owner")
+        command = PromptRequest(id="goal-restart", prompt="restart")
+        await service.handle("reboot_server", {"action_id": "restart"}, command_id=command.id)
+        await service.observe(terminal(command))
+        await service.restart_task
+        restored = SystemControlService(service.path, AsyncMock(), resume_timeout=0,
+            resume_realtime=None if unavailable else AsyncMock(side_effect=RuntimeError("offline")))
+        await restored.start()
+        await restored.resume_task
+        restored.deliver.assert_awaited_once()
+        assert restored.intent.resume_route == "agent"
+        assert not restored.awaiting_realtime_resume
+        await restored.stop()
+    asyncio.run(run())

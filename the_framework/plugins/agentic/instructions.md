@@ -47,3 +47,25 @@ all outstanding tool calls have returned when no further message is needed.
 
 `agentic.wait` is a short in-turn idle wait, not a persistent response deadline.
 Use scheduler response waits and wakes for durable timed obligations.
+
+`context_occupancy` is refreshed each model step. It reports the last prepared
+request's local input-token estimate as a percentage of the configured context
+budget, not exact API usage or a measurement of the new request being assembled.
+Before a first estimate it is unavailable, not zero. It describes the text
+agent's context, not the separate voice engine's context.
+
+Use `agentic.compact` deliberately when a new user turn starts a substantially
+different task and most previous conversational detail is no longer useful.
+Prefer a fresh compacted context for that task to carrying unnecessary history;
+consider occupancy, continuity needs and compaction cost rather than compacting
+on every subject change. First preserve needed decisions, constraints, pending
+work and reference pointers in the goal, registry or memory as appropriate. Do
+not discard information still needed for the new task. Compaction summarizes
+model context; it does not erase the canonical conversation archive.
+
+The tool acknowledges a request, not completed compaction. The existing
+compaction mechanism runs before the next model step, after all results in the
+current tool batch are saved, and work then continues in the same turn. Do not
+call `end_turn` merely to compact; if the turn ends or is interrupted first, the
+in-process request waits for the next model step. It does not survive a worker
+restart. Compaction failures remain failures, not successful cleanup.

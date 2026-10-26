@@ -162,3 +162,40 @@ def test_publication_waits_past_response_done_until_delegated_speech_finishes(re
                 task.cancel()
             await asyncio.gather(task, return_exceptions=True)
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("owner", ["owning-tab", "another-tab"])
+def test_restart_context_only_reaches_ready_replacement_of_owning_call(owner):
+    from unittest.mock import AsyncMock
+    from the_framework.plugins.realtime.controller import RealtimeController
+    from tests.fixtures.realtime import Sideband
+
+    async def run():
+        controller = RealtimeController(SimpleNamespace(register_observer=lambda hook: None))
+        controller.call_id, controller.sideband = "new-backend-call", Sideband()
+        controller.resume_call_id = owner
+        controller.ready_context = AsyncMock()
+        controller.flush_context = AsyncMock()
+        await controller.queue_restart_resume({
+            "action_id": "restart", "resume_instruction": "Continue the authorized work",
+            "resume_call_id": "owning-tab",
+        })
+        assert controller.sideband.sent == []  # Sideband alone is not a ready peer.
+        result = await controller.ready()
+        expected = owner == "owning-tab"
+        assert result["resume_injected"] is expected
+        injected = [e for e in controller.sideband.sent if e["type"] == "session.context.append"]
+        assert bool(injected) is expected
+        assert controller.restart_resume_input_paused is expected
+        await controller.ready()
+        assert len([e for e in controller.sideband.sent if e["type"] == "session.context.append"]) == int(expected)
+        await controller.cancel_restart_resume("restart")
+        assert not controller.restart_resume_input_paused
+        if expected:
+            await controller._start_delegation({"item": {
+                "type": "delegation", "target": "client", "id": "late",
+                "content": [{"type": "input_text", "text": "Resume work"}],
+            }})
+            assert not controller.delegations
+        assert not controller.pending_restart_resumes
+    asyncio.run(run())

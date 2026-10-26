@@ -21,7 +21,7 @@ def test_voice_requires_idle_text_and_passes_canonical_snapshot():
             assert isinstance(command, SessionSnapshotRequest)
             return snapshot
 
-        async def start(offer, received):
+        async def start(offer, received, *, resume_call_id=None):
             calls.append((offer, received))
             return {"answer_sdp": "answer"}
 

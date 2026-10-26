@@ -327,3 +327,61 @@ test("agent controls start once and only stop the matching call", async () => {
   await voice.stop();
   assert.equal(closed, 2);
 });
+
+test("recovery keeps the original owner through busy rejections and reload", async () => {
+  const values = new Map(), calls = [], states = [];
+  const storage = { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) };
+  let busy = false;
+  const create = () => voiceSession(async (path, options) => {
+    if (path === "realtime/calls") {
+      calls.push(options.body);
+      if (busy) throw Object.assign(new Error("busy"), { code: "text_turn_active" });
+    }
+    return {};
+  }, {}, state => states.push(state), assert.fail, async transport => {
+    await transport.startRealtime("offer");
+    return { close() {} };
+  }, { storage });
+  const first = create();
+  await first.start();
+  const owner = calls[0].call_id;
+  assert.equal(calls[0].resume_call_id, undefined);
+  await first.suspend();
+  busy = true;
+  await first.resume();
+  assert.equal(states.at(-1), "connecting");
+  await first.suspend(); // A second network loss must not replace the owner token.
+  await first.dispose();
+  busy = false;
+  const second = create();
+  await second.resume();
+  assert.equal(states.at(-1), "live");
+  assert.equal(calls.length, 3);
+  assert.deepEqual(calls.slice(1).map(call => call.resume_call_id), [owner, owner]);
+  assert.equal(new Set(calls.map(call => call.call_id)).size, 3);
+  await second.stop();
+  await second.suspend();
+  await second.resume();
+  assert.equal(calls.length, 3);
+  assert.equal(values.size, 0);
+});
+
+test("fatal recovery failure clears saved consent instead of retrying on reload", async () => {
+  const values = new Map(), errors = [], states = [];
+  const storage = { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) };
+  let attempts = 0;
+  const create = () => voiceSession(async () => ({}), {}, state => states.push(state), error => errors.push(error), async () => {
+    if (++attempts > 1) throw new Error("backend unavailable");
+    return { close() {} };
+  }, { storage });
+  const first = create();
+  await first.start();
+  await first.suspend();
+  await first.resume();
+  assert.equal(states.at(-1), "idle");
+  assert.deepEqual(errors, ["backend unavailable"]);
+  assert.equal(values.size, 0);
+  await first.resume();
+  await create().resume();
+  assert.equal(attempts, 2);
+});

@@ -66,6 +66,7 @@ class RealtimeController:
         self.lock = asyncio.Lock()
         self.send_lock = asyncio.Lock()
         self.delegations = {}
+        self.compaction_command_id = None
         self.pending_delegation_deliveries = set()
         self.pending_provider_contexts = []
         self.context_flushing = False
@@ -80,6 +81,7 @@ class RealtimeController:
         self.response_started_count = 0
         self.response_state_changed = asyncio.Event()
         self.pending_restart_resumes = []
+        self.resume_call_id = None
         self.restart_resume_input_paused = False
         self.bind_restart_resume = None
         self.contexts = tuple(factory(self) for factory in context_factories)
@@ -229,7 +231,7 @@ class RealtimeController:
         self.client = await task
         return self.client
 
-    async def start(self, offer_sdp, snapshot):
+    async def start(self, offer_sdp, snapshot, *, resume_call_id=None):
         async with self.lock:
             if self.active:
                 raise RuntimeError("a realtime call is already active")
@@ -255,6 +257,7 @@ class RealtimeController:
                     transport={"type": "webrtc", "sdp": offer_sdp},
                 )
                 self.call_id = live.session.id
+                self.resume_call_id = resume_call_id
                 self.sideband_manager = client.live.sideband.connect(
                     session_id=live.session.id,
                 )
@@ -413,15 +416,20 @@ class RealtimeController:
             return
         command_id = f"realtime-delegation:{self.call_id}:{delegation_id}"
         restart_resume = next(
-            (item for item in self.pending_restart_resumes if item.get("injected")),
+            (item for item in self.pending_restart_resumes if item.get("injected") and item.get("resume_call_id") == self.resume_call_id),
             None,
         )
         if restart_resume is not None:
             self.pending_restart_resumes.remove(restart_resume)
+            if restart_resume.get("cancelled"):
+                return
             if self.bind_restart_resume is not None:
                 bound = self.bind_restart_resume(restart_resume["action_id"], command_id)
                 if asyncio.iscoroutine(bound):
-                    await bound
+                    bound = await bound
+                if not bound:
+                    # The timeout already committed a canonical text resume.
+                    return
         self.skip_user_turns += 1
         append_prompt = not bool(self.typed_inputs[transcript])
         if not append_prompt:
@@ -456,6 +464,28 @@ class RealtimeController:
         command_id = getattr(output, "command_id", None)
         if command_id is None and hasattr(output, "command"):
             command_id = output.command.id
+        if isinstance(output, CommandEvent) and output.event.get("type") in {
+            "agent.compaction.start", "agent.compaction.end",
+        }:
+            active = output.event["type"] == "agent.compaction.start"
+            self.compaction_command_id = command_id if active else None
+            # Operational progress must reach the voice while delegation is still
+            # running, unlike provider refreshes which wait for its completion.
+            await self._send_context_appends(
+                "The canonical backend agent is compacting its context. A short wait is expected; "
+                "you may explain this if the user asks. Do not claim it has finished yet."
+                if active else
+                "The canonical backend agent has finished compacting its context and can resume. "
+                "This does not mean its current task is complete.",
+                ephemeral=True,
+            )
+        elif isinstance(output, CommandFailed) and command_id == self.compaction_command_id:
+            self.compaction_command_id = None
+            await self._send_context_appends(
+                "The canonical backend command failed while compacting its context. "
+                "Compaction is no longer running; do not claim that it succeeded.",
+                ephemeral=True,
+            )
         barrier = self.barriers.get(command_id)
         if barrier is not None and isinstance(output, (CommandCompleted, CommandFailed)):
             if not barrier.done():
@@ -568,7 +598,8 @@ class RealtimeController:
         async with self.lock:
             if self.sideband is None or self.call_id is None:
                 raise RuntimeError("the realtime call is not accepting readiness")
-            pending = any(not item["injected"] for item in self.pending_restart_resumes)
+            pending = any(not item["injected"] and item.get("resume_call_id") == self.resume_call_id
+                          for item in self.pending_restart_resumes)
             if pending:
                 paused = await self._send({"type": "input_audio.pause"})
                 self.restart_resume_input_paused = paused
@@ -605,6 +636,17 @@ class RealtimeController:
         )
         return sent
 
+    async def cancel_restart_resume(self, action_id):
+        # Retain injected entries to discard a late delegation after text fallback.
+        for item in self.pending_restart_resumes:
+            if item["action_id"] == action_id:
+                item["cancelled"] = True
+        self.pending_restart_resumes[:] = [
+            item for item in self.pending_restart_resumes
+            if item["action_id"] != action_id or item["injected"]
+        ]
+        await self._resume_restart_input("resume_cancelled")
+
     async def queue_restart_resume(self, intent):
         action_id = str(intent.get("action_id") or "").strip()
         instruction = str(intent.get("resume_instruction") or "").strip()
@@ -615,20 +657,21 @@ class RealtimeController:
         self.pending_restart_resumes.append({
             "action_id": action_id,
             "instruction": instruction,
+            "resume_call_id": intent.get("resume_call_id"),
             "injected": False,
         })
         await self._flush_restart_resumes()
 
     async def _flush_restart_resumes(self):
-        if self.sideband is None or self.call_id is None:
+        if self.sideband is None or self.call_id is None or not self.peer_ready:
             return False
         resume_injected = False
         for item in self.pending_restart_resumes:
-            if item["injected"]:
+            if item["injected"] or item.get("resume_call_id") != self.resume_call_id:
                 continue
             body = (
                 f'<server_restart_resume action_id="{escape(item["action_id"])}">\n'
-                "A delegated agentic task was interrupted by the supervised server restart. "
+                "Agentic work was interrupted by the supervised server restart. "
                 "Do not perform or answer the task yourself. Create a client delegation now "
                 "whose instruction resumes the task below, then relay its progress and result "
                 "normally through this Realtime conversation. Take the conversational initiative: "
@@ -943,6 +986,7 @@ class RealtimeController:
         self.call_id = None
         self.peer_ready = False
         self.delegations.clear()
+        self.compaction_command_id = None
         self.pending_delegation_deliveries.clear()
         self.pending_provider_contexts.clear()
         self.typed_inputs.clear()

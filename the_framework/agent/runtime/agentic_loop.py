@@ -136,6 +136,7 @@ class AgenticLoop:
         self.agent = agent
         self.end_turn = False
         self.request_next_step = False
+        self.compaction_requested = False
         self.tool_calls = []
         self.stream = None
         self.responses = None
@@ -399,8 +400,9 @@ class AgenticLoop:
             items=[item for item in provider_outputs if isinstance(item, Artifact)],
         ))
         payload = await self.ageneration_payload(provider_outputs)
-        if self.agent.context.needs_compaction(payload):
+        if self.agent.context.needs_compaction(payload) or self.compaction_requested:
             await asyncio.to_thread(self.agent.compact)
+            self.compaction_requested = False
             payload = await self.ageneration_payload(provider_outputs)
             self.agent.context.local_input_tokens(payload)
         try:

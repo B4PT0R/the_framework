@@ -628,6 +628,20 @@ including suspended work; unavailable state is explicit. `turn_timing` projects
 optional application-owned turn measurements. Idle waits are cancellable within
 one turn, not durable scheduler deadlines.
 
+Its text-only `context_occupancy` provider reports the last prepared request's
+local input estimate, configured budget, occupied percentage and automatic
+compaction threshold. The estimate can lag the context being assembled; before
+the first estimate it is unavailable, not zero. It never resamples providers or
+persists telemetry in the conversation. It is not the voice engine's context.
+`agentic.compact` requests the existing canonical compaction at the next model
+step, after the entire current tool batch is recorded, then continues the same
+turn. Repeated requests coalesce, execution failures propagate, and the request
+is cleared only on success. It remains pending across a turn boundary or
+interruption in the same worker, but is not durable across worker restarts.
+Prefer deliberate compaction at a substantially different task's start when most
+previous detail is irrelevant, after preserving necessary state; a topic change
+alone is not a mandate to compact. No new compaction backend or queue is added.
+
 A goal records the authorized objective, scope, success criteria and an evolving
 ordered todo. Progress tools preserve existing task identities, require evidence
 for completed/skipped tasks and use revision checks. The agent may suspend itself
@@ -1215,6 +1229,14 @@ Responses and Realtime model input use separate projections.
 
 ## Optional live context
 
+The voice controller relays canonical `agent.compaction.start` and
+`agent.compaction.end` events as ephemeral operational context, plus a failure
+notice if the owning command fails during compaction. These notifications use
+`session.context.append` immediately, even while delegation/provider refreshes
+are blocked, so the vocal model can explain an ongoing wait. They neither request
+speech nor add voice tools, open a call, or write canonical history. A compaction
+completion notice is not a task-completion notice.
+
 The voice controller owns transport, delegation barriers and ephemeral-context
 reconciliation, not knowledge of memory or registry contents. Applications compose
 `MemoryLiveContext` and `RegistryLiveContext` from their respective general plugins
@@ -1786,8 +1808,11 @@ WebSocket transports. Session services register `register_restart_hook()` callba
 Realtime pauses input, finishes the current spoken turn, closes the call and drains
 canonical writes. A worker barrier then finishes pending conversation work. Local
 supervisors can POST `/api/v1/server/prepare-restart` (scope `server:write`) before
-replacing the server. The system plugin reconnects committed voice delegations
-through the new call rather than resuming them as an unrelated text turn.
+replacing the server. The system plugin chooses recovery from the actual active client call at the
+completed-turn boundary, not the originating command type. It reconnects that
+work only through a ready call presenting the previous owner id. Agentic
+continuations wait during recovery; after 45 seconds without a bound delegation,
+the canonical text agent resumes instead. This fallback never opens a microphone.
 
 The starter's browser retains voice intent and the previous client call id in
 tab-local `sessionStorage`, never credentials or audio. WebSocket loss releases

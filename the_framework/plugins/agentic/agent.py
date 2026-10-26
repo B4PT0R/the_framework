@@ -33,6 +33,28 @@ class AgenticExtension(AgentExtension):
         timing = getattr(self.agent, "turn_timing", None)
         return timing.context() if timing is not None else None
 
+    @provider(channels=("text",))
+    def context_occupancy(self):
+        """Latest local input estimate, relative to the configured context budget, not an API measurement."""
+        config = self.agent.configs.compaction
+        tokens = self.agent.context.last_local_input_tokens
+        available = tokens > 0 and config.context_token_limit > 0
+        return {
+            "status": "estimated" if available else "unavailable",
+            "source": "last_prepared_request_local_estimate",
+            "input_tokens": tokens if available else None,
+            "context_token_limit": config.context_token_limit,
+            "occupied_percent": round(100 * tokens / config.context_token_limit, 1) if available else None,
+            "automatic_compaction_percent": round(100 * config.trigger_ratio, 1),
+            "compaction_requested": self.agent.agentic_loop.compaction_requested,
+        }
+
+    @tool
+    def compact(self):
+        """Request canonical context compaction before the next model step, after the current tool batch. Preserve needed task state first. This acknowledges a request, not completed compaction."""
+        self.agent.agentic_loop.compaction_requested = True
+        return {"status": "compaction_requested", "when": "before_next_model_step"}
+
     @tool
     def end_turn(self):
         """End the current turn gracefully after the current tool-call batch."""

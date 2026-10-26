@@ -6,6 +6,22 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Route supervised restart recovery using the actual live voice owner at the
+  completed-turn boundary, including restarts requested by autonomous goals.
+  Correlate browser recovery across busy retries/reloads, defer goal continuations
+  during recovery, and fall back to canonical text after 45 seconds without a
+  bound voice delegation. Never reopen explicitly stopped or failed calls on reload.
+
+- Relay backend compaction start/end and command failure to the live voice context,
+  including while a delegation is running, without adding voice tools, forcing
+  speech or persisting these operational notifications in canonical history.
+
+- Give the agentic plugin text-context occupancy telemetry and an explicit
+  `compact` tool. Report the latest local estimate without resampling providers;
+  compact through the existing canonical mechanism before the next model step,
+  after the complete tool batch, then continue the same turn. Document deliberate
+  compaction at task transitions and preservation of necessary working state.
+
 - Persist voice-call start/end developer markers and include them in voice
   context. Queue canonical items through ExternalEventRequest without starting
   inference, including after a plugin binding is disabled. Reserve initial

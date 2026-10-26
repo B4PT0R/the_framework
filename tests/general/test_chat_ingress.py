@@ -41,7 +41,7 @@ def test_submission_waits_for_voice_transition_before_selecting_route(tmp_path, 
         async def submit(command):
             submitted.append(command)
 
-        async def start(offer, snapshot):
+        async def start(offer, snapshot, *, resume_call_id=None):
             entered.set()
             await release.wait()
             controller.active = True

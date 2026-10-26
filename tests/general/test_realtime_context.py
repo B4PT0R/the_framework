@@ -194,3 +194,76 @@ def test_voice_completion_links_pending_display_to_later_canonical_commit():
         assert added.item.content[0].text == completion.transcript
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("delegated", [False, True])
+def test_compaction_status_reaches_voice_during_work_without_speech_or_history(delegated):
+    from the_framework.agent.runtime.protocol import CommandEvent
+
+    async def run():
+        voice = controller()
+        voice.peer_ready = True
+        voice.realtime_response_active = True
+        if delegated:
+            voice.delegations["working"] = {"id": "delegation"}
+        for phase in ("start", "end"):
+            await voice.handle_worker_output(CommandEvent(
+                command_id="working", event={"type": f"agent.compaction.{phase}"},
+            ))
+        assert len(texts(voice)) == 2
+        assert "is compacting" in texts(voice)[0]
+        assert "has finished compacting" in texts(voice)[1]
+        assert "does not mean its current task is complete" in texts(voice)[1]
+        assert all(event["type"] == "session.context.append" for event in voice.sideband.sent)
+        assert voice.runtime.supervisor.sent == []
+        assert not voice.pending_provider_contexts
+        assert voice.compaction_command_id is None
+        for text in texts(voice):
+            await voice._handle_sideband_event({
+                "type": "turn.done", "turn": {"role": "user", "transcript": text},
+            })
+        assert voice.runtime.supervisor.sent == []
+
+    asyncio.run(run())
+
+
+def test_compaction_failure_does_not_leave_voice_waiting_or_claim_success():
+    from the_framework.agent.runtime.protocol import CommandEvent, CommandFailed, PromptRequest
+
+    async def run():
+        voice = controller()
+        await voice.handle_worker_output(CommandEvent(
+            command_id="working", event={"type": "agent.compaction.start"},
+        ))
+        await voice.handle_worker_output(CommandFailed(
+            command=PromptRequest(id="other", prompt="unrelated"), error="failure",
+        ))
+        assert len(texts(voice)) == 1
+        await voice.handle_worker_output(CommandFailed(
+            command=PromptRequest(id="working", prompt="work"), error="failure",
+        ))
+        assert "no longer running" in texts(voice)[-1]
+        assert "do not claim that it succeeded" in texts(voice)[-1]
+        assert voice.compaction_command_id is None
+        assert voice.runtime.supervisor.sent == []
+
+    asyncio.run(run())
+
+
+def test_compaction_events_do_not_open_a_voice_call():
+    from the_framework.agent.runtime.protocol import CommandEvent
+
+    async def run():
+        voice = controller()
+        sideband = voice.sideband
+        voice.sideband = None
+        voice.call_id = None
+        await voice.handle_worker_output(CommandEvent(
+            command_id="working", event={"type": "agent.compaction.start"},
+        ))
+        assert not sideband.sent
+        assert not voice.pending_provider_contexts
+        assert voice.call_id is None
+        assert voice.runtime.supervisor.sent == []
+
+    asyncio.run(run())
