@@ -20,6 +20,9 @@ from fastapi import Request
 from fastapi.responses import JSONResponse, Response
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError, ValidationError
+from starlette.formparsers import MultiPartException
+
+from .uploads import MAX_TOTAL_UPLOAD_BYTES, UploadLimitExceeded, parse_uploaded_form
 
 logger = logging.getLogger(__name__)
 
@@ -298,7 +301,7 @@ class EndpointRegistry:
             raise HttpError(403, "forbidden", "The caller is not authorized")
         return principal
 
-    async def _payload(self, endpoint, request, schema):
+    async def _payload(self, endpoint, request, schema, forms):
         if endpoint.method in {"GET", "DELETE", "HEAD"}:
             properties = (schema or {}).get("properties", {})
             payload = {}
@@ -326,7 +329,17 @@ class EndpointRegistry:
                 else "json"
             )
             if encoding == "multipart":
-                form = await request.form()
+                try:
+                    form = await parse_uploaded_form(
+                        request, max_total_bytes=getattr(
+                            self.application, "max_upload_bytes", MAX_TOTAL_UPLOAD_BYTES,
+                        ),
+                    )
+                except UploadLimitExceeded as error:
+                    raise HttpError(413, "upload_too_large", error.message) from error
+                except MultiPartException as error:
+                    raise HttpError(400, "invalid_multipart", error.message) from error
+                forms.append(form)
                 properties = (schema or {}).get("properties", {})
                 payload = {}
                 for key, value in form.multi_items():
@@ -381,10 +394,11 @@ class EndpointRegistry:
 
     async def _dispatch(self, entry, request):
         endpoint = entry["endpoint"]
+        forms = []
         try:
             principal = await self._authenticate(endpoint, request)
             payload = await self._payload(
-                endpoint, request, entry["request_schema"]
+                endpoint, request, entry["request_schema"], forms
             )
             validator = entry["request_validator"]
             if validator is not None:
@@ -468,6 +482,9 @@ class EndpointRegistry:
                 details={"error_id": error_id},
             )
             return JSONResponse(controlled.payload(), status_code=500)
+        finally:
+            for form in forms:
+                await form.close()
 
     def install(self):
         """Mutate FastAPI only after every declaration has validated."""

@@ -32,8 +32,9 @@ def _conversation_extensions(
         )),
         ServerExtension(
             name="chat", scope="session",
-            service_factory=lambda runtime, canonical_transport, realtime=None: ChatApi(
+            service_factory=lambda context, runtime, canonical_transport, realtime=None: ChatApi(
                 runtime, FileBucket(data_root).root, realtime, clients=canonical_transport.clients,
+                max_upload_bytes=context.application.max_upload_bytes,
             ),
         ),
         ServerExtension(name="health", scope="session", endpoints=(

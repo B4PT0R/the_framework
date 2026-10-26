@@ -4,10 +4,40 @@ from html import escape
 from pathlib import Path
 
 from modict import modict
+from starlette.datastructures import FormData
+from starlette.formparsers import FormParser, MultiPartException, MultiPartParser
 
 MAX_FILES_PER_UPLOAD = 32
-MAX_TOTAL_UPLOAD_BYTES = None
+MAX_TOTAL_UPLOAD_BYTES = 64 * 1024 * 1024
+MULTIPART_OVERHEAD_BYTES = 1024 * 1024
 COPY_CHUNK_BYTES = 1024 * 1024
+
+
+class UploadLimitExceeded(MultiPartException):
+    """Also triggers the multipart parser's partial-file cleanup."""
+
+
+async def parse_uploaded_form(request, *, max_total_bytes=MAX_TOTAL_UPLOAD_BYTES):
+    # Count the actual stream, not Content-Length (which can be absent or false).
+    # The bounded envelope includes fields, filenames and multipart framing.
+    limit = None if max_total_bytes is None else max_total_bytes + MULTIPART_OVERHEAD_BYTES
+
+    async def bounded_stream():
+        received = 0
+        async for chunk in request.stream():
+            received += len(chunk)
+            if limit is not None and received > limit:
+                raise UploadLimitExceeded(f"multipart request exceeds {limit} bytes")
+            yield chunk
+
+    content_type = request.headers.get("content-type", "").partition(";")[0].strip().lower()
+    if content_type == "multipart/form-data":
+        return await MultiPartParser(
+            request.headers, bounded_stream(), max_files=MAX_FILES_PER_UPLOAD,
+        ).parse()
+    if content_type == "application/x-www-form-urlencoded":
+        return await FormParser(request.headers, bounded_stream()).parse()
+    return FormData()
 
 
 class CopiedFile(modict):

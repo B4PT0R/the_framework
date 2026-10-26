@@ -3,10 +3,14 @@
 import asyncio
 from pathlib import Path
 
+from starlette.datastructures import UploadFile
+
 from the_framework.agent.models.responses import Image, Message
 from the_framework.agent.runtime.protocol import PromptRequest
 from the_framework.server.api.endpoints import HttpError
-from the_framework.server.api.uploads import copied_files_message, copy_uploaded_files
+from the_framework.server.api.uploads import (
+    MAX_TOTAL_UPLOAD_BYTES, copied_files_message, copy_uploaded_files,
+)
 
 from ..runtime.ingress import ChatIngress
 from ..clients.activity import request_client
@@ -15,10 +19,10 @@ from .declarations import endpoint
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
 
-def prepare_attachments(files, workfolder):
+def prepare_attachments(files, workfolder, *, max_total_bytes=MAX_TOTAL_UPLOAD_BYTES):
     from PIL import Image as PILImage
 
-    copied = copy_uploaded_files(files, workfolder, max_total_bytes=64 * 1024 * 1024)
+    copied = copy_uploaded_files(files, workfolder, max_total_bytes=max_total_bytes)
     try:
         for file in copied:
             if Path(file.name).suffix.lower() in IMAGE_SUFFIXES:
@@ -32,10 +36,12 @@ def prepare_attachments(files, workfolder):
 
 
 class ChatApi:
-    def __init__(self, runtime, workfolder, voice=None, *, text_lock=None, clients=None):
+    def __init__(self, runtime, workfolder, voice=None, *, text_lock=None, clients=None,
+                 max_upload_bytes=MAX_TOTAL_UPLOAD_BYTES):
         self.runtime = runtime
         self.clients = clients
         self.workfolder = workfolder
+        self.max_upload_bytes = max_upload_bytes
         self.voice = voice
         self.ingress = ChatIngress(runtime, voice, text_lock=text_lock)
 
@@ -68,7 +74,8 @@ class ChatApi:
         async with self.ingress.lock:
             if voice is not None and voice.controller.active:
                 for upload in files:
-                    await upload.close()
+                    if isinstance(upload, UploadFile):
+                        await upload.close()
                 raise HttpError(409, "voice_active", "Stop voice before sending attachments")
             result = await self._attachments(id, files, prompt)
             if self.clients is not None:
@@ -77,14 +84,17 @@ class ChatApi:
 
     async def _attachments(self, id, files, prompt):
         try:
+            if any(not isinstance(upload, UploadFile) for upload in files):
+                raise ValueError("attachments must be uploaded files")
             copied = await asyncio.to_thread(
-                prepare_attachments, files, self.workfolder,
+                prepare_attachments, files, self.workfolder, max_total_bytes=self.max_upload_bytes,
             )
         except ValueError as error:
             raise HttpError(422, "invalid_attachment", str(error)) from error
         finally:
             for upload in files:
-                await upload.close()
+                if isinstance(upload, UploadFile):
+                    await upload.close()
         items = [Message(role="user", kind="attachments", content=[{
             "type": "input_text", "text": "Attached: " + ", ".join(file.name for file in copied),
         }]), Message(role="developer", kind="copied_files", content=[{

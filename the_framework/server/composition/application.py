@@ -18,6 +18,7 @@ from fastapi import FastAPI
 from modict import modict
 
 from ..api.declarations import Endpoint
+from ..api.uploads import MAX_TOTAL_UPLOAD_BYTES
 from ...agent.extensions.extension import AgentExtension
 from ...agent.spec import AgentSpec
 from ...agent.context.session import Session
@@ -356,6 +357,7 @@ class Application(modict):
     description: str | None = None
     docs_url: str | None = "/docs"
     validate_responses: bool = True
+    max_upload_bytes: int | None = MAX_TOTAL_UPLOAD_BYTES
 
     plan = modict.attr(None)
     context = modict.attr(None)
@@ -398,6 +400,8 @@ class Application(modict):
 
     @modict.model_validator(mode="after")
     def validate_declaration(self):
+        if self.max_upload_bytes is not None and self.max_upload_bytes <= 0:
+            raise ValueError("max_upload_bytes must be positive or None")
         if not self.name.strip():
             raise ValueError("application name is required")
         if not self.version.strip():

@@ -6,6 +6,12 @@ Until a stable release, minor versions may revise the public composition API.
 
 ## Unreleased
 
+- Bound declarative multipart streams before parsing with configurable
+  `Application.max_upload_bytes` (64 MiB contents plus 1 MiB envelope by default),
+  independent of Content-Length. Share the content limit with chat attachment
+  copying, close partial and parsed spools on rejection/dispatch, and retain
+  transactional cleanup without overwriting existing files.
+
 - Route supervised restart recovery using the actual live voice owner at the
   completed-turn boundary, including restarts requested by autonomous goals.
   Correlate browser recovery across busy retries/reloads, defer goal continuations

@@ -1786,6 +1786,20 @@ Realtime API's lock, so attachment acceptance and voice startup cannot race.
 `BuildContext.data_root` owns storage; uploads use its shared `bucket/` tree.
 No voice plugin is required for text-only apps.
 
+`Application.max_upload_bytes` defaults to 64 MiB of combined attachment contents
+per request. The composed chat service passes this limit to its transactional copy;
+`copy_uploaded_files(..., max_total_bytes=...)` uses the same default independently.
+All declarative multipart endpoints also bound their actual incoming stream to this
+limit plus 1 MiB for fields, filenames and framing, before feeding it to the parser.
+They do not trust `Content-Length`; a crossing chunk is rejected with HTTP 413
+(`upload_too_large`) and partial spools are closed. A request within the envelope
+whose files exceed the content limit is rejected by chat with HTTP 422. There are
+at most 32 files per multipart request. Parsed uploads are closed after dispatch,
+including schema errors; copying removes partial files and never overwrites existing
+paths. Set a positive byte count to change the limit, or explicitly `None` to opt out
+of the byte limits (the file-count and parser field limits still apply). These limits
+are not a server-wide body policy: raw plugin routes and JSON requests are unaffected.
+
 Other client transports inject the host-owned `chat` service into their factory,
 then reuse `chat.ingress.submit(PromptRequest(...))`. Do not inspect voice state
 and submit directly: selection and acceptance must hold the same lock as voice
