@@ -75,7 +75,7 @@ requires-dist = [
     { name = "httpx" },
     { name = "httpx2", marker = "extra == 'dev'", specifier = ">=2.0.0" },
     { name = "jsonschema", specifier = ">=4.26.0" },
-    { name = "modict", specifier = ">=0.4.19" },
+    { name = "modict", specifier = ">=0.4.20" },
     { name = "pillow" },
     { name = "playwright" },
     { name = "psutil", specifier = ">=7.2.2" },
@@ -484,14 +484,14 @@ wheels = [
 
 [[package]]
 name = "modict"
-version = "0.4.19"
+version = "0.4.20"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jsonpath-ng" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ce/b0/1189ce7ac6a892ff20ed3b2c1e5b765db70e6fa42b0ee4694989a4bbf299/modict-0.4.19.tar.gz", hash = "sha256:37963fb09d3b0a06988f6974d728c663bdc28d7391994d7221dadf209d484cdd", size = 183945, upload-time = "2026-09-21T08:30:55.1Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5c/ed/228eacc6eadb5f5ec43f651be39a5ecda2dacc756a0157869eb8c9e3ad60/modict-0.4.20.tar.gz", hash = "sha256:aa83352701fdd1c0a0a124abb0f1605e0e5a778cfba66358a63739e8b8cadb76", size = 185037, upload-time = "2026-10-26T19:25:32.424Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a2/cd/26471c3dd7f41a2ba2822e9ba5f66eec9738565e6992b8ab6225dd01cfa2/modict-0.4.19-py3-none-any.whl", hash = "sha256:48039030fb1c1c12eba3ac0c027087d8a02c79270a7a6189d27fe477e3692835", size = 147689, upload-time = "2026-09-21T08:30:53.398Z" },
+    { url = "https://files.pythonhosted.org/packages/f9/82/6d8ce603a72673286f2d94d58507c718c483f4a94bbf615ac680518452b2/modict-0.4.20-py3-none-any.whl", hash = "sha256:f1b1e63d4af1a2142663571df114f506cc0d365fc871816cbf760eec9c27dbce", size = 148684, upload-time = "2026-10-26T19:25:29.976Z" },
 ]
 
 [[package]]

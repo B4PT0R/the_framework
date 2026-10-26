@@ -27,7 +27,7 @@ dependencies = [
     "fastapi",
     "httpx",
     "jsonschema>=4.26.0",
-    "modict>=0.4.19",
+    "modict>=0.4.20",
     "pillow",
     "playwright",
     "psutil>=7.2.2",
