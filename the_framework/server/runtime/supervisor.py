@@ -3,7 +3,7 @@ import json
 import sys
 from collections import deque
 
-from ...agent.runtime.protocol import ShutdownRequest, WorkerOutput, WorkerReady
+from ...agent.runtime.protocol import QueuedRequest, ShutdownRequest, WorkerOutput, WorkerReady
 from ...agent.models.base import TypedBase
 from the_framework.utils.ids import timestamp_id
 
@@ -75,6 +75,7 @@ class WorkerSupervisor:
         self.ready = None
         self.ready_output = None
         self.stopping = False
+        self.validation = False
 
     @property
     def running(self):
@@ -137,6 +138,8 @@ class WorkerSupervisor:
             self.stderr.append(line.decode(errors="replace").rstrip())
 
     async def send(self, request):
+        if self.validation and isinstance(request, QueuedRequest):
+            raise RuntimeError("worker commands are disabled during image validation")
         if not self.running:
             raise RuntimeError("worker is not running")
         payload = json.dumps(request, separators=(",", ":")) + "\n"

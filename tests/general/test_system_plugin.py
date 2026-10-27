@@ -119,3 +119,27 @@ def test_system_opens_a_named_preview_without_restarting_or_publishing():
         assert calls[0].payload == {'name': 'quest', 'release': 'candidate'}
         assert not agent.end_of_turn_requested
     asyncio.run(run())
+
+
+def test_backend_tools_do_not_implicitly_restart():
+    async def run():
+        agent = Agent(client=object())
+        calls = []
+
+        async def request(payload):
+            calls.append(payload)
+            return {"ok": True}
+
+        agent.bridge.bind(request)
+        plugin = agent.add_extension(SystemExtension)
+        image = "sha256:" + "a" * 64
+        await plugin.backend_status()
+        await plugin.build_backend()
+        await plugin.test_backend(image)
+        await plugin.select_backend(image)
+        assert [call.capability for call in calls] == ["deployment"] * 4
+        assert [call.method for call in calls] == ["status", "build", "test", "select"]
+        assert calls[-1].payload == {"image": image}
+        assert not agent.end_of_turn_requested
+
+    asyncio.run(run())

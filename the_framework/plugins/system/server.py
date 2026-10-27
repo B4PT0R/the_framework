@@ -1,5 +1,6 @@
 """Durable system controls, with restart policy supplied by the application."""
 
+import asyncio
 from pathlib import Path
 
 from .service import SystemControlService
@@ -9,7 +10,17 @@ def build_service(context, runtime, realtime=None):
     path = context.plugin("system").get("state_path")
     if path is None:
         path = Path(context.require("session_path")).parent / "system-control.json"
+    host = None if context.get("validation", False) else context.plugin("system").get("host")
+    if host is not None:
+        async def deployment_control(method, payload):
+            if method not in {"build", "test", "select", "status"}:
+                raise ValueError("unsupported deployment operation")
+            return await asyncio.to_thread(host.call, method, payload)
+
+        runtime.bridge.register("deployment", deployment_control)
     restart = runtime.restart_server if getattr(runtime, "restart", None) is not None else None
+    if context.get("validation", False):
+        restart = None
     system = SystemControlService(
         path, runtime.supervisor.send, restart=restart,
         resume_realtime=realtime.controller.queue_restart_resume if realtime is not None else None,

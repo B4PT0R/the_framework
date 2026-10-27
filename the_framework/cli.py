@@ -22,7 +22,9 @@ def _project_manifest():
         '[project]\nname = "local-agent-app"\nversion = "0.1.0"\n'
         'requires-python = ">=3.12"\n'
         f'dependencies = [{json.dumps(distribution + "==" + version(distribution))}]\n'
-        '\n[tool.uv]\npackage = false\n'
+        '\n[build-system]\nrequires = ["hatchling"]\nbuild-backend = "hatchling.build"\n'
+        '\n[tool.hatch.build.targets.wheel]\npackages = ["starter"]\n'
+        'exclude = ["**/__pycache__/**", "**/node_modules/**", "starter/instance.json"]\n'
     )
     # A development bootstrap uses the same checkout; installed wheels use PyPI.
     source = Path(__file__).resolve().parent.parent

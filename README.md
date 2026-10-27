@@ -352,3 +352,12 @@ For UI changes, also run `npm --prefix starter/ui test` and
 This repository is [MIT licensed](https://github.com/B4PT0R/the_framework/blob/main/LICENSE). See the [changelog](https://github.com/B4PT0R/the_framework/blob/main/CHANGELOG.md)
 for version notes. Publishing to PyPI is a separate release action; building
 locally does not publish anything.
+
+## Immutable backend deployment (opt-in)
+
+`the_framework.deployment` provides a small explicit API to build an immutable
+Docker image, validate it in isolation, select it and serve it under an external
+host supervisor. The existing local development launcher remains independent;
+there is no automatic installation or cutover. See [deployment and recovery](docs/deployment.md)
+for factories, optional host browser/control services, data rollback limits and
+platform verification. Requires an existing Docker daemon with Linux containers.

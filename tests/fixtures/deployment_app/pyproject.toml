@@ -1,0 +1,12 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "framework-deployment-fixture"
+version = "1.0.0"
+requires-python = ">=3.12"
+dependencies = ["b4pt0r-the-framework"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["deployment_fixture"]

@@ -289,3 +289,34 @@ on their plugin. The worker resolves their configured catalogue after extensions
 load; application code does not assemble worker profiles. Submit work with
 `agents.submit(...)` (a request ID, not a blocking result). Saved session settings
 remain authoritative over declaration, resource and resolved launch defaults.
+
+## Optional immutable backend
+
+In a **bootstrapped application** (not the framework template checkout),
+`uv run python -m starter.deployment --help` exposes the Framework's explicit
+build/test/select/status/serve commands. The generated app is a wheel package;
+its private `starter/instance.json` is excluded from that wheel.
+
+```sh
+cd /path/to/app
+uv run python -m starter.deployment --root /path/to/new-private-deployment build
+# Copy the returned full sha256 ID into these two separate operations:
+uv run python -m starter.deployment --root /path/to/new-private-deployment test sha256:FULL_64_HEX
+uv run python -m starter.deployment --root /path/to/new-private-deployment select sha256:FULL_64_HEX
+uv run python -m starter.deployment --root /path/to/new-private-deployment --runtime /private/runtime.json serve
+```
+
+Use a new private deployment root, not the development data directory. Runtime
+JSON supplies stable distinct `token` and `browser_token`, plus `port`; keep it
+private and out of source control. During unreleased Framework development, add
+`--project /explicit/the_framework` to the build (and to serve if host builds
+are enabled), so the image contains the same new deployment runner. Normal
+published usage needs only the app project. No Docker daemon installation,
+remote exposure, account setup, UI build or desktop migration is implicit.
+
+The backend starts without host access. Optional host/browser services require
+explicit private routing and distinct credentials. The application must also
+provide its model credentials and build/publish its UI separately; isolated
+validation proves neither. Read the Framework's `docs/deployment.md` for the
+factory contract, runtime settings, graceful restart/rollback and portability
+limits. Linux Docker is tested; macOS/Windows compatibility is not yet verified.

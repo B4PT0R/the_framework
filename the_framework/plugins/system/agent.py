@@ -66,6 +66,26 @@ class SystemExtension(AgentExtension):
         )
 
     @tool
+    async def backend_status(self):
+        """Inspect immutable backend releases; requires an explicitly configured host supervisor."""
+        return await self.agent.bridge.call("deployment", "status", {}, timeout_ms=10_000)
+
+    @tool
+    async def build_backend(self):
+        """Build the host-registered wheel recipe. Does not test, select or restart."""
+        return await self.agent.bridge.call("deployment", "build", {}, timeout_ms=910_000)
+
+    @tool
+    async def test_backend(self, image: str):
+        """Validate this exact sha256 image with disposable data and no host services/model turn."""
+        return await self.agent.bridge.call("deployment", "test", {"image": image}, timeout_ms=120_000)
+
+    @tool
+    async def select_backend(self, image: str):
+        """Select a successfully tested immutable image for the next turn-boundary reboot; does not restart."""
+        return await self.agent.bridge.call("deployment", "select", {"image": image}, timeout_ms=10_000)
+
+    @tool
     async def reboot_server(self, resume_instruction: str | None = None):
         """Restart the supervised server after this turn, then resume autonomously."""
         action_id = timestamp_id()

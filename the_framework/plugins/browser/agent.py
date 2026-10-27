@@ -5,7 +5,7 @@ from pathlib import Path
 from the_framework.agent import Config, Image, AgentExtension, hook, provider, tool
 
 from ...server.clients.browser import BrowserController, BrowserError, BrowserService, validate_target
-from ...server.clients.browser_rpc import BrowserRPCClient, browser_socket_path
+from ...server.clients.browser_rpc import BrowserRPCClient
 
 
 class BrowserConfig(Config):
@@ -32,7 +32,7 @@ class ChromiumExtension(AgentExtension):
         self.controller = (
             BrowserController(self._service)
             if self._owns_controller
-            else BrowserRPCClient(browser_socket_path(self.runtime_root))
+            else BrowserRPCClient.for_runtime(self.runtime_root)
         )
 
     def _service(self):

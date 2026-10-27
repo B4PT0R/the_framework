@@ -600,6 +600,10 @@ class Application(modict):
             worker_reference = getattr(supervisor, "application_reference", None)
             if worker_reference is not None and worker_reference != reference:
                 raise ValueError("supervisor and conversation must use the same application reference")
+        if context.get("validation", False):
+            if not isinstance(supervisor, WorkerSupervisor):
+                raise ValueError("image validation requires the standard WorkerSupervisor")
+            supervisor.validation = True
         runtime = (session_factory(supervisor, context) if session_factory is not None
                    else SessionRuntime(supervisor, restart=context.get("restart")))
         if any(runtime is item.state.session for item, _ in self.session_apps.values()):

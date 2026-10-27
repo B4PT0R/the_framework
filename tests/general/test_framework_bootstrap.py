@@ -26,6 +26,9 @@ def test_bootstrap_copies_editable_starter_and_separates_private_data(tmp_path):
     assert manifest["project"]["dependencies"] == [
         f"b4pt0r-the-framework=={version('b4pt0r-the-framework')}"
     ]
+    assert manifest["build-system"]["build-backend"] == "hatchling.build"
+    assert manifest["tool"]["hatch"]["build"]["targets"]["wheel"]["packages"] == ["starter"]
+    assert "starter/instance.json" in manifest["tool"]["hatch"]["build"]["targets"]["wheel"]["exclude"]
     assert not any(data.iterdir())
     subprocess.run(
         [sys.executable, "-c", (

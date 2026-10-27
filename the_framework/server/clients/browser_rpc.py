@@ -1,8 +1,9 @@
-"""Private Unix-socket RPC between agent plugins and the persistent browser."""
+"""Private local Unix RPC or explicitly configured authenticated host transport."""
 
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import os
 import socket
@@ -12,7 +13,6 @@ import uuid
 from pathlib import Path
 
 from .browser import BrowserError
-from ..runtime.discovery import ServerLease
 
 MAX_RPC_BYTES = 16 * 1024 * 1024
 SERVICE_METHODS = {
@@ -53,12 +53,35 @@ def _json_value(value):
     return None
 
 
+async def dispatch_browser(service, request):
+    scope = request.get("scope")
+    method = request.get("method")
+    if scope == "service" and method == "open_harness_ui":
+        method = "open_application_ui"
+    args = request.get("args", [])
+    kwargs = request.get("kwargs", {})
+    if not isinstance(args, list) or not isinstance(kwargs, dict):
+        raise BrowserError("browser RPC args and kwargs must be JSON containers")
+    if scope == "service" and method in SERVICE_METHODS:
+        operation = getattr(service, method)
+    elif scope == "session" and method in SESSION_METHODS:
+        if not args:
+            raise BrowserError("browser session RPC requires a target")
+        target, args = args[0], args[1:]
+        operation = getattr(service.session(target), method)
+    else:
+        raise BrowserError(f"unsupported browser RPC operation: {scope}.{method}")
+    return _json_value(await operation(*args, **kwargs))
+
+
 class BrowserRPCServer:
     def __init__(self, socket_path, service):
         self.socket_path = Path(socket_path)
         self.service = service
         self.server = None
         self.connections = {}
+        from ..runtime.discovery import ServerLease
+
         self.lease = ServerLease(self.socket_path.with_suffix(".lock"))
         self.socket_identity = None
 
@@ -137,24 +160,7 @@ class BrowserRPCServer:
                 self.lease.release()
 
     async def _dispatch(self, request):
-        scope = request.get("scope")
-        method = request.get("method")
-        if scope == "service" and method == "open_harness_ui":
-            method = "open_application_ui"
-        args = request.get("args", [])
-        kwargs = request.get("kwargs", {})
-        if not isinstance(args, list) or not isinstance(kwargs, dict):
-            raise BrowserError("browser RPC args and kwargs must be JSON containers")
-        if scope == "service" and method in SERVICE_METHODS:
-            operation = getattr(self.service, method)
-        elif scope == "session" and method in SESSION_METHODS:
-            if not args:
-                raise BrowserError("browser session RPC requires a target")
-            target, args = args[0], args[1:]
-            operation = getattr(self.service.session(target), method)
-        else:
-            raise BrowserError(f"unsupported browser RPC operation: {scope}.{method}")
-        return _json_value(await operation(*args, **kwargs))
+        return await dispatch_browser(self.service, request)
 
     async def _handle(self, reader, writer):
         try:
@@ -207,10 +213,26 @@ class BrowserRPCServer:
 class BrowserRPCClient:
     """Synchronous client matching the BrowserController plugin surface."""
 
-    def __init__(self, socket_path, *, timeout=30, connect_timeout=5):
-        self.socket_path = Path(socket_path)
+    def __init__(self, socket_path=None, *, host=None, timeout=30, connect_timeout=5):
+        self.socket_path = Path(socket_path) if socket_path is not None else None
+        self.host = host
+        if self.socket_path is None and host is None:
+            raise ValueError("a browser socket or host endpoint is required")
         self.timeout = timeout
         self.connect_timeout = connect_timeout
+
+    @classmethod
+    def for_runtime(cls, runtime_root):
+        """Use explicit runner settings when containerized; otherwise local Unix RPC."""
+        settings_path = os.environ.get("THE_FRAMEWORK_HOST_SETTINGS")
+        if settings_path:
+            from ...deployment.host import HostEndpoint
+
+            settings = json.loads(Path(settings_path).read_text(encoding="utf-8"))
+            if settings.get("validation") or not settings.get("host"):
+                raise BrowserError("host browser is unavailable during validation")
+            return cls(host=HostEndpoint(**settings["host"]))
+        return cls(browser_socket_path(runtime_root))
 
     def _connect(self):
         deadline = time.monotonic() + self.connect_timeout
@@ -232,6 +254,20 @@ class BrowserRPCClient:
         # wire command while exposing an application-neutral Python operation.
         if scope == "service" and method == "open_application_ui":
             method = "open_harness_ui"
+        if self.host is not None:
+            try:
+                result = self.host.call("browser", {
+                    "scope": scope, "method": method,
+                    "args": _json_value(list(args)), "kwargs": _json_value(kwargs),
+                }, browser=True, timeout=self.timeout)
+                if scope == "service" and method == "observe":
+                    path = Path(args[1])
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes(base64.b64decode(result["screenshot"], validate=True))
+                    return result["snapshot"], str(path)
+                return result
+            except RuntimeError as error:
+                raise BrowserError(str(error)) from error
         request_id = str(uuid.uuid4())
         payload = json.dumps({
             "id": request_id,

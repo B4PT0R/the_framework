@@ -462,6 +462,8 @@ class SessionRuntime:
         ]
 
     async def broadcast_worker_directory(self):
+        if self.context is not None and self.context.get("validation", False):
+            return
         payload = {"workers": self.worker_directory()}
         for worker in payload["workers"]:
             request = ExternalEventRequest(
