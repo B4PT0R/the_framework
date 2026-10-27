@@ -7,6 +7,7 @@ import asyncio
 import importlib
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -51,6 +52,8 @@ async def serve(settings):
     import uvicorn
 
     os.environ.update(settings.get("environment", {}))
+    if hasattr(time, "tzset"):
+        time.tzset()
     os.environ.pop("THE_FRAMEWORK_HOST_SETTINGS", None)
     if settings.get("host") and not settings.get("validation"):
         os.environ["THE_FRAMEWORK_HOST_SETTINGS"] = str(SETTINGS)
