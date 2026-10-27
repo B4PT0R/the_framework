@@ -4,7 +4,12 @@ Notable changes to the Python distribution are recorded here. Versions follow
 the distribution `b4pt0r-the-framework`; the import remains `the_framework`.
 Until a stable release, minor versions may revise the public composition API.
 
-## Unreleased
+## 0.3.0 - 2026-10-27
+
+- Require Modict 0.5.x and its `default_required` contract, plus SDK 0.5.9.
+  Preserve explicit field requirement overrides and project matching tool schemas.
+- Keep committed persistence snapshots coherent after post-commit failures, and
+  own asynchronous event stream producers through loop shutdown.
 
 - Bound declarative multipart streams before parsing with configurable
   `Application.max_upload_bytes` (64 MiB contents plus 1 MiB envelope by default),

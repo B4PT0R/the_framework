@@ -1,6 +1,7 @@
 """A generated application is independent of the product checkout."""
 
 import json
+from importlib.metadata import version
 import subprocess
 import sys
 import tomllib
@@ -22,7 +23,9 @@ def test_bootstrap_copies_editable_starter_and_separates_private_data(tmp_path):
     assert json.loads((code / "starter/instance.json").read_text())["data_dir"] == str(data)
     assert data.stat().st_mode & 0o777 == 0o700
     manifest = tomllib.loads((code / "pyproject.toml").read_text())
-    assert manifest["project"]["dependencies"] == ["b4pt0r-the-framework==0.2.1"]
+    assert manifest["project"]["dependencies"] == [
+        f"b4pt0r-the-framework=={version('b4pt0r-the-framework')}"
+    ]
     assert not any(data.iterdir())
     subprocess.run(
         [sys.executable, "-c", (

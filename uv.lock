@@ -44,7 +44,7 @@ wheels = [
 
 [[package]]
 name = "b4pt0r-the-framework"
-version = "0.2.1"
+version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "codex-backend-sdk" },
@@ -484,7 +484,7 @@ wheels = [
 
 [[package]]
 name = "modict"
-version = "0.4.20"
+version = "0.5.0"
 source = { editable = "../modict" }
 dependencies = [
     { name = "jsonpath-ng" },
