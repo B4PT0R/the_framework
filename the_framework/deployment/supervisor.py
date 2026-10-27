@@ -43,7 +43,7 @@ class BackendRuntime:
 
             if not isinstance(self.host, HostEndpoint):
                 raise TypeError("host must be a HostEndpoint")
-            if {self.token, self.browser_token}.intersection({self.host.token, self.host.browser_token}):
+            if {self.token, self.browser_token}.intersection({self.host.token, self.host.browser_token, self.host.execution_token}):
                 raise ValueError("host tokens must be distinct from backend tokens")
         if not self.token or not self.browser_token or self.token == self.browser_token:
             raise ValueError("distinct nonempty backend and browser tokens are required")

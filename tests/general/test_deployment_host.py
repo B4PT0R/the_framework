@@ -108,3 +108,75 @@ def test_host_does_not_leak_credentials_in_failure(tmp_path):
         finally:
             await services.close()
     asyncio.run(run())
+
+
+def test_execution_stream_credentials_status_and_shutdown(tmp_path):
+    import sys
+    from the_framework.execution import ProcessHost, RemoteProcess
+
+    def recipe(fd):
+        return [sys.executable, "-c", (
+            "import socket,sys; s=socket.socket(fileno=int(sys.argv[1])); "
+            "s.sendall(b'ready'); data=s.recv(100); s.sendall(data[::-1])"
+        ), str(fd)]
+
+    async def run():
+        processes = ProcessHost({"echo": recipe})
+        services = HostServices(Deployment(tmp_path), token="control", browser_token="browser",
+                                execution=processes, execution_token="execute")
+        address = await services.start(("127.0.0.1", 0))
+        endpoint = HostEndpoint(address, "control", "browser", "execute")
+        process = None
+        try:
+            for credential in ("control", "browser", "wrong"):
+                bad = HostEndpoint(address, "unused-control", "unused-browser", credential)
+                with pytest.raises(DeploymentError, match="unauthorized"):
+                    await asyncio.to_thread(bad.open_process, "echo")
+            with pytest.raises(DeploymentError, match="unauthorized"):
+                await asyncio.to_thread(endpoint._call, "status", {}, "execute", 5)
+            with pytest.raises(DeploymentError, match="unknown .* recipe"):
+                await asyncio.to_thread(endpoint.open_process, "arbitrary.module")
+            process = await asyncio.to_thread(RemoteProcess, endpoint, "echo")
+            # The ready bytes may share a TCP packet with the host handshake.
+            assert await asyncio.to_thread(process.socket.recv, 5) == b"ready"
+            await asyncio.to_thread(process.socket.sendall, b"abc")
+            assert await asyncio.to_thread(process.socket.recv, 3) == b"cba"
+            assert await asyncio.to_thread(process.wait, 5) == 0
+            await asyncio.to_thread(process.close)
+            assert process.poll() == 0
+            idle = await asyncio.to_thread(RemoteProcess, endpoint, "echo")
+            assert await asyncio.to_thread(idle.socket.recv, 5) == b"ready"
+            await asyncio.wait_for(services.close(), 5)
+            assert await asyncio.to_thread(idle.socket.recv, 1) == b""
+            idle.socket.close()
+            assert not processes.processes
+            assert not services.connections
+        finally:
+            if process is not None:
+                await asyncio.to_thread(process.close)
+            await services.close()
+    asyncio.run(run())
+
+
+def test_execution_opt_in_and_credential_separation(tmp_path):
+    from the_framework.execution import ProcessHost
+    for credential in ("", "control", "browser"):
+        with pytest.raises(ValueError, match="distinct"):
+            HostEndpoint(("127.0.0.1", 1234), "control", "browser", credential)
+        with pytest.raises(ValueError, match="distinct"):
+            HostServices(Deployment(tmp_path), token="control", browser_token="browser",
+                         execution=ProcessHost({}), execution_token=credential)
+    with pytest.raises(ValueError, match="together"):
+        HostServices(Deployment(tmp_path), token="control", browser_token="browser",
+                     execution=ProcessHost({}))
+    endpoint = HostEndpoint(("127.0.0.1", 1234), "control", "browser")
+    with pytest.raises(DeploymentError, match="not configured"):
+        endpoint.open_process("echo")
+
+
+def test_backend_credentials_cannot_authorize_host_execution():
+    from the_framework.deployment import BackendRuntime
+    for credential in ("backend", "backend-browser"):
+        endpoint = HostEndpoint(("127.0.0.1", 1234), "control", "browser", credential)
+        with pytest.raises(ValueError, match="distinct from backend"):
+            BackendRuntime(token="backend", browser_token="backend-browser", host=endpoint)

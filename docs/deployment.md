@@ -41,7 +41,8 @@ The installed application code and dependencies are immutable. An optional
 `BackendRuntime(workspaces={"app": Path("/explicit/checkout")})` exposes editable
 source at `/workspaces/app`, never over site-packages. Editing that checkout does
 not change the running backend. The host recipe can build its next wheel from
-it. General execution tools run inside the backend container, not on the host.
+it. General execution tools run inside the backend container unless the application
+explicitly installs and authorizes the optional host execution service below.
 This does not provision tool runtimes, compilers or package managers in images.
 
 ## Application factory
@@ -119,8 +120,9 @@ publication. Stopping the foreground host supervisor drains/removes its backend.
 ## Optional trusted host services
 
 `HostServices` exposes only host-registered `build()` (zero arguments), test,
-select, status and optionally the existing browser service. No arbitrary command,
-path, Docker option or socket is accepted over RPC. Validation session/options
+select, status, the optional existing browser service and optional named process
+recipes. Deployment/browser RPC never accepts arbitrary commands, paths, Docker
+options or sockets. Validation session/options
 are fixed by the host. Accepted deployment operations finish even if their client
 disconnects; after a timeout inspect status before retrying.
 
@@ -138,7 +140,38 @@ The browser stays host-owned across backend replacement. RPC reuses fixed browse
 method allowlists and its separate credential. Observations transfer frozen image
 bytes; backend screenshot paths never become host write paths. Workers discover
 the explicit private endpoint through runner settings. The local Unix browser
-path remains unchanged. No generic host shell/desktop bridge is added.
+path remains unchanged. Browser authorization does not grant execution authority.
+
+### Explicit process execution
+
+Applications may additionally compose `ProcessHost` from `the_framework.execution`
+and pass it to `HostServices(execution=..., execution_token=...)`. Register a mapping
+of trusted recipe names to local callables; each callable receives an inherited
+socket descriptor and returns worker argv. Configure the same separate
+`HostEndpoint.execution_token` in runtime settings. It must differ from control,
+browser and backend credentials. No service is enabled by default; the generic
+CLI does not register application workers.
+
+`launch_process(target, name, recipe)` requires `target="local"` (this backend's
+environment) or `"host"` (the explicitly configured host). The host resolves only
+its registered name, never a client-supplied command or module. A duplex channel
+carries the worker's own protocol, including reverse RPC; process control uses a
+separate bounded connection so busy user code can still be interrupted. Missing
+host configuration, failed authentication or disconnection fails explicitly;
+there is no local fallback. Isolated image validation cannot acquire this service.
+
+A registered general-purpose Bash/Python worker deliberately **does** grant arbitrary
+code execution with its host account's permissions. The transport and recipe list
+are not a sandbox or per-command permission system. Protect the execution credential
+accordingly; no root elevation or Docker socket is needed. Paths and interpreters
+belong to the chosen target; file contents are not implicitly shared or transferred.
+
+EOF or host-service shutdown retires a process; workers must clean up their own
+children. The bundled Bash worker cleans tracked jobs on EOF/SIGTERM/SIGINT, and
+its commands/jobs retain explicit target ownership. SIGKILL, machine failure and
+children that deliberately detach can escape cooperative cleanup. This is not a
+durable host job service. Unix socketpair/pass_fds/process-group and signal behavior
+is tested on Linux only, not a Windows/macOS compatibility guarantee.
 
 ## CLI composition
 
