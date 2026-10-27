@@ -259,3 +259,28 @@ def test_editable_workspaces_do_not_replace_installed_code(tmp_path):
     for name, path in (("../escape", workspace), ("ok", tmp_path / "missing")):
         with pytest.raises(ValueError, match="workspace"):
             replace(runtime(), workspaces={name: path})
+
+
+def test_explicit_application_mounts(tmp_path):
+    from dataclasses import replace
+
+    source = tmp_path / "resources"
+    source.mkdir()
+    inputs = replace(runtime(), mounts={"/resources": {"source": source}})
+    engine = Engine()
+    deployment = Deployment(tmp_path / "deployment", docker=engine)
+    ready(deployment, IMAGE)
+    deployment.serve(inputs, stop=stopped())
+    create = next(call for call in engine.calls if call[0] == "create")
+    assert f"type=bind,source={source},target=/resources,readonly" in create
+    for target in ("/", "/usr/local", "/data/home", "/workspaces", "relative", "/a/../b", "/a/", "/a,b"):
+        with pytest.raises(ValueError, match="mount"):
+            replace(runtime(), mounts={target: {"source": source}})
+    for spec in ({"source": source, "readonly": "false"}, {"source": source / "missing"}, {"src": source}):
+        with pytest.raises(ValueError, match="mount"):
+            replace(runtime(), mounts={"/resources": spec})
+    with pytest.raises(ValueError, match="overlap"):
+        replace(runtime(), mounts={"/resources": {"source": source}, "/resources/nested": {"source": source}})
+    inputs.mounts["/resources"]["readonly"] = "false"
+    with pytest.raises(ValueError, match="readonly"):
+        deployment.serve(inputs, stop=stopped())

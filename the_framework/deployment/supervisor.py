@@ -8,7 +8,7 @@ import os
 import re
 import threading
 from dataclasses import dataclass, field, replace
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from filelock import FileLock, Timeout
 
@@ -30,6 +30,7 @@ class BackendRuntime:
     browser_token: str = field(repr=False)
     host: object = field(default=None, repr=False)
     workspaces: dict[str, Path] = field(default_factory=dict)
+    mounts: dict[str, dict] = field(default_factory=dict)
     port: int = 8765
     origin: str | None = None
     user: int = field(default_factory=lambda: getattr(os, "getuid", lambda: 1000)())
@@ -60,6 +61,23 @@ class BackendRuntime:
         if any(not path.is_dir() or "," in str(path) for path in workspaces.values()):
             raise ValueError("workspaces must be explicit existing directories without commas")
         object.__setattr__(self, "workspaces", workspaces)
+        mounts = {}
+        reserved = {"bin", "sbin", "usr", "etc", "opt", "run", "proc", "sys", "dev", "tmp", "data", "workspaces"}
+        for target, spec in self.mounts.items():
+            path = PurePosixPath(target)
+            if (not path.is_absolute() or str(path) != target or ".." in path.parts
+                    or len(path.parts) < 2 or path.parts[1] in reserved or "," in target):
+                raise ValueError("mount targets must be normalized absolute application paths")
+            if not isinstance(spec, dict) or set(spec) - {"source", "readonly"} or "source" not in spec:
+                raise ValueError("mounts require source and optional readonly")
+            source = Path(spec["source"]).expanduser().resolve()
+            readonly = spec.get("readonly", True)
+            if not source.exists() or "," in str(source) or type(readonly) is not bool:
+                raise ValueError("mount source must exist and readonly must be a boolean")
+            if any(path in PurePosixPath(other).parents or PurePosixPath(other) in path.parents for other in mounts):
+                raise ValueError("mount targets must not overlap")
+            mounts[target] = {"source": source, "readonly": readonly}
+        object.__setattr__(self, "mounts", mounts)
         object.__setattr__(self, "options", application_options(self.options))
         if any(not isinstance(k, str) or not isinstance(v, str) or "\0" in k + v or "=" in k for k, v in self.environment.items()):
             raise ValueError("environment must contain valid string keys and values")
@@ -151,6 +169,8 @@ class _Supervisor:
             "--mount", f"type=bind,source={self.deployment.root / 'data'},target=/data",
             *(argument for name, path in self.runtime.workspaces.items()
               for argument in ("--mount", f"type=bind,source={path},target=/workspaces/{name}")),
+            *(argument for target, spec in self.runtime.mounts.items()
+              for argument in ("--mount", f"type=bind,source={spec['source']},target={target}" + (",readonly" if spec["readonly"] else ""))),
             identifier,
         )
         self.docker.run("start", self.name)

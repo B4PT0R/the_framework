@@ -177,3 +177,13 @@ engine. New host deployment primitives use pathlib, filelock, TCP and subprocess
 argument arrays rather than systemd/fcntl; this is **not evidence of Windows or
 macOS compatibility**. UID/bind-mount behavior, Desktop routing and the rest of
 an application's platform-specific plugins still need platform testing.
+
+### Explicit application bind mounts
+
+When named `/workspaces` are insufficient, `BackendRuntime.mounts` maps an
+absolute container application path to `{"source": Path(...), "readonly": True}`.
+Readonly is the default. Sources must exist; targets must be normalized,
+non-overlapping application paths, not reserved OS/data/workspace roots.
+Use narrow mounts for model caches, credentials or existing saved absolute paths;
+this is explicit host authority, not a sandbox for untrusted tools. The installed
+backend remains immutable. Isolated image validation never imports these mounts.
