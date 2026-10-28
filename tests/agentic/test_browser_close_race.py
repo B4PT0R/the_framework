@@ -6,7 +6,7 @@ import pytest
 
 from the_framework.server.clients import browser
 
-pytestmark = pytest.mark.skipif(not os.environ.get('PLAYWRIGHT_BROWSERS_PATH'), reason='requires configured Chromium')
+pytestmark = pytest.mark.usefixtures("browser_runtime")
 
 
 def test_closing_during_reload_keeps_other_web_tabs_and_chat(tmp_path, monkeypatch):

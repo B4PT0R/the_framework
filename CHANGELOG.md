@@ -4,6 +4,27 @@ Notable changes to the Python distribution are recorded here. Versions follow
 the distribution `b4pt0r-the-framework`; the import remains `the_framework`.
 Until a stable release, minor versions may revise the public composition API.
 
+## 0.3.1 - 2026-10-28
+
+- Add opt-in immutable Docker backend builds, isolated validation, release
+  selection and host supervision, with explicit application mounts and timezone.
+  Keep production credentials outside images and validate runtime inputs before
+  calling the engine.
+- Add explicit local/host process execution with authenticated host transport and
+  application-owned worker recipes. The deployment CLI accepts an opt-in
+  `execution_factory` and owns its resources through failure and shutdown.
+- Reuse private atomic persistence for deployment settings and release snapshots;
+  preserve the committed state when a subsequent directory sync fails.
+- Use `open_application_ui` consistently on Unix and host browser RPC transports.
+  Remove the former `open_harness_ui` wire alias: upgrade persistent browser
+  daemons together with their callers. The saved `harness_ui` profile is unchanged.
+- Reject duplicate Host/Origin headers in the starter's local authentication.
+  Clarify the 0.3 composition API and deployment/execution ownership contracts.
+
+- Pin Playwright 1.63.0 to keep application browser runtimes aligned. Isolate
+  test cache selection from running applications, validate the matching Chromium,
+  and wait for actual window focus before native close-key tests.
+
 ## 0.3.0 - 2026-10-27
 
 - Require Modict 0.5.x and its `default_required` contract, plus SDK 0.5.9.

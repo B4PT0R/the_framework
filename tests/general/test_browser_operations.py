@@ -6,7 +6,7 @@ import pytest
 
 from the_framework.server.clients.browser import BrowserService, BROWSER_AGENT_ID_ATTR
 
-pytestmark = pytest.mark.skipif(not os.environ.get('PLAYWRIGHT_BROWSERS_PATH'), reason='requires configured Chromium')
+pytestmark = pytest.mark.usefixtures("browser_runtime")
 
 
 def test_snapshot_replaces_hidden_and_truncated_handles_and_controls_remain_unambiguous(tmp_path):

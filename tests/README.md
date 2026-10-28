@@ -36,3 +36,17 @@ live/browser requirements still apply.
 JavaScript tests use the same split under `starter/ui/tests/`.
 Run `npm test --prefix starter/ui` from the repository root.
 Node discovers both layers, including newly added agentic tests.
+
+## Reproducible browser runtime
+
+The Framework pins the Playwright driver; applications resolve the same version.
+Tests ignore inherited `PLAYWRIGHT_BROWSERS_PATH` so a running application cannot
+silently select another driver revision. By default they use Playwright's standard
+user cache. To select another prepared cache, run `uv run pytest --browser-cache PATH`.
+The test header reports the driver and cache. Missing default Chromium skips real
+browser checks; a missing explicitly requested cache fails with its expected path.
+Tests never download browsers, remove caches or select an arbitrary executable.
+Prepare Chromium explicitly using `uv run python -m playwright install chromium`
+(or the same command with `PLAYWRIGHT_BROWSERS_PATH=PATH` for a custom cache).
+A launch failure, including a missing headless shell or OS dependency, remains a
+failure rather than being hidden as a skip.

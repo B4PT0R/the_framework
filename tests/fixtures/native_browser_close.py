@@ -32,11 +32,19 @@ async def main(root):
             title = f"NativeCloseContract-{os.getpid()}-{index}"
             await page.goto(f"data:text/html,<title>{title}</title><p>Native closure test</p>")
             await page.bring_to_front()
+            # Wait for Chromium to receive X focus before sending its shortcut.
+            focus = await asyncio.create_subprocess_exec(
+                "xdotool", "search", "--sync", "--onlyvisible", "--name", title,
+                "windowfocus", "--sync",
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
+            )
+            _, error = await asyncio.wait_for(focus.communicate(), 10)
+            assert focus.returncode == 0, error.decode()
+            await page.wait_for_function("document.hasFocus()")
             # Native window input, rather than a Playwright context.close().
             async with web.context.expect_event("close", timeout=10000):
                 process = await asyncio.create_subprocess_exec(
-                    "xdotool", "search", "--sync", "--onlyvisible", "--name", title,
-                    "windowfocus", "--sync", "key", "--clearmodifiers", "ctrl+w",
+                    "xdotool", "key", "--clearmodifiers", "ctrl+w",
                     stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
                 )
                 try:

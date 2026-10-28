@@ -14,8 +14,7 @@ from the_framework.plugins.artifacts.server import ArtifactAssets
 from starter import desktop
 
 
-@pytest.mark.skipif(not os.environ.get("PLAYWRIGHT_BROWSERS_PATH"),
-                    reason="requires an explicitly configured Playwright browser installation")
+@pytest.mark.usefixtures("browser_runtime")
 def test_starter_preserves_browser_and_conversation_across_server_restart(tmp_path, monkeypatch):
     session = Session.open(tmp_path / "session.json")
     session.append(Message(role="user", content=[{"type": "input_text", "text": "Recovery marker"}]))
