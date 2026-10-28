@@ -18,7 +18,7 @@ The PyPI distribution is named `b4pt0r-the-framework`. Python code imports
 `the_framework`, and the template command is `the-framework`. Python 3.12 or
 newer is required. The examples below describe the 0.3 composition API in this
 checkout. Releases can differ during this experimental phase; use the checkout's
-`uv sync` instructions below to try this exact API.
+editable-install instructions below to try this exact API.
 
 To install the published package in a virtual environment:
 
@@ -144,19 +144,19 @@ are sealed before services are constructed.
 
 ## Try a working application
 
-Install [`uv`](https://docs.astral.sh/uv/) and Node.js/npm, then from this
+Use a Python environment of your choice and install Node.js/npm. From this
 checkout run:
 
 ```sh
-uv sync
+python -m pip install -e ".[dev]"
 npm --prefix starter/ui ci
 npm --prefix starter/ui run build
-PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright-browsers" uv run playwright install chromium
-PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright-browsers" uv run python -m starter
+PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright-browsers" python -m playwright install chromium
+PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright-browsers" python -m starter
 ```
 
 Playwright Chromium also needs its system libraries; on Linux,
-`uv run playwright install --with-deps chromium` can install them if you have
+`python -m playwright install --with-deps chromium` can install them if you have
 the required system permissions. The starter opens a local Chromium window with
 chat, settings, file attachments and an editable React interface. Its server
 listens on loopback and authenticates the browser. You can inspect the UI and
@@ -166,11 +166,11 @@ embeddings, and voice features require a usable account/capabilities through
 data storage and feature-by-feature behavior.
 
 To make an independent, editable copy, run `the-framework bootstrap` in the
-environment where you installed the package. From this checkout, prefix it
-with `uv run`:
+environment where you installed the package. From this checkout, use that same
+environment:
 
 ```sh
-uv run the-framework bootstrap --code-dir /path/to/my-agent-code --data-dir /path/to/my-agent-data
+the-framework bootstrap --code-dir /path/to/my-agent-code --data-dir /path/to/my-agent-data
 ```
 
 Both directories must be empty or absent, distinct and non-overlapping. Install
@@ -302,7 +302,7 @@ app = application.build()
 Start it with:
 
 ```sh
-uv run uvicorn example:app --host 127.0.0.1 --port 8000
+python -m uvicorn example:app --host 127.0.0.1 --port 8000
 ```
 
 Then, in another terminal:
@@ -336,10 +336,13 @@ without requiring you to adopt its UI design.
 
 ## Develop and package
 
+In the shared suite, activate `../.venv` and use the workspace installer instead
+of reinstalling this member alone. Standalone development can use any environment.
+
 ```sh
-uv sync --extra dev
-uv run pytest -q tests/general tests/agentic
-uv build
+python -m pip install -e ".[dev]"
+python -m pytest -q tests/general tests/agentic
+python -m build
 ```
 
 The build produces a wheel and source archive in `dist/`. The wheel contains

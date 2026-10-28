@@ -122,8 +122,8 @@ Session state remain distinct.
 Add focused tests for the behavior being changed. Then run the framework suite:
 
 ```sh
-uv sync --extra dev
-uv run pytest -q tests/general tests/agentic
+python -m pip install -e ".[dev]"
+python -m pytest -q tests/general tests/agentic
 ```
 
 `tests/general/` protects deliberately durable behavior and API/application
@@ -178,3 +178,12 @@ Explicit private invocations augment class-discovered triggers; a caller need no
 repeat those triggers to add a helper. Worker catalogues contain only invocations,
 with configured instance triggers taking precedence. Named requests bypass ambient
 observation filters and route only to their target specialist.
+
+## Development environment
+
+The enclosing `the_harness_project/` owns the shared development `.venv`.
+Activate it or invoke its Python explicitly; do not create or synchronize a
+per-checkout environment. Install all five editable members together through the
+workspace `setup.sh`. Outside that workspace, any compatible interpreter and
+installer can install this package. Runtime compatibility belongs in metadata;
+exact dependency snapshots belong to release preparation, not development.

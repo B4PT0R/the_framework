@@ -26,7 +26,7 @@ intentionally adopted; never delete a durable guarantee just to hide a regressio
 Run the complete Python suite from the repository root:
 
 ```sh
-uv run pytest -q
+python -m pytest -q
 ```
 
 To select a layer, append `tests/general` or `tests/agentic`. Both are collected
@@ -42,11 +42,11 @@ Node discovers both layers, including newly added agentic tests.
 The Framework pins the Playwright driver; applications resolve the same version.
 Tests ignore inherited `PLAYWRIGHT_BROWSERS_PATH` so a running application cannot
 silently select another driver revision. By default they use Playwright's standard
-user cache. To select another prepared cache, run `uv run pytest --browser-cache PATH`.
+user cache. To select another prepared cache, run `python -m pytest --browser-cache PATH`.
 The test header reports the driver and cache. Missing default Chromium skips real
 browser checks; a missing explicitly requested cache fails with its expected path.
 Tests never download browsers, remove caches or select an arbitrary executable.
-Prepare Chromium explicitly using `uv run python -m playwright install chromium`
+Prepare Chromium explicitly using `python -m playwright install chromium`
 (or the same command with `PLAYWRIGHT_BROWSERS_PATH=PATH` for a custom cache).
 A launch failure, including a missing headless shell or OS dependency, remains a
 failure rather than being hidden as a skip.

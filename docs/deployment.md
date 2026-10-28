@@ -28,7 +28,7 @@ releases.serve(BackendRuntime(          # foreground HOST process
 ```
 
 Wheels/projects are explicit trusted build inputs. Project wheels are built on
-the host with `uv build --wheel`; only resulting wheels and generated metadata
+the host with `python -m build --wheel`; only resulting wheels and generated metadata
 enter the Docker context. No recursive repository copy, dotenv, home directory
 or implicit credential forwarding. **A wheel can itself contain secrets or run
 build code: audit its packaging.** Public Python dependencies resolve during the
@@ -215,7 +215,7 @@ to run arbitrary workers.
 Pure unit tests/imports do not need Docker. The explicit opt-in test is:
 
 ```sh
-FRAMEWORK_DOCKER_TEST=1 uv run pytest -q tests/agentic/test_docker_deployment.py
+FRAMEWORK_DOCKER_TEST=1 python -m pytest -q tests/agentic/test_docker_deployment.py
 ```
 
 It uses real Framework workers and disposable sessions, checks authenticated

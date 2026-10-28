@@ -44,16 +44,16 @@ include The Harness product packages.
 
 Requires Python 3.12+, Node/npm and the system libraries required by Playwright
 Chromium. The starter is bundled as a bootstrap template in this framework's
-wheel. Install `b4pt0r-the-framework` from PyPI or use `uv sync` from this
-checkout before running these commands.
+wheel. Install `b4pt0r-the-framework` from PyPI or install this checkout into the
+Python environment you choose. For the shared development suite, activate the
+workspace root `.venv` first.
 
 ```sh
-python3 -m venv .venv
-uv sync --extra dev
+python -m pip install -e ".[dev]"
 npm --prefix starter/ui ci
 npm --prefix starter/ui run build
-PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright-browsers" uv run playwright install chromium
-PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright-browsers" uv run python -m starter
+PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright-browsers" python -m playwright install chromium
+PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright-browsers" python -m starter
 ```
 
 On Linux, Playwright's `install --with-deps chromium` can also install required
@@ -77,7 +77,7 @@ authenticates lazily and reports a missing login without opening an OAuth browse
 from the worker. To explicitly sign in using the installed backend SDK, run:
 
 ```sh
-.venv/bin/python -c 'from codex_backend_sdk import OpenAI; OpenAI().authenticate()'
+python -c 'from codex_backend_sdk import OpenAI; OpenAI().authenticate()'
 ```
 
 Then retry the message; a failed authentication is not cached. The SDK reuses its
@@ -188,10 +188,10 @@ server restarts. A missing initial bundle leaves the server available for repair
 ```sh
 npm --prefix starter/ui test
 npm --prefix starter/ui run build
-.venv/bin/pytest -q tests/general/test_starter.py \
+python -m pytest -q tests/general/test_starter.py \
   tests/general/test_starter_security.py tests/general/test_starter_desktop.py
-PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright-browsers" uv run playwright install chromium
-PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright-browsers" uv run pytest -q \
+PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright-browsers" python -m playwright install chromium
+PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright-browsers" python -m pytest -q \
   tests/general/test_starter_browser_recovery.py
 ```
 
@@ -211,12 +211,12 @@ checks WebRTC connection, received audio, live captions, persisted transcription
 and cleanup with Chromium's fake microphone (never the user's microphone).
 
 To explicitly spend backend quota on a short tool/inference smoke test, run
-`STARTER_LIVE_TESTS=1 .venv/bin/pytest -q tests/general/test_starter_live.py`.
+`STARTER_LIVE_TESTS=1 python -m pytest -q tests/general/test_starter_live.py`.
 It uses temporary data and checks an innocuous Bash `printf` plus a separate
 memory request, curator completion, embeddings and retrieval after reconstruction.
 Both tests are skipped by default.
 For the separate audio test, build the UI and run
-`STARTER_LIVE_TESTS=1 .venv/bin/pytest -q tests/general/test_starter_voice_live.py`
+`STARTER_LIVE_TESTS=1 python -m pytest -q tests/general/test_starter_voice_live.py`
 with Playwright Chromium installed.
 
 This starter is local-only for now. It does not ship remote pairing, a mobile
@@ -293,17 +293,17 @@ remain authoritative over declaration, resource and resolved launch defaults.
 ## Optional immutable backend
 
 In a **bootstrapped application** (not the framework template checkout),
-`uv run python -m starter.deployment --help` exposes the Framework's explicit
+`python -m starter.deployment --help` exposes the Framework's explicit
 build/test/select/status/serve commands. The generated app is a wheel package;
 its private `starter/instance.json` is excluded from that wheel.
 
 ```sh
 cd /path/to/app
-uv run python -m starter.deployment --root /path/to/new-private-deployment build
+python -m starter.deployment --root /path/to/new-private-deployment build
 # Copy the returned full sha256 ID into these two separate operations:
-uv run python -m starter.deployment --root /path/to/new-private-deployment test sha256:FULL_64_HEX
-uv run python -m starter.deployment --root /path/to/new-private-deployment select sha256:FULL_64_HEX
-uv run python -m starter.deployment --root /path/to/new-private-deployment --runtime /private/runtime.json serve
+python -m starter.deployment --root /path/to/new-private-deployment test sha256:FULL_64_HEX
+python -m starter.deployment --root /path/to/new-private-deployment select sha256:FULL_64_HEX
+python -m starter.deployment --root /path/to/new-private-deployment --runtime /private/runtime.json serve
 ```
 
 Use a new private deployment root, not the development data directory. Runtime
