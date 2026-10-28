@@ -9,7 +9,7 @@ from ..api.chat import ChatApi
 from ..api.health import ApplicationHealthApi
 from ..api.transport import CanonicalTransportSockets
 from ..runtime.session import SessionRuntime
-from .application import ServerExtension
+from .declarations import ServerExtension
 
 
 def _conversation_extensions(

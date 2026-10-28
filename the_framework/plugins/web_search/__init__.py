@@ -1,4 +1,4 @@
-from ...server.composition.application import Plugin
+from ...server.composition.declarations import Plugin
 from .agent import WebSearchConfig, WebSearchExtension
 
 WEB_SEARCH = Plugin(

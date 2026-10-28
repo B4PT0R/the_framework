@@ -32,8 +32,10 @@ Modules are grouped by responsibility, not by implementation size:
   specialist contracts;
 - `agent.runtime`: execution loops, worker protocol and process entrypoint;
 - `agent.spec`: the public agent construction declaration;
-- `server.composition`: application declarations, dependency validation and
-  plugin/service installation;
+- `server.composition.declarations`: `BuildContext`, `Plugin`, `ServerExtension`
+  and versioned capabilities — construction inputs and feature vocabulary;
+- `server.composition.application`: `Application`, compilation and server/session
+  assembly; `composition.services` owns service lookup and lifecycle;
 - `server.api`: HTTP/WebSocket declarations, discovery, authorization and adaptation;
 - `server.runtime`: application/worker supervision, bridges and discovery;
 - `plugins.realtime`: voice projection, transport and delegation orchestration;

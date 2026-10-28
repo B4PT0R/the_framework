@@ -1,4 +1,4 @@
-from ...server.composition.application import Plugin, Capability, ServerExtension
+from ...server.composition.declarations import Plugin, Capability, ServerExtension
 from .agent import RealtimeConfig, RealtimeExtension
 
 REALTIME = Plugin(

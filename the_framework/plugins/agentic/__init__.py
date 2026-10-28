@@ -1,6 +1,6 @@
 """Tools and live context for an agent's own persistent working process."""
 
-from ...server.composition.application import Plugin, ServerExtension, CapabilityRequirement
+from ...server.composition.declarations import Plugin, ServerExtension, CapabilityRequirement
 from .agent import AgenticConfig, AgenticExtension
 
 AGENTIC = Plugin(

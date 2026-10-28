@@ -1,4 +1,4 @@
-from ...server.composition.application import Plugin
+from ...server.composition.declarations import Plugin
 from .agent import BrowserConfig, ChromiumExtension
 
 def _build_agent_extension(agent):

@@ -1,4 +1,4 @@
-from ...server.composition.application import Plugin
+from ...server.composition.declarations import Plugin
 from .agent import RegistryConfig, RegistryExtension, RegistryStore
 
 REGISTRY = Plugin(

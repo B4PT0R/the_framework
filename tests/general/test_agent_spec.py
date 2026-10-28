@@ -6,7 +6,7 @@ from the_framework.agent.extensions.specialists import AgentTrigger, agent_trigg
 from the_framework.agent import AgentResources, AgentSpec, Instruction, AgentExtension, QueuePolicy, tool
 from the_framework.agent.runtime.protocol import PluginBindingRequest, PromptRequest
 from the_framework.agent.context.session import Session
-from the_framework.server.composition.application import Plugin
+from the_framework.server import Plugin
 
 
 class ExampleExtension(AgentExtension):

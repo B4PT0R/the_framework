@@ -15,7 +15,7 @@ from the_framework.agent.models.responses import Message
 from the_framework.agent.models.worker import WorkerProfile
 from the_framework.agent.models.usage import ResponseUsage, TokenDetails
 from the_framework.server.clients.surfaces import SurfaceRelease
-from the_framework.server.composition.application import BuildContext, Capability, CapabilityRequirement
+from the_framework.server import BuildContext, Capability, CapabilityRequirement
 from the_framework.server.clients.remote import RemoteClientPolicy
 from the_framework.server.api.endpoints import Principal
 

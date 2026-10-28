@@ -83,7 +83,7 @@ class ServiceGraph:
     """Start services topologically and stop them in exact reverse order."""
 
     def __init__(self, extensions=(), *, context=None, dependencies=None, construction_errors=None):
-        from .application import ServerExtension
+        from .declarations import ServerExtension
 
         self.context = context if context is not None else ServiceContext()
         self.specs = {}

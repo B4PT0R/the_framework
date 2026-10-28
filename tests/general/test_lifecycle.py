@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 from the_framework import endpoint
-from the_framework.server.composition.application import ServerExtension
+from the_framework.server import ServerExtension
 from the_framework.server.composition.services import ServiceContext, invoke_lifecycle
 
 

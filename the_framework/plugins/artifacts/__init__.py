@@ -1,6 +1,6 @@
 """Explicit conversation artifacts and durable, authenticated local assets."""
 
-from ...server.composition.application import Plugin, ServerExtension
+from ...server.composition.declarations import Plugin, ServerExtension
 from .agent import ArtifactsExtension
 
 ARTIFACTS = Plugin(

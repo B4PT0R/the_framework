@@ -1,6 +1,6 @@
 """Complete memory feature and its advanced agent customization surface."""
 
-from ...server.composition.application import Plugin, ServerExtension
+from ...server.composition.declarations import Plugin, ServerExtension
 from .agent import MemoryConfig, MemoryExtension
 
 MEMORY = Plugin(name="memory", agent_extension=MemoryExtension,

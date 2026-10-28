@@ -7,10 +7,21 @@ from fastapi import Request
 
 from the_framework.agent import AgentSpec
 from the_framework.server.clients.remote import CapabilityLease
-from the_framework.server.composition.application import Application, ServerExtension, Plugin
+from the_framework.server import Application, ServerExtension, Plugin
 from the_framework.server.api.endpoints import EndpointContext, Principal
 from the_framework.server.clients.surfaces import ClientSurface
 from the_framework.server.api.websockets import WebSocketEndpoint
+
+
+@pytest.mark.parametrize("name", [
+    "Application", "BuildContext", "Capability", "CapabilityRequirement",
+    "Plugin", "ServerExtension", "ClientSurface",
+])
+def test_composition_facades_expose_the_same_constructors(name):
+    import the_framework
+    from the_framework import server
+
+    assert getattr(the_framework, name) is getattr(server, name)
 
 
 @pytest.mark.parametrize("make", [

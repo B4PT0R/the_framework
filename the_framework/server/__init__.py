@@ -2,19 +2,18 @@ from .api.declarations import Endpoint, endpoint
 from .runtime.reset import FileResetTransaction
 from .runtime.session import SessionRuntime, InvalidWorkerResult
 from .api.agent import CanonicalAgentApi
-from .composition.application import (
-    Application,
+from .composition.application import Application
+from .composition.declarations import (
     BuildContext,
     Capability,
     CapabilityRequirement,
-    ClientSurface,
     ServerExtension,
     Plugin,
 )
 from .api.health import ApplicationHealthApi
 from .composition.plugins import PluginHost, PluginStatus
 from .api.plugins import PluginHostApi
-from .clients.surfaces import SurfaceRelease, SurfaceService
+from .clients.surfaces import ClientSurface, SurfaceRelease, SurfaceService
 from .api.surfaces import SurfaceApi
 from .runtime.supervisor import WorkerExited, WorkerSupervisor, WorkerTransportError
 from .api.transport import CanonicalTransportSockets

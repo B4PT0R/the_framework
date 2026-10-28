@@ -3,7 +3,8 @@ import asyncio
 from fastapi.testclient import TestClient
 
 from the_framework.agent import AgentSpec
-from the_framework.server.composition.application import Application, ServerExtension, _assemble_server
+from the_framework.server import Application, ServerExtension
+from the_framework.server.composition.application import _assemble_server
 from the_framework.server.api.endpoints import Principal
 from the_framework.server.api.websockets import (
     serve_event_stream_until_disconnect,

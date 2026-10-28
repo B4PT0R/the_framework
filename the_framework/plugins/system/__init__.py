@@ -1,4 +1,4 @@
-from ...server.composition.application import Plugin, ServerExtension, Capability, CapabilityRequirement
+from ...server.composition.declarations import Plugin, ServerExtension, Capability, CapabilityRequirement
 from .agent import SystemExtension
 
 SYSTEM = Plugin(

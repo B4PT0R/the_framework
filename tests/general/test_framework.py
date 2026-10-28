@@ -3,16 +3,11 @@ from the_framework.agent.spec import AgentSpec
 import pytest
 from fastapi.testclient import TestClient
 
-from the_framework.server import endpoint
-from the_framework.server.composition.application import (
-    Application,
-    BuildContext,
-    Capability,
-    CapabilityRequirement,
-    ServerExtension,
-    Plugin,
-    _assemble_server,
+from the_framework.server import (
+    Application, BuildContext, Capability, CapabilityRequirement,
+    ServerExtension, Plugin, endpoint,
 )
+from the_framework.server.composition.application import _assemble_server
 from the_framework.server.api.health import ApplicationHealthApi
 from the_framework.server.api.endpoints import Principal
 from the_framework.server.api.websockets import WebSocketEndpoint
@@ -483,7 +478,7 @@ def test_compiler_keeps_server_factories_out_of_worker_projection():
 
 def test_importable_session_factory_is_resolved_only_for_server_build(monkeypatch):
     from types import SimpleNamespace
-    from the_framework.server.composition import application as composition
+    from the_framework.server.composition import declarations as composition
 
     imported = []
 

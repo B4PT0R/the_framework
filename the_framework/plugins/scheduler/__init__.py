@@ -1,4 +1,4 @@
-from ...server.composition.application import Capability, Plugin, ServerExtension
+from ...server.composition.declarations import Capability, Plugin, ServerExtension
 from .agent import SchedulerConfig, SchedulerExtension
 
 SCHEDULER = Plugin(
