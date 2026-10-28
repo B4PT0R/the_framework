@@ -16,7 +16,7 @@ different frontend or none at all.
 
 The PyPI distribution is named `b4pt0r-the-framework`. Python code imports
 `the_framework`, and the template command is `the-framework`. Python 3.12 or
-newer is required. The examples below describe the 0.2 composition API in this
+newer is required. The examples below describe the 0.3 composition API in this
 checkout. Releases can differ during this experimental phase; use the checkout's
 `uv sync` instructions below to try this exact API.
 

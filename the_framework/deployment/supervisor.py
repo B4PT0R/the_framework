@@ -7,11 +7,13 @@ import json
 import os
 import re
 import threading
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path, PurePosixPath
 
 from filelock import FileLock, Timeout
 
+from ..utils.persistence import atomic_text_writer
 from .image import DeploymentError, image_id
 from .deployment import application_options
 
@@ -38,6 +40,15 @@ class BackendRuntime:
     options: dict = field(default_factory=dict)
 
     def __post_init__(self):
+        if not all(isinstance(token, str) and token for token in (self.token, self.browser_token)):
+            raise ValueError("backend and browser tokens must be nonempty strings")
+        if type(self.port) is not int or type(self.user) is not int:
+            raise TypeError("backend port and user must be integers")
+        for name in ("workspaces", "mounts", "environment"):
+            if not isinstance(getattr(self, name), Mapping):
+                raise TypeError(f"{name} must be a mapping")
+        if self.origin is not None and not isinstance(self.origin, str):
+            raise TypeError("origin must be a string")
         if self.host is not None:
             from .host import HostEndpoint
 
@@ -52,9 +63,20 @@ class BackendRuntime:
         if self.origin is not None:
             from urllib.parse import urlsplit
 
-            parsed = urlsplit(self.origin)
-            if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.path or parsed.query or parsed.fragment or parsed.username:
-                raise ValueError("origin must be an HTTP origin without path or credentials")
+            try:
+                parsed = urlsplit(self.origin)
+                port = parsed.port  # urlsplit alone accepts malformed/out-of-range ports.
+                valid = (
+                    parsed.scheme in ("http", "https") and parsed.hostname
+                    and not (parsed.path or parsed.query or parsed.fragment)
+                    and parsed.username is None and parsed.password is None
+                    and not parsed.netloc.endswith(":") and port != 0
+                    and not any(char.isspace() or ord(char) < 32 or ord(char) == 127 for char in self.origin)
+                )
+            except ValueError:
+                valid = False
+            if not valid:
+                raise ValueError("origin must be an HTTP origin with a valid authority, without path or credentials")
         if any(not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9_-]*", name) for name in self.workspaces):
             raise ValueError("workspace names must be simple lowercase identifiers")
         workspaces = {name: Path(path).expanduser().resolve() for name, path in self.workspaces.items()}
@@ -79,7 +101,7 @@ class BackendRuntime:
             mounts[target] = {"source": source, "readonly": readonly}
         object.__setattr__(self, "mounts", mounts)
         object.__setattr__(self, "options", application_options(self.options))
-        if any(not isinstance(k, str) or not isinstance(v, str) or "\0" in k + v or "=" in k for k, v in self.environment.items()):
+        if any(not isinstance(k, str) or not isinstance(v, str) or "\0" in k + v or not k or "=" in k for k, v in self.environment.items()):
             raise ValueError("environment must contain valid string keys and values")
         object.__setattr__(self, "environment", dict(self.environment))
 
@@ -136,13 +158,8 @@ class _Supervisor:
         (root / "data").mkdir(exist_ok=True)
         # The host owns this directory; container runs with its numeric UID.
         # No world-readable production secrets, even momentarily.
-        temporary = root / ".settings.json"
-        fd = os.open(temporary, os.O_CREAT | os.O_TRUNC | os.O_WRONLY, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+        with atomic_text_writer(self.config) as stream:
             json.dump(self.runtime.settings(), stream)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, self.config)
 
     def stop(self, *, drain=True):
         # Query by name with `ps`: missing and daemon failure are distinct.

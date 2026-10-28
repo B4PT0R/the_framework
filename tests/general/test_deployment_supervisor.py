@@ -166,6 +166,24 @@ def test_runtime_rejects_reserved_inputs_and_hides_credentials():
         BackendRuntime(token="one", browser_token="two", origin="http://localhost/path")
 
 
+@pytest.mark.parametrize("origin", [
+    "http://localhost:wrong", "http://localhost:65536", "http://@localhost",
+    "http://:secret@localhost", "http://local host", "http://localhost\n",
+    " http://localhost", "http://localhost:",
+])
+def test_runtime_rejects_malformed_origins_before_launch(origin):
+    with pytest.raises(ValueError, match="origin"):
+        BackendRuntime(token="one", browser_token="two", origin=origin)
+
+
+@pytest.mark.parametrize("origin", [
+    "http://localhost", "http://127.0.0.1:8123", "https://private.example",
+    "http://[::1]:8123",
+])
+def test_runtime_accepts_http_origins(origin):
+    assert BackendRuntime(token="one", browser_token="two", origin=origin).settings()["origin"] == origin
+
+
 def test_different_untested_options_refuse_before_stopping_incumbent(tmp_path):
     engine = Engine()
     deployment = Deployment(tmp_path, docker=engine)
@@ -284,3 +302,81 @@ def test_explicit_application_mounts(tmp_path):
     inputs.mounts["/resources"]["readonly"] = "false"
     with pytest.raises(ValueError, match="readonly"):
         deployment.serve(inputs, stop=stopped())
+
+
+@pytest.mark.parametrize("options", [[], False, 0, "", "value", [1]])
+def test_application_options_reject_non_mappings(options):
+    with pytest.raises(TypeError, match="mapping"):
+        BackendRuntime(token="one", browser_token="two", options=options)
+
+
+@pytest.mark.parametrize("changes, error, message", [
+    ({"port": True}, TypeError, "integers"),
+    ({"port": "8765"}, TypeError, "integers"),
+    ({"user": False}, TypeError, "integers"),
+    ({"user": 1.5}, TypeError, "integers"),
+    ({"port": 0}, ValueError, "port or user"),
+    ({"user": -1}, ValueError, "port or user"),
+    ({"token": 1}, ValueError, "nonempty strings"),
+    ({"browser_token": []}, ValueError, "nonempty strings"),
+    ({"environment": []}, TypeError, "environment must be a mapping"),
+    ({"workspaces": []}, TypeError, "workspaces must be a mapping"),
+    ({"mounts": None}, TypeError, "mounts must be a mapping"),
+    ({"environment": {"": "x"}}, ValueError, "valid string"),
+    ({"origin": True}, TypeError, "origin must be a string"),
+    ({"options": {1: "x"}}, ValueError, "names must be strings"),
+])
+def test_runtime_rejects_invalid_inputs_at_construction(changes, error, message):
+    with pytest.raises(error, match=message):
+        BackendRuntime(**{"token": "one", "browser_token": "two", **changes})
+
+
+def test_runtime_copies_mapping_inputs():
+    from types import MappingProxyType
+
+    environment = {"TZ": "Europe/Paris"}
+    runtime = BackendRuntime(token="one", browser_token="two",
+                             environment=MappingProxyType(environment),
+                             options=MappingProxyType({"enabled": True}))
+    environment["TZ"] = "UTC"
+    assert runtime.environment == {"TZ": "Europe/Paris"}
+    assert runtime.options == {"enabled": True}
+
+
+@pytest.mark.parametrize("document", ["releases", "settings"])
+@pytest.mark.parametrize("stage", ["file_sync", "replace", "directory_sync"])
+def test_deployment_snapshots_have_one_private_commit_point(tmp_path, monkeypatch, document, stage, caplog):
+    import os
+    import stat
+    from the_framework.utils import persistence
+
+    deployment = Deployment(tmp_path, docker=Engine())
+    inputs = runtime()
+    supervisor = _Supervisor(deployment, inputs, 5)
+    path = tmp_path / (document + ".json")
+    path.write_text('{"previous":true}')
+    sync = os.fsync
+
+    def fail_sync(fd):
+        directory = stat.S_ISDIR(os.fstat(fd).st_mode)
+        if (stage == "directory_sync") == directory:
+            raise OSError("snapshot failure")
+        return sync(fd)
+
+    def fail_replace(*args):
+        raise OSError("snapshot failure")
+
+    monkeypatch.setattr(persistence.os, "replace" if stage == "replace" else "fsync",
+                        fail_replace if stage == "replace" else fail_sync)
+    save = supervisor.configure if document == "settings" else lambda: deployment._save({"next": True})
+    if stage == "directory_sync":
+        save()
+        expected = inputs.settings() if document == "settings" else {"next": True}
+        assert json.loads(path.read_text()) == expected
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+        assert "crash durability is uncertain" in caplog.text
+    else:
+        with pytest.raises(OSError, match="snapshot failure"):
+            save()
+        assert path.read_text() == '{"previous":true}'
+    assert not list(tmp_path.glob(".*.tmp"))

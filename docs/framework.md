@@ -37,7 +37,9 @@ Modules are grouped by responsibility, not by implementation size:
 - `server.api`: HTTP/WebSocket declarations, discovery, authorization and adaptation;
 - `server.runtime`: application/worker supervision, bridges and discovery;
 - `plugins.realtime`: voice projection, transport and delegation orchestration;
-- `server.clients`: browser shells, client surfaces, remote pairing and Tailscale.
+- `server.clients`: browser shells, client surfaces, remote pairing and Tailscale;
+- `deployment`: immutable images, validation, release selection and host supervision;
+- `execution`: explicit local/host process launch, transport and control;
 - `utils`: small primitives shared by agents, plugins and the server.
 
 `utils.ids`, `utils.tokens` and `utils.persistence` are small shared framework primitives. They do
@@ -771,9 +773,12 @@ including those of in-memory agents.
 `BrowserService.open_application_ui(url)` opens the application's chosen route;
 `application_ui_origins` permits explicitly trusted HTTPS origins in addition to
 loopback. Query and fragment values are excluded from Chromium launch arguments
-and passed through navigation. The isolated UI target/profile `harness_ui` and
-its historical RPC command remain stable for saved sessions and browser processes
-that survive server or worker upgrades.
+and passed through navigation. The isolated UI target/profile `harness_ui` stays
+unchanged for saved browser sessions. The wire operation is
+`open_application_ui` on both Unix and host transports; the former product-specific
+`open_harness_ui` operation is no longer accepted. A daemon predating the canonical
+operation must be upgraded with its callers; source edits do not reload a running
+daemon.
 
 The `web` browser uses the same dedicated persistent profile and launches with
 `--disable-blink-features=AutomationControlled` in both visible and headless modes,

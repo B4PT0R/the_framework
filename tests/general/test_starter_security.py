@@ -1,5 +1,6 @@
 import asyncio
 
+import pytest
 from starlette.requests import Request
 
 from starter.security import LocalSecurity
@@ -22,6 +23,22 @@ def test_local_credentials_require_exact_host_and_origin():
     assert authenticated(origin="https://attacker.example") is None
     assert authenticated(token="incorrect") is None
     assert authenticated(token="é") is None
+
+
+@pytest.mark.parametrize("header,value", [
+    ("host", "attacker.example:8123"),
+    ("origin", "https://attacker.example"),
+    ("host", "127.0.0.1:8123"),
+    ("origin", "http://127.0.0.1:8123"),
+])
+def test_ambiguous_authorities_reject_http_and_socket_credentials(header, value):
+    security = LocalSecurity("private-test-secret", origin="http://127.0.0.1:8123")
+    headers = (
+        ("host", "127.0.0.1:8123"), ("origin", "http://127.0.0.1:8123"),
+        ("cookie", "starter_session=private-test-secret"), (header, value),
+    )
+    assert asyncio.run(security.authenticate(request(*headers))) is None
+    assert asyncio.run(security.handshake(request(*headers))) is None
 
 
 def test_browser_cookie_and_websocket_origin():

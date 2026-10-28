@@ -27,6 +27,8 @@ class LocalSecurity:
         # cookie-bearing requests. Playwright installs the HttpOnly cookie.
         from urllib.parse import urlsplit
 
+        if len(request.headers.getlist("host")) != 1 or len(request.headers.getlist("origin")) > 1:
+            return None
         if request.headers.get("host") != urlsplit(self.origin).netloc:
             return None
         origin = request.headers.get("origin")

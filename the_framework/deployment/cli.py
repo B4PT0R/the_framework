@@ -15,12 +15,14 @@ from .host import HostEndpoint, HostServices
 from .supervisor import BackendRuntime
 
 
-def main(image, *, projects=(), browser_factory=None, argv=None):
+def main(image, *, projects=(), browser_factory=None, execution_factory=None, argv=None):
     """Expose a fixed BackendImage recipe as build/test/select/status/serve.
 
     A runtime JSON file supplies BackendRuntime fields (including secrets), never
     source/build commands. Optional host.address is the address reachable FROM
     the container; --host-bind explicitly chooses the private host interface.
+    execution_factory is a zero-argument host service factory, called only when
+    host.execution_token explicitly enables execution. HostServices owns cleanup.
     """
     parser = argparse.ArgumentParser(description="Immutable backend images (Docker Linux containers)")
     parser.add_argument("--root", type=Path, required=True, help="private deployment state, not the live development data")
@@ -65,21 +67,28 @@ def main(image, *, projects=(), browser_factory=None, argv=None):
         if not args.host_bind:
             parser.error("host services require an explicit --host-bind private IP")
     runtime = BackendRuntime(**settings)
-    asyncio.run(_serve(deployment, recipe() if runtime.host else None, runtime, args.host_bind, args.session, browser_factory))
+    asyncio.run(_serve(deployment, recipe() if runtime.host else None, runtime, args.host_bind, args.session, browser_factory, execution_factory))
 
 
-async def _serve(deployment, image, runtime, bind, session, browser_factory):
+async def _serve(deployment, image, runtime, bind, session, browser_factory, execution_factory=None):
     stop = threading.Event()
     services = None
     browser = None
+    execution = None
     task = None
     try:
         if runtime.host is not None:
+            execution_token = runtime.host.execution_token
+            if execution_token is not None:
+                if execution_factory is None:
+                    raise ValueError("host execution requires an explicit execution_factory")
+                execution = execution_factory()
             browser = browser_factory(deployment.root / "host-browser") if browser_factory is not None else None
             services = HostServices(
                 deployment, token=runtime.host.token, browser_token=runtime.host.browser_token,
                 build=image.build, browser=browser,
                 session=session, options=runtime.options,
+                execution=execution, execution_token=execution_token,
             )
             await services.start((bind, runtime.host.address[1]))
         task = asyncio.create_task(asyncio.to_thread(deployment.serve, runtime, stop=stop))
@@ -93,6 +102,8 @@ async def _serve(deployment, image, runtime, bind, session, browser_factory):
             try:
                 if services is not None:
                     await services.close()
+                elif execution is not None:
+                    await execution.close()
             finally:
                 if browser is not None:
                     await browser.stop()

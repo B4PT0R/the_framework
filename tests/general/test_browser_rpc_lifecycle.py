@@ -140,8 +140,7 @@ def test_shutdown_removes_socket_even_when_browser_stop_fails(tmp_path):
     asyncio.run(run())
 
 
-@pytest.mark.parametrize("method", ["open_harness_ui", "open_application_ui"])
-def test_browser_accepts_ui_commands_from_workers_across_upgrade(tmp_path, method):
+def test_browser_accepts_application_neutral_ui_command(tmp_path):
     async def run():
         class Service:
             async def open_application_ui(self, url):
@@ -155,7 +154,7 @@ def test_browser_accepts_ui_commands_from_workers_across_upgrade(tmp_path, metho
         try:
             reader, writer = await asyncio.open_unix_connection(path)
             writer.write(json.dumps({
-                "id": "ui", "scope": "service", "method": method,
+                "id": "ui", "scope": "service", "method": "open_application_ui",
                 "args": ["http://localhost/dashboard/"],
             }).encode() + b"\n")
             await writer.drain()
@@ -172,11 +171,11 @@ def test_browser_accepts_ui_commands_from_workers_across_upgrade(tmp_path, metho
     asyncio.run(run())
 
 
-def test_new_worker_can_open_ui_in_browser_started_before_upgrade(tmp_path):
+def test_browser_client_sends_application_neutral_wire_command(tmp_path):
     async def run():
         received = []
 
-        async def legacy_browser(reader, writer):
+        async def browser(reader, writer):
             request = json.loads(await reader.readline())
             received.append(request)
             writer.write(json.dumps({
@@ -187,14 +186,14 @@ def test_new_worker_can_open_ui_in_browser_started_before_upgrade(tmp_path):
             await writer.wait_closed()
 
         path = tmp_path / "browser.sock"
-        server = await asyncio.start_unix_server(legacy_browser, path)
+        server = await asyncio.start_unix_server(browser, path)
         try:
             client = BrowserRPCClient(path)
             result = await asyncio.to_thread(
                 client.call, "open_application_ui", "http://localhost/dashboard/",
             )
             assert result == "opened"
-            assert received[0]["method"] == "open_harness_ui"
+            assert received[0]["method"] == "open_application_ui"
             assert received[0]["args"] == ["http://localhost/dashboard/"]
         finally:
             server.close()
@@ -229,3 +228,24 @@ def test_client_disconnect_cancels_its_pending_operation_and_keeps_service_avail
             client = BrowserRPCClient(path)
             assert await asyncio.to_thread(client.call, 'open_web') == {'ready': True}
     asyncio.run(run())
+
+
+def test_browser_dispatch_rejects_removed_product_alias():
+    from the_framework.server.clients.browser_rpc import dispatch_browser
+    from the_framework.server.clients.browser import BrowserError
+
+    with pytest.raises(BrowserError, match="unsupported browser RPC operation"):
+        asyncio.run(dispatch_browser(object(), {"scope": "service", "method": "open_harness_ui"}))
+
+
+def test_host_transport_uses_same_application_neutral_command():
+    class Host:
+        def call(self, operation, payload, **kwargs):
+            assert operation == "browser"
+            assert payload["method"] == "open_application_ui"
+            assert payload["args"] == ["http://localhost/dashboard/"]
+            assert kwargs["browser"] is True
+            return "opened"
+
+    client = BrowserRPCClient(host=Host())
+    assert client.call("open_application_ui", "http://localhost/dashboard/") == "opened"

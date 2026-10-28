@@ -8,16 +8,24 @@ import secrets
 import tempfile
 import time
 import uuid
+from collections.abc import Mapping
 from contextlib import contextmanager
 from pathlib import Path
 
+from ..utils.persistence import atomic_text_writer
 from .image import DeploymentError, Docker, image_id
 
 VALIDATION_VERSION = 2
 
 
 def application_options(options):
-    options = json.loads(json.dumps(options or {}, allow_nan=False, sort_keys=True))
+    if options is None:
+        options = {}
+    if not isinstance(options, Mapping):
+        raise TypeError("application options must be a mapping")
+    if any(not isinstance(key, str) for key in options):
+        raise ValueError("application option names must be strings")
+    options = json.loads(json.dumps(dict(options), allow_nan=False, sort_keys=True))
     reserved = {"data_root", "token", "browser_token", "origin", "restart", "validation", "host"}
     if not isinstance(options, dict) or reserved.intersection(options):
         raise ValueError("application options cannot override core factory inputs")
@@ -47,17 +55,9 @@ class Deployment:
         return result
 
     def _save(self, state):
-        self.root.mkdir(parents=True, exist_ok=True)
-        fd, temporary = tempfile.mkstemp(prefix=".releases-", dir=self.root)
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as stream:
-                json.dump(state, stream, sort_keys=True)
-                stream.write("\n")
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.replace(temporary, self.root / "releases.json")
-        finally:
-            Path(temporary).unlink(missing_ok=True)
+        with atomic_text_writer(self.root / "releases.json") as stream:
+            json.dump(state, stream, sort_keys=True)
+            stream.write("\n")
 
     @contextmanager
     def _state_lock(self):

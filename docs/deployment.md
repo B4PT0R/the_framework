@@ -53,7 +53,11 @@ and optionally `host` when explicitly configured. It returns an ASGI application
 `BackendRuntime.options` adds JSON application-specific keyword inputs; core
 inputs cannot be overridden. Keep options nonsecret: they are stored in release
 validation records. Runtime secrets belong in the explicit token/environment
-fields, outside images. Mapping values are copied/revalidated at launch.
+fields, outside images. Options must be a mapping with string keys, or `None`
+for no options; false/zero/empty sequences are not mappings. Mapping values are
+copied/revalidated at launch. Ports and numeric UIDs must be integers (not
+booleans); environment keys/values must be valid strings. Invalid inputs fail
+before any engine call.
 
 Pass `validation` into the Framework `BuildContext`; disable application-owned
 startup effects (host access, device actions, remote registration, scheduled
@@ -149,8 +153,9 @@ and pass it to `HostServices(execution=..., execution_token=...)`. Register a ma
 of trusted recipe names to local callables; each callable receives an inherited
 socket descriptor and returns worker argv. Configure the same separate
 `HostEndpoint.execution_token` in runtime settings. It must differ from control,
-browser and backend credentials. No service is enabled by default; the generic
-CLI does not register application workers.
+browser and backend credentials. No service is enabled by default. The generic
+CLI accepts an application-owned `execution_factory`, but never supplies worker
+recipes itself.
 
 `launch_process(target, name, recipe)` requires `target="local"` (this backend's
 environment) or `"host"` (the explicitly configured host). The host resolves only
@@ -176,7 +181,8 @@ is tested on Linux only, not a Windows/macOS compatibility guarantee.
 ## CLI composition
 
 Apps can call `the_framework.deployment.cli.main(factory, projects=(... ),
-browser_factory=...)` or pass an explicit `BackendImage` recipe. This composes
+browser_factory=..., execution_factory=...)` or pass an explicit `BackendImage`
+recipe. This composes
 build/test/select/status/serve without application Docker boilerplate:
 
 ```sh
@@ -194,6 +200,15 @@ optional session copy for validation. For serve, the runtime JSON supplies the
 `host` is configured, `--host-bind` is required and the listener port is taken
 from `host.address`. Runtime `workspaces` maps names to existing host directories.
 Do not put secrets in a shell command or commit runtime JSON.
+
+The optional `execution_factory` is a zero-argument callable returning a host
+execution service (usually `ProcessHost` with explicit application recipes). It is
+called only for `serve` with `host.execution_token`; a credential without a factory
+is rejected before allocating browser/backend resources. Without the credential
+the factory is never called. The CLI closes allocated resources on startup failure,
+cancellation and shutdown; `HostServices` owns the execution service once composed.
+This configures the host process, not an in-container fallback or an authorization
+to run arbitrary workers.
 
 ## Verification and portability
 

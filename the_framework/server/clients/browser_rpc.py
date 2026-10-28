@@ -56,8 +56,6 @@ def _json_value(value):
 async def dispatch_browser(service, request):
     scope = request.get("scope")
     method = request.get("method")
-    if scope == "service" and method == "open_harness_ui":
-        method = "open_application_ui"
     args = request.get("args", [])
     kwargs = request.get("kwargs", {})
     if not isinstance(args, list) or not isinstance(kwargs, dict):
@@ -250,10 +248,6 @@ class BrowserRPCClient:
         raise BrowserError(f"persistent browser service is unavailable: {last_error}")
 
     def _request(self, scope, method, args, kwargs):
-        # The browser may predate the worker/server upgrade. Keep the established
-        # wire command while exposing an application-neutral Python operation.
-        if scope == "service" and method == "open_application_ui":
-            method = "open_harness_ui"
         if self.host is not None:
             try:
                 result = self.host.call("browser", {
