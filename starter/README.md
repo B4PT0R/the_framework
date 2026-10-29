@@ -7,7 +7,9 @@ and interface.
 
 [Your first application](../docs/guides/first-application.md) walks through launch,
 a first reply and a source change. This manual provides the operational details
-for settings, files, voice, browser access and customization. For the underlying
+for settings, files, voice, browser access and customization. For failures, use
+[Troubleshooting](../docs/guides/troubleshooting.md); for library work, use
+[Development](../docs/guides/development.md). For the underlying
 assembly, see [Architecture](../docs/explanation/architecture.md).
 
 ## Create your own copy
@@ -41,7 +43,9 @@ project you can use `uv run the-framework run`. `bootstrap --no-prepare` copies
 source without installing dependencies. System browser libraries and account
 sign-in remain explicit prerequisites; no inference is performed by preparation.
 
-The launcher's `--data-dir` option can override the generated data location.
+The desktop entrypoint `python -m starter --data-dir ...` can override the
+generated data location. The outer `the-framework run` command does not expose
+that override.
 Keep `starter/instance.json` private if the path itself is sensitive. The UI
 contains its own small WebRTC/caption helpers; its npm dependencies do not
 include The Harness product packages.
@@ -117,9 +121,9 @@ inference request; request failures are reported in the chat.
 the core realtime controller. **Cancel voice / End voice** releases the peer and
 server session. Typed text joins the live conversation; stop voice before sending
 attachments. Partial transcripts appear as temporary **Live** captions, replaced
-by canonical messages when complete. A real backend exchange has been verified
-in Chromium with a simulated microphone; physical microphone quality and OS
-permission behavior still depend on the user's environment.
+by canonical messages when complete. The opt-in voice test exercises Chromium with a simulated microphone; a
+passing run does not establish physical microphone quality or OS permission
+behavior in another environment.
 Remove the `realtime` plugin declaration in `application.py` for a text-only
 application; the starter's chat routes and composer continue working and the
 Voice control disappears when that runtime is absent.
@@ -197,22 +201,24 @@ npm --prefix starter/ui run build
 python -m pytest -q tests/general/test_starter.py \
   tests/general/test_starter_security.py tests/general/test_starter_desktop.py
 PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright-browsers" python -m playwright install chromium
-PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright-browsers" python -m pytest -q \
+python -m pytest -q --browser-cache "$PWD/.playwright-browsers" \
   tests/general/test_starter_browser_recovery.py
 ```
 
 Run these commands from the repository root. The local browser directory is
 Git-ignored and must match this environment's Playwright version; reinstall after
 updating Playwright. Keeping it separate avoids inheriting another application's
-incompatible `PLAYWRIGHT_BROWSERS_PATH`. Use the same explicit path when running
-the full Python suite with browser coverage enabled.
+incompatible `PLAYWRIGHT_BROWSERS_PATH`. Pass the same `--browser-cache` path when running the full Python suite with
+browser coverage enabled: pytest deliberately ignores an inherited
+`PLAYWRIGHT_BROWSERS_PATH`.
 
 The last test uses isolated data and an actual Chromium/worker/server. It checks
 reconnection, retained history, attachments selection, settings persistence and
 the edit → preview → publish → rollback workflow. It makes no model calls and
-does not establish voice, model or embedding service availability. End-to-end
-text inference, a Bash tool roundtrip, and memory curation/indexing/retrieval have
-been checked with isolated real workers and backend calls. The opt-in voice test
+does not establish voice, model or embedding service availability. The opt-in live tests exercise text inference, a Bash tool roundtrip and memory
+curation/indexing/retrieval with isolated workers and external backend calls.
+They are not evidence of availability until run in the intended environment.
+The opt-in voice test
 checks WebRTC connection, received audio, live captions, persisted transcription
 and cleanup with Chromium's fake microphone (never the user's microphone).
 
@@ -236,7 +242,7 @@ published local files. Extensions may return `Artifact(kind=..., payload=...)`
 directly; tools/commands persist it and providers display it only during the
 current turn. `Image` remains vision-only. Add a React renderer through `App`'s
 `artifactRenderers` prop for a custom widget kind; unknown kinds fall back to JSON.
-See [the artifact contract](../docs/reference/artifacts.md#conversation-artifacts).
+See [the artifact contract](../docs/reference/artifacts.md#choose-the-right-output).
 
 All uploaded and published client files share `data_root/bucket/`, including images,
 video and other media. `ARTIFACTS` serves this tree through authenticated
@@ -323,6 +329,6 @@ remote exposure, account setup, UI build or desktop migration is implicit.
 The backend starts without host access. Optional host/browser services require
 explicit private routing and distinct credentials. The application must also
 provide its model credentials and build/publish its UI separately; isolated
-validation proves neither. Read the Framework's `docs/deployment.md` for the
+validation proves neither. Read the Framework's [deployment guide](../docs/deployment.md) for the
 factory contract, runtime settings, graceful restart/rollback and portability
 limits. Linux Docker is tested; macOS/Windows compatibility is not yet verified.

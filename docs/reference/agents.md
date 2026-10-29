@@ -1,157 +1,301 @@
-# Agent construction and specialists
+# Agents, turns and private specialists
 
-[Documentation](../README.md) / [Reference](README.md)
+An `AgentSpec` is a reusable construction recipe. An `Agent` executes turns
+against one `Session`. A hosted application gives that agent a worker process;
+a standalone agent can run in the calling process without a server or UI.
 
-An agent recipe combines instructions, model defaults and extensions. The same
-recipe can create agents for separate conversations. Private specialists use
-that construction to do work for a caller and return a result.
+## Execute a complete turn without a model account
 
-This page covers direct construction, process-local resources and specialist
-invocation. Hosted applications construct their agents from `Application`.
-
-## Agent construction
-
-`AgentSpec` declares what an agent is; `AgentResources` supplies the process-local
-inputs needed to construct it: an inference client and initial configuration/state
-defaults. The session owns subsequent changes and overrides these defaults on resume. It is not another plugin or application
-composition layer. Put static defaults directly in `AgentSpec.configuration`.
-Use a `resources(session_root)` factory only for process-local inputs such as
-loading environment settings or creating an inference client. The argument is the
-workspace directory (or None), independent of whether session history is stored
-on disk. A memory-backed session never supplies a fabricated session file path. The generic worker
-owns construction. Use explicit resources when constructing an agent directly.
+The following is one executable Python program. The fake client supplies two
+Responses stream results: a function call, then an answer. The Framework still
+constructs the tool schema, validates and executes the call, records its result,
+prepares the second request and emits its normal lifecycle events.
 
 ```python
-from the_framework.agent import AgentSpec, Session
+import json
+from types import SimpleNamespace
 
-agent_spec = AgentSpec(
-    name="companion",
-    description="Owner of the canonical conversation.",
-    extensions=(memory, images, tools),
-    configuration={"model": "your-model"},
-    instructions=(identity_instruction,),
-    projections={"mobile": mobile_projection},
-    command_middleware=(measure_turns,),
+from the_framework import AgentExtension, AgentResources, AgentSpec, tool
+from the_framework.agent import Message
+
+
+class Inventory(AgentExtension):
+    name = "inventory"
+    description = "Read warehouse stock."
+
+    @tool
+    def stock(self, sku: str):
+        """Return stock for one product SKU."""
+        if sku != "MUG":
+            raise ValueError("unknown product")
+        return {"sku": sku, "available": 12}
+
+
+class ScriptedResponses:
+    def __init__(self):
+        self.requests = []
+
+    def create(self, **payload):
+        self.requests.append(payload)
+        if len(self.requests) == 1:
+            item = {
+                "type": "function_call", "id": "lookup", "call_id": "lookup-call",
+                "namespace": "inventory", "name": "stock",
+                "arguments": json.dumps({
+                    "sku": "MUG",
+                    "user_feedback": "I am checking how many mugs are available.",
+                }),
+            }
+        else:
+            assert len(self.requests) == 2
+            receipts = [i for i in payload["input"] if i.get("type") == "function_call_output"]
+            assert json.loads(receipts[-1]["output"])["status"] == "success"
+            assert "available" in json.dumps(payload["input"])
+            item = {
+                "type": "message", "id": "answer", "role": "assistant",
+                "content": [{"type": "output_text", "text": "12 mugs are available."}],
+            }
+        yield {"type": "response.output_item.done", "item": item}
+        yield {"type": "response.completed", "response": {"id": "script", "model": "test"}}
+
+
+responses = ScriptedResponses()
+spec = AgentSpec(
+    name="warehouse",
+    instructions="Check inventory before answering stock questions.",
+    extensions=(Inventory,),
+    configuration={"model": "test"},
 )
-
-session = Session.open(session_path)
-agent = agent_spec.build_agent(session)
-worker = agent_spec.build_worker(agent, receive, send)
+agent = spec.build_agent(resources=AgentResources(
+    client=SimpleNamespace(responses=responses),
+))
+events = list(agent.stream("How many mugs are available?"))
+assert len(responses.requests) == 2
+assert events[0].type == "agent.turn.start"
+assert events[-1].type == "agent.turn.end"
+assert sum(e.type == "agent.tool_call.start" for e in events) == 1
+answers = [i for i in agent.session.history if isinstance(i, Message) and i.role == "assistant"]
+assert answers[-1].content[0].text == "12 mugs are available."
 ```
 
-Session lifetime is independent of the recipe. `Session()` keeps history in memory;
-`Session(retain_history=False)` clears context between worker tasks. `Session.open(path)`
-loads or creates a disk-backed session. Its `path` is runtime metadata, while
-`retain_history` is canonical data persisted with the conversation. Reopening a
-session restores that choice; launch defaults never replace saved behavior.
-`Session.open(path, retain_history=...)` explicitly changes the loaded policy;
-save the session to commit that deliberate change. A disk-backed session can
-preserve settings without retaining task context.
-`build_agent()` accepts a Session explicitly, or creates an in-memory one when omitted.
-The same recipe can therefore construct agents with different session lifetimes.
-Hosted application sessions are durable and retain history by default.
-`open_session(durable=False)` keeps a session in memory; `retain_history=False`
-independently selects task-local context. On resume, omit retain_history to use the
-saved value; an explicit conflicting value is rejected instead of silently changing it.
+This is not a simulated tool invocation: only inference is scripted. It does not
+test backend authentication, model tool selection, token deltas or networking.
+For a real backend, omit the explicit `resources` and select a model your account
+supports. The default client is created lazily and authenticates noninteractively;
+constructing a recipe or agent does not initiate login.
 
-The same `AgentSpec` declares a private specialist. Its trigger chooses hosting
-and initial session behavior: `@agent_trigger(spec, durable=False, retain_history=False)`
-by default. Set `retain_history=True` for context across tasks, `durable=True` for
-persistence across worker restarts, or combine disk storage with task-local context.
-`QueuePolicy` controls bounded FIFO/latest delivery
-and durable task journaling. A plugin owns its specialists and calls them
-through `agents.submit(name, prompt)`, which returns a request ID without waiting.
-The worker routes results to `AgentTriggers.dispatch()` and the declared handler;
-there is no `call()` alias suggesting a synchronous result or a second `publish()`
-adapter. Another plugin can reach their capability only through an explicit versioned public
-contract. The generic worker entrypoint resolves a selected public agent or a
-namespaced specialist from `module:application`.
+The hosted [Notebook example](../../examples/notebook/README.md) goes further:
+it crosses real worker subprocesses and the application bridge, persists SQLite
+data and reads that data through authenticated HTTP.
 
-`@agent_trigger(spec, observes=..., item_kinds=..., conversation_roles=...,
-input_item_field=..., durable=False, retain_history=False)` binds an `AgentSpec` to a result handler. The decorator
-selects what to observe and the lifetime of the session it launches. Model/plugin settings live in the spec's
-`configuration`, alongside its instructions and plugins. The trigger owns `queue`,
-`idle_timeout_seconds`, `completion_tool` and `completion_retry_limit`: these are
-invocation and result-delivery policies, not agent construction settings.
-`activity_visible=True` controls transient client activity per specialist; set it
-to `False` to hide progress and completion notifications without suppressing task
-execution, result delivery or diagnostics. The memory curator uses this quiet policy. A completion
-tool can be required without retries; a zero retry limit means one attempt. The spec's name identifies the specialist; a handler docstring fills
-its description when the spec uses the default description.
+## Read a stream correctly
 
-For a single role, `instructions="Describe the evidence."` normalizes to one
-`Instruction`. Use an explicit sequence of `Instruction` objects when names or
-scopes matter; both forms use the same construction path.
+| API | Behavior |
+| --- | --- |
+| `agent.stream(prompt)` | Synchronous iterator of typed events; producer runs in a daemon thread. Exhaust it to observe completion/errors. |
+| `agent.astream(prompt, **turn_options)` | Async iterator; owns and awaits its producer. Options go to `AgenticLoop.turn`. |
+| `agent.on(event_type, callback)` | Subscribe to one event type, or `"*"`. Callbacks execute synchronously in the emitting thread; async callbacks are not awaited. |
+| `agent.add_message(role, text, content=...)` | Append a canonical message and emit `agent.response_item.added`; does not start generation. |
+| `agent.interrupt(reason)` | Interrupt the active loop; not a rollback of executed tools or external effects. |
+| `agent.end_turn()` | Finish the current tool-call batch, then stop before another model step. |
+| `agent.compact()` | Perform canonical context compaction; see [Context](context.md). |
 
-A plugin that configures its specialist at load time replaces `trigger.spec`
-with a revised `AgentSpec`; it does not mutate the shared class declaration.
-The emitted worker profile is compiled from that current spec and the trigger's
-selection. Agent construction applies declared configuration, then process-local
-resource defaults, then resolved launch-profile settings when the worker has one.
-Saved Session configuration is restored last. The launch profile is consumed
-without retaining a competing source in AgentSpec; executable factories and
-initializers stay on the application declaration. Explicit worker launch flags override profile defaults for newly created sessions;
-a resumed session retains its canonical retain_history value.
+Do not execute concurrent turns on the same agent. Hosted workers serialize their
+commands. A standalone caller must provide its own serialization and lifecycle.
+Async consumers that might break early should explicitly close their iterator:
 
-Application compilation validates private identities and retains their AgentSpec
-declarations in its plan. AgentSpec has no compiled `specialist_profiles` field.
-After extension loading, the worker forms one declaration catalogue: each loaded
-trigger supplies its configured spec and selection, replacing the corresponding
-static declaration; explicit specialists without a trigger remain available.
-The catalogue includes inactive bindings so the fleet can suspend or re-enable
-execution without losing the configured declaration. Only then does `AgentTrigger.profile()` produce WorkerProfile
-payloads for WorkerReady. Private specialists without handlers may use AgentTrigger directly in
-Plugin.specialists to choose invocation policies; a bare AgentSpec is the shorthand
-for defaults. Explicit declarations add to discovered class triggers, so adding a
-private helper does not require redeclaring every decorated specialist. Named task
-requests always route to their target; observes filters ambient events only.
-Compilation retains those invocations, including for direct private
-worker launches. AgentSpec does not compile fleet profiles. Worker constructors no longer merge two sets
-of already serialized profiles.
+```python
+import asyncio
+from contextlib import aclosing
 
-The serialized specialist profile carries `durable` and `retain_history` defaults
-for creating a session. WorkerReady reports the session's effective retain_history
-value, so fleet completion retries follow saved behavior even when trigger defaults
-have changed. The trigger owns these defaults and its queue/completion/idle policies; AgentSpec
-contains only the reusable agent recipe.
-Reconstructing a recipe from a profile does not attach hosting or history policy to it.
-Task journaling (`durable_tasks`) remains independent of conversation persistence.
-Durable tasks survive temporary worker startup or transport failures without
-publishing an intermediate result to the caller. An explicit worker command
-failure, interruption, or exhausted completion retry budget is terminal: its
-failure enters the durable result outbox and the task leaves the pending queue.
-It is not resubmitted forever against the same terminal command receipt.
+async def consume():
+    other = AgentSpec(name="async-example").build_agent(
+        resources=AgentResources(client=SimpleNamespace(responses=ScriptedResponses())),
+    )
+    other.add_extension(Inventory)
+    async with aclosing(other.astream("Check MUG stock.")) as stream:
+        async for event in stream:
+            if event.type == "agent.turn.end":
+                break
+    return other
 
-`AgentSpec` is the public in-process construction recipe; `AgentTrigger` binds a
-specialist's task/result handling to its plugin. `WorkerProfile`, under
-`agent.models.worker`, is internal serializable fleet metadata, not a second
-public declaration API. A profile is not a serializer for Python factories,
-initializers or projection callables: application-backed workers resolve the
-original namespaced spec. The advanced `build_agent(..., profile=...)` argument is
-used at this process boundary to apply resolved settings after resource defaults;
-ordinary application declarations do not need it. A profile with another agent's
-identity is rejected. Imported role text becomes an ordinary spec instruction;
-exporting uses the current instructions rather than the old profile text.
+async_agent = asyncio.run(consume())
+assert async_agent.session.history
+```
 
-Terminal private-agent results enter a durable outbox only after their terminal
-state is persisted. Delivery uses a stable command identity: a completed receipt
-suppresses duplicate handling, while an interrupted delivery can run again after
-restart. Acknowledgement removes the result from its durable outbox only after
-successful delivery. Result handlers must tolerate redelivery if a crash occurs
-after their side effects but before the completion receipt is persisted; this is
-at-least-once delivery, not an atomic transaction across arbitrary plugin effects.
+Closing an async stream cancels and awaits its producer, but cancellation cannot
+forcibly stop Python code already running in a synchronous thread. Closing a
+synchronous iterator disconnects its queue; it does not stop its producer thread.
+Always distinguish provisional text deltas from committed items; client rendering
+and event fields are specified in [Events](events.md).
 
-Middleware has the small async-generator contract
-`middleware(agent, command, call_next)`. It adds cross-cutting behavior such as
-timing or tracing without subclassing the worker. `SessionProjections` supplies
-three reserved standard views: `display` keeps user/assistant messages and
-artifacts, `activity` additionally keeps function calls, and `full` keeps all items.
-These preserve item order and leave vision-only Image items out of chat.
-Applications add pure named projections through `AgentSpec.projections`; select
-one with `Application.build(session_projection=...)` when a custom view is needed.
-Pagination selects canonical archive turns before projecting their items.
-Responses and Realtime model input use separate projections.
+A normal turn first checks slash commands. A recognized command bypasses inference.
+Otherwise it appends the prompt, prepares history and providers, generates output,
+executes local tool calls **sequentially in returned order**, then generates again
+if needed. `parallel_tool_calls` is a backend request option, not a promise of
+concurrent Python tool execution. A generation with no local calls normally ends
+the turn. Checkpoints can admit queued worker controls or request compaction.
 
----
+## Recipe fields and construction order
 
-[Reference index](README.md) · [Documentation paths](../README.md)
+| `AgentSpec` field | Purpose |
+| --- | --- |
+| `name`, `description` | Identity and catalogue description; nonblank. A session cannot be rebuilt with a different recipe identity. |
+| `instructions` | A string, or sequence of `Instruction`/instruction mappings. A string becomes one instruction named `role`. |
+| `configuration` | Root model/context settings and extension settings under their binding names. |
+| `extensions` | Extension classes, instances, factories, `module:attribute` references or plugin contributions. Use factories/classes for fresh agents. |
+| `resources` | Callable receiving a workspace `Path` or `None`, returning `AgentResources`. Not a coroutine or a storage-file factory. |
+| `initializers` | Callables run after extensions load; return the agent or `None`. |
+| `command_middleware` | Async-generator middleware used by `build_worker`, not direct `agent.stream`. Contract: `(agent, command, call_next)`. |
+| `projections` | Named pure archive projections; `display`, `activity` and `full` are reserved. |
+
+Configuration precedence, lowest to highest:
+
+1. `AgentSpec.configuration`;
+2. `AgentResources.configuration`;
+3. resolved worker launch profile (advanced process-boundary input);
+4. configuration already saved in the `Session`.
+
+Explicit `build_agent(resources=...)` replaces the resources factory entirely.
+`AgentResources.client` is process-local, not serialized into the session.
+Its `state` supplies initial state; saved session state wins. To obtain a workspace
+without disk persistence, pass `session_root=Path(...)` with an in-memory session.
+For a disk session, the default workspace is the parent of its file.
+
+Root settings are declared in
+[`AgentConfig`](../../the_framework/agent/models/config.py). They include model,
+reasoning, text format/verbosity, tool selection, maximum image/tool-output budgets
+and nested compaction settings. The library, starter and specialist profile
+compiler currently have **different model defaults**. Set models explicitly for
+your backend; a default string is not a guarantee that an account supports it.
+[Extensions](extensions.md) covers validated settings/state changes and hooks.
+
+## Choose persistence independently from task context
+
+```python
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from the_framework import Session
+
+with TemporaryDirectory() as directory:
+    path = Path(directory) / "session.json"
+    saved = spec.build_agent(Session.open(path), resources=AgentResources(client=object()))
+    saved.update_config({"model": "my-selected-model"})
+    reopened = spec.build_agent(Session.open(path), resources=AgentResources(client=object()))
+    assert reopened.configs.model == "my-selected-model"
+    assert reopened.session.agent_name == "warehouse"
+```
+
+`Session()` is memory-backed; `Session.open(path)` loads or creates disk-backed
+data. `retain_history=False` selects task-local context independently of storage:
+a durable specialist can retain its configuration while clearing task context.
+The worker enforces task boundaries; direct `agent.stream` is not a worker task.
+Saved policy wins on worker resume. `Session.open(path, retain_history=...)` is
+an explicit low-level change; save it to commit it. Hosted `open_session` rejects
+an explicit conflicting retention policy on resume. See [Sessions](sessions.md)
+for locks, archives and independent application sessions.
+
+## Declare and request a private specialist
+
+A specialist has its own recipe, session and worker. Its caller owns the result
+handler; the specialist never writes directly into the caller's history.
+The following extension can be installed with `AgentSpec.extensions` or as a
+plugin's `agent_extension`:
+
+```python
+from the_framework import agent_trigger
+from the_framework.agent import AgentResult, QueuePolicy
+
+review_spec = AgentSpec(
+    name="reviewer",
+    description="Review a proposed inventory change for missing evidence.",
+    instructions="Return a short review distinguishing facts from assumptions.",
+    configuration={"model": "your-supported-model"},
+)
+
+class Reviews(AgentExtension):
+    name = "reviews"
+
+    @tool
+    def request_review(self, proposal: str):
+        """Queue a private review; the result arrives later."""
+        request_id = self.agent.registry("agents").submit("reviews.reviewer", proposal)
+        return {"request_id": request_id, "status": "queued"}
+
+    @agent_trigger(
+        review_spec,
+        queue=QueuePolicy.fifo(limit=4, backlog_limit=32),
+        durable=True,
+        retain_history=False,
+        completion_retry_limit=0,
+    )
+    def reviewer(self, result):
+        """Deliver a completed review into the caller's canonical history."""
+        result = AgentResult.from_dict(result)
+        text = result.output if result.status == "completed" else f"Review failed: {result.error}"
+        self.agent.add_message("developer", text, kind="review_result")
+
+# Test declaration, request routing and result handling without launching inference.
+caller = AgentSpec(name="caller", extensions=(Reviews,)).build_agent()
+requested = []
+caller.on("agent.task.requested", requested.append)
+reviews = caller.extension("reviews")
+queued = reviews.request_review("Reduce the reorder threshold to 5.")
+request_id = queued["request_id"]
+assert requested[0].profile == "reviews.reviewer"
+assert requested[0].request_id == request_id
+caller.registry("agents").dispatch(dict(AgentResult(
+    id="result-1", task_id=request_id, profile="reviews.reviewer", status="completed",
+    watermark=caller.session.watermark(), output="Demand evidence is missing.",
+)))
+assert caller.session.history[-1].kind == "review_result"
+```
+
+This last test exercises submission/dispatch **in process**. A standalone agent
+has no fleet: nothing consumes the request unless you provide a host. In an
+`Application`, the worker publishes the specialist catalogue and the session's
+fleet launches/routes private work. Model execution and result delivery are async;
+`submit` returns an ID, not the eventual answer. The handler above appends an
+ordered observation; it does not itself ask the caller model for another turn.
+
+### Invocation policies
+
+| Trigger option | Meaning |
+| --- | --- |
+| `durable=False` | Default: private conversation in memory. `True` persists it across worker restarts. |
+| `retain_history=False` | Default: clear private context between tasks. `True` retains it. Independent of durability. |
+| `queue` | `QueuePolicy.fifo()` defaults to limit 8, durable task journaling and backlog 512. `latest()` defaults to limit 1, nondurable, backlog equal to limit. |
+| `idle_timeout_seconds` | Positive optional worker idle lifetime. |
+| `completion_tool` | Require a named tool before accepting completion. |
+| `completion_retry_limit` | Additional attempts; zero permits the original attempt only. Nonzero requires a completion tool. |
+| `activity_visible` | Hide/show transient client progress. Does not disable tasks, results or diagnostics. |
+| `observes`, `item_kinds`, `conversation_roles`, `input_item_field` | Filter ambient observations and optionally extract input items. Explicit named requests bypass ambient filters. |
+
+Trigger policies belong to `AgentTrigger`, not `AgentSpec`. A trigger instance can
+replace its `spec` at load time without mutating the class declaration. Explicit
+`Plugin.specialists` accepts `AgentTrigger`; a bare `AgentSpec` uses defaults.
+These declarations augment class-discovered triggers. Inactive bindings remain in
+the configured catalogue so the host can suspend/re-enable them.
+
+`WorkerProfile` is a serializable process-boundary payload, not an alternative
+recipe API. `AgentTrigger.profile()` compiles invocation policy; Python resource
+factories, initializers and projections are resolved from the application module,
+not reconstructed from JSON. Do not cache a second compiled profile catalogue.
+
+### Failure and redelivery
+
+Task journaling, private conversation storage and caller result delivery are
+separate contracts. Durable tasks survive temporary startup/transport failures.
+Explicit command failure, interruption or exhausted completion attempts are
+terminal and enter the result outbox rather than being resubmitted forever.
+
+Terminal results are persisted before entering the durable outbox. A stable
+command identity suppresses delivery after a completed receipt; interruption can
+cause redelivery. Acknowledgement removes a result only after successful delivery.
+Handlers must tolerate **at-least-once** delivery: a crash between an external
+side effect and the receipt is not an atomic transaction. Use `result.id` or a
+domain idempotency key when your handler writes to another system.
+
+Source: [`spec.py`](../../the_framework/agent/spec.py),
+[`agentic_loop.py`](../../the_framework/agent/runtime/agentic_loop.py),
+[`specialists.py`](../../the_framework/agent/extensions/specialists.py).

@@ -1,199 +1,226 @@
-# Hosted runtime and desktop lifecycle
+# Workers, application bridge and host lifecycle
 
-[Documentation](../README.md) / [Reference](README.md)
+`Application.build()` assembles a runtime for each conversation. The server owns
+HTTP/security/client connections and worker supervision; the worker owns inference,
+tools and canonical session writes. Browser/device execution lives in the client.
+These are process boundaries, not objects to pass through a global registry.
 
-Hosting connects each saved conversation to a supervised worker, client
-transports and the services it uses. The standard application builder assembles
-these resources; a desktop launcher can also keep the window and listener alive
-across server replacement.
+## Standard assembly
 
-This page describes those connections and lifetimes for applications that need
-to customize their host or make server-to-worker calls.
+Use the starter's importable application and security policy (see
+[first application](../guides/first-application.md)). An agent application's build
+requires its `module:application` reference, `BuildContext(data_root=...)`, HTTP
+security and authenticated socket handshakes. `handshake` supplies both defaults;
+`event_handshake` and `application_handshake` override the channels separately.
 
-## On this page
+The assembly creates a supervised primary worker, session runtime, plugin-binding
+host, agent/health APIs and the events/application WebSockets. Build does not enter
+lifespan, start inference, bind a listening port or perform account authentication.
+With one public recipe selection is implicit; with several, use `agent=...`.
+A saved default session selects its saved `agent_name`. Private specialists have
+separate sessions and invocation policies, not public conversation identities.
 
-- [Conversation runtime integration](#conversation-runtime-integration)
-- [Standard conversation assembly](#standard-conversation-assembly)
-- [Local desktop process ownership](#local-desktop-process-ownership)
-- [Application calls](#application-calls)
+Each runtime owns a bridge, worker/fleet, subscriptions, command correlation and
+scoped service graph. Shared services start once in the Application graph;
+closing one session stops only its local services and workers. Never reuse a
+controller or scoped service object across independently hosted sessions.
 
-## Conversation runtime integration
+## Application bridge
 
-For every hosted session, `Application.build()` installs one session-scoped
-`SessionRuntime`, connects the plugin host's binding updates and startup snapshot
-to its worker, and registers agent-facing plugin and installed surface controls. Surface
-initialization belongs to the server lifespan and also works without an agent
-runtime. There is no separate post-build control-registration call.
+Worker code calls `await agent.bridge.call(capability, method, payload,
+timeout_ms=30_000)`. A session service registers
+`runtime.bridge.register(capability, handler)`. Its handler accepts
+`(method, payload)` and returns JSON-compatible data, synchronously or
+asynchronously. `contextual=True` adds `command_id`; `contextual="call"` adds the
+complete `ApplicationCall` as `call`. These are opt-ins, not positional arguments.
 
-A plugin can declare a `plugins.binding_update` contribution for a modality or
-policy barrier; at most one such coordinator may be installed. Its callback can
-look up its running service through `context.services`. An application can also
-supply a fixed `plugin_binding_update` construction input as an explicit override. The callback accepts `(name, enabled, *, call=None)` and should
-invoke `runtime.set_plugin_binding(name, enabled, call=call)`. The optional
-`ApplicationCall` identifies a tool that is suspended awaiting this operation.
-Ordinary HTTP changes have no originating call.
+The [Notebook service](../../examples/notebook/server.py) validates the same strict
+models for HTTP and bridge calls, then offloads SQLite work with
+`asyncio.to_thread`. Bridge payloads do **not** automatically undergo HTTP model
+validation or authorization. The registering service owns those contracts.
 
-Binding controls have default priority 5 (ordinary commands use 10). They may
-execute at an application-call suspension point, including before that call is
-sent; other queued commands retain their priority and FIFO ordering. Correlated
-binding requests whose tool call is no longer waiting fail instead of becoming
-late queued mutations. The worker remains the owner of activation and durable
-session writes, and confirms application before the server updates its binding cache.
-
-## Standard conversation assembly
-
-`Application.build(reference, context, ...)` assembles the
-supervised primary worker, runtime, agent HTTP API, health endpoint and both
-WebSocket transports. The reference is the importable `module:application`
-resolved by workers. Authentication stays explicit:
+Here is an isolated transport-contract test: an `ApplicationClient` emits the
+real request model; `ApplicationBridge.dispatch()` routes it and returns a typed
+result through a fake supervisor. This deliberately replaces IPC only. The
+Notebook integration test covers actual subprocess workers.
 
 ```python
-from the_framework import BuildContext
+import asyncio
+from the_framework.agent.runtime.bridge import ApplicationClient, ApplicationError
+from the_framework.agent.runtime.protocol import ApplicationCall
+from the_framework.server.runtime.bridge import ApplicationBridge
 
-app = application.build(
-    "my_app.application:application",
-    BuildContext(data_root=data_dir),
-    security=security,
-    handshake=security.handshake,
-)
+async def verify_bridge():
+    replies = asyncio.Queue()
+
+    class Supervisor:
+        async def send(self, result):
+            await replies.put(result)
+
+    bridge = ApplicationBridge(Supervisor())
+    client = ApplicationClient()
+    received = []
+
+    async def read_labels(method, payload, *, call):
+        if method != "read":
+            raise ValueError("unsupported operation")
+        received.append((call.command_id, payload["project"]))
+        return {"labels": ["published"]}
+
+    bridge.register("labels", read_labels, contextual="call")
+
+    async def request(packet):
+        await bridge.dispatch(ApplicationCall(command_id="turn-7", request=packet))
+        result = await asyncio.wait_for(replies.get(), packet.timeout_ms / 1000)
+        assert result.id == packet.id
+        if result.status != "success":
+            raise ApplicationError(result.error)
+        return result.result
+
+    client.bind(request)
+    await bridge.start()
+    try:
+        assert await client.call("labels", "read", {"project": "docs"}) == {
+            "labels": ["published"],
+        }
+        assert received == [("turn-7", "docs")]
+        try:
+            await client.call("labels", "write", {})
+        except ApplicationError as error:
+            assert "unsupported operation" in str(error)
+        else:
+            raise AssertionError("handler error did not cross the bridge")
+    finally:
+        await bridge.stop()
+
+asyncio.run(verify_bridge())
 ```
 
-The default runtime derives `session.json` and `surfaces/` from
-`data_root`. `handshake` applies to both sockets; `event_handshake` and
-`application_handshake` independently override it when their wire protocols differ.
-`Application.agents` is the public catalogue of AgentSpec recipes. One recipe may
-run in multiple independent sessions. The existing default session selects its
-saved agent_name on resume. For a new default session, a single declared agent is
-implicit; with several declarations, pass `build(..., agent="assistant")`.
-Creating another session follows the same selection rule. Worker startup receives
-the selected identity explicitly; private plugin specialists remain separate.
-The worker creates each durable session's identity under its exclusive writer lock.
-The framework owns construction, ordering and cleanup; it does not start inference
-or perform network authentication during declaration/build.
+A worker bridge must be bound by its host; an unbound ApplicationClient raises
+ApplicationError. The real worker waits under the request deadline and sends
+ApplicationCancel when interrupted/timed out. Cancellation is cooperative, not
+rollback of side effects already performed. Do not automatically retry a
+non-idempotent operation merely because its response was lost.
 
-Advanced applications can pass `session_factory(supervisor, context)` to specialize the
-runtime, or inject a supervisor for another worker executable. An injected
-supervisor must refer to the same session and, when declared, application reference.
-`session_projection` defaults to `"display"` (user/assistant messages and artifacts);
-`"full"` is an explicit opt-in to internal history. `health_projection(payload)`
-selects diagnostics. Override the async `SessionRuntime.reset_session()` method
-to provide the application's selective reset policy; no callback is needed in
-`build()`. The default method is unavailable (HTTP 501), even when a low-level
-reset transaction factory exists.
-`session_extensions(runtime)` returns application-owned declarations for each
-session, such as reset endpoints and access middleware. It is invoked once per
-session, alongside `session_factory`; these callbacks must not cache/reuse a live
-controller across independent sessions. The starter and Harness use this same path.
+`dispatch()` schedules calls independently of worker reception, so a slow async
+handler need not block status or cancellation. The bridge bounds concurrent calls
+and its queues (currently 128 each), rejects saturation, cancels running tasks on
+ApplicationCancel and drains/cancels on stop or worker recovery. Handlers must not
+block the event loop with synchronous work. Cancellation of `to_thread` does not
+forcibly stop the already-running thread or undo its transaction.
 
-A session's service context borrows running application-scoped resources from
-the application graph. Only local services belong to its start/stop lifecycle;
-closing a session cannot stop shared resources. Health retains the shared service's
-original probe and errors, and the lookup never exposes another session's private
-services. Build-time configure hooks still run with each session's own inputs;
-their contributions are not cached globally.
+For unhandled capabilities, registered routers may route to an authenticated
+application client; absence of a connected client fails the call. The application
+WebSocket is not a second canonical history writer. A server-side
+`runtime.bridge.call(...)` may invoke a registered local handler directly; that
+fast path is **not** wrapped in the forwarded-call timeout machinery. Design long
+server operations with their own cancellation/deadline contract.
 
-Set the fixed `restart` input on `BuildContext` for the default runtime's supervised
-restart callback. Runtime subclasses may specialize restart and UI notifications
-through `restart_server`, `surface_notify` and `surface_progress`. Managed surfaces
-use those methods automatically; there is no need to copy publish callbacks into
-construction inputs.
+## Ordered worker mutations
 
-## Local desktop process ownership
+Server services must not edit the worker's Session file. Use:
 
-`the_framework.server.runtime.local.LocalServer` owns one replaceable HTTP
-process: instance lease, loopback listener, private discovery descriptor and
-credentials. Compose the app inside its context, pass `process.request_restart`
-to `BuildContext`, then run `await process.serve(app)`. It returns
-`RESTART_EXIT_CODE` (75) after a requested restart and zero after a normal stop.
-Discovery and the lease are released even if application construction fails.
-Bearer credentials rotate per server process; the browser cookie secret remains
-in `runtime/ui-session.key`. The application's security policy validates each
-credential in its own channel.
-
-| Owner | Lifetime and responsibility |
+| Runtime method | Meaning |
 | --- | --- |
-| Desktop supervisor | Starts/replaces the HTTP process. The starter retains an inherited listening socket; the Harness uses systemd with a fixed configured port. |
-| Browser RPC daemon | Owns Chromium contexts, tabs and unsent UI state, independently of HTTP/worker replacement. Its async context closes RPCs and Chromium exactly at daemon shutdown. |
-| LocalServer | Owns the current HTTP process, discovery and graceful shutdown. It never closes the desktop browser. |
-| Application runtime / worker | Supervision and the canonical durable conversation; the worker remains its sole writer. |
+| `update_config(updates, id=..., timeout=10)` | Ordered validated persisted mutation; returns `AgentConfigUpdated`, including config and `restart_required`. Missing required result raises `InvalidWorkerResult`. |
+| `apply_event(name, payload, id=..., timeout=10)` | Wait for a durable ordered external event; returns its Event or None. |
+| `submit(request)` | Send without waiting for eventual completion. |
+| `command(request, timeout=10)` | Wait for the correlated command's completion/failure, returning its last CommandEvent payload. |
+| `request(request, timeout=5)` | Wait for a direct correlated response, e.g. status; not a history mutation shortcut. |
+| `publish(output)` | Broadcast to subscribers only; does not persist an event. |
 
-With an inherited listener, the supervisor keeps its own descriptor open while
-each server closes its copy. With separately supervised processes, use the same
-configured port for every replacement so the existing page can reconnect.
-`shutdown_event()` scopes SIGINT/SIGTERM handling to a long-lived desktop owner;
-`serve(..., parent_stream=...)` optionally stops a child when its parent pipe closes.
-Neither requires a new framework-level supervisor or a process-wide task manager.
+Retain a stable id **and identical payload** for a command retry. A timeout is
+not proof of failure before effects, nor do several separately submitted calls
+become one atomic transaction. Ephemeral telemetry uses TransientEventRequest;
+ordered external events use ExternalEventRequest. See [events](events.md).
 
-A service-only `Application` leaves `agents` empty and uses
-`application.build(context=BuildContext(...))` when it needs paths or plugin inputs.
-It installs no worker, canonical chat or session-management routes. There is no
-second public conversation builder or helper to reproduce the host wiring.
+Worker-output observers run in reception order. Their exceptions are logged
+without discarding the response. They must not wait for a reply from that same
+worker (which would require reception to advance).
 
-Server services may call `await runtime.update_config(updates, id=command_id)`
-and `await runtime.apply_event(name, payload, id=event_id)`. Both wait for worker
-command completion and preserve the sole history writer. `update_config` returns
-`AgentConfigUpdated`, including `result["config"]` and `restart_required`, or
-raises `InvalidWorkerResult` when the required result is missing. A supplied id
-must be reused with the same payload when retrying. This does not make a sequence
-of separate calls atomic. Ephemeral telemetry still uses `TransientEventRequest`;
-`runtime.publish` only broadcasts to connected subscribers.
+## Customizing session assembly
 
-`ApplicationHealthApi(runtime=runtime)` includes worker readiness, activity,
-application-bridge connectivity and specialist status. Service probes use the
-existing `ServerExtension.health` callback or `service.health()`. The graph reports
-a running service as degraded if its probe raises or returns `status` equal to
-`error`, `degraded` or `unhealthy`; critical degradation affects aggregate health.
-Optional failures remain visible without degrading the aggregate. A projection
-may adapt the response to an application's existing client contract.
+Advanced `build()` inputs:
 
-`FileResetTransaction(root, paths)` supplies the filesystem part of a reset.
-Connect it through `SessionRuntime.reset_transaction_factory`; the application
-selects which relative paths to remove, while the runtime pauses reset-dependent
-services and restarts its workers. Staging restores original files after a failed
-restart, including removing newly created selected paths. Paths cannot overlap
-or escape the root, and directory symlinks cannot be traversed. This is an
-in-process rollback mechanism, not a recovery journal for host/process crashes.
+- `session_factory(supervisor, context)` constructs a fresh SessionRuntime per
+  conversation. Do not retain a live controller globally.
+- `supervisor` replaces the default worker host for the default session. Its
+  session identity and declared application reference must match.
+- `session_extensions` is a tuple or `callback(runtime)` returning per-session
+  declarations, for example application-specific reset endpoints/middleware.
+- `session_projection="display"` exposes user/assistant messages and artifacts.
+  `"full"` is an explicit internal-history opt-in, not a privacy-neutral default.
+- `health_projection(payload)` adapts diagnostics; `ApplicationHealthApi` includes
+  readiness/activity, bridge connectivity, specialist status and service probes.
 
-For distinct actions such as clearing a conversation or only a plugin's memory,
-call `await runtime.reset_runtime_state(transaction_factory=...)` with a factory
-that receives the canonical session path and returns a reset transaction.
-The override applies only to that call; the default factory remains unchanged.
-Every recipe uses the same serialized suspension, restart and rollback lifecycle.
+Set `BuildContext(restart=callback, ...)` to give the default runtime a supervised
+restart operation. Runtime methods `restart_server`, `surface_notify` and
+`surface_progress` support surface lifecycle automatically. Missing restart
+capability must remain missing, not wrapped in a callback that fails later.
 
-Plugins register their own reset participation with
-`runtime.register_reset_hooks(suspend=..., resume=...)`. Either callback may be
-omitted: a live connection may only close, while a durable service may only reload.
-At least one callback is required; both may be synchronous or asynchronous.
-Suspensions run in reverse registration order before worker shutdown; resumptions
-run in registration order after commit or recovery of the previous runtime.
-A failed suspension aborts reset and recovers previously suspended participants.
-Realtime owns voice reconciliation and call cleanup through these hooks, so the
-application's reset handler need not know whether voice is installed.
+A `plugins.binding_update` contribution can supply a modality/policy barrier;
+at most one coordinator is accepted. `plugin_binding_update` construction input
+is the explicit override. The callback accepts `(name, enabled, *, call=None)`
+and should delegate to `runtime.set_plugin_binding(..., call=call)`. The optional
+call identifies a tool suspended waiting for this operation. Binding controls
+have priority 5 versus ordinary command priority 10 and may run at that suspension
+point, including before call transmission. A correlated call no longer waiting
+fails rather than becoming a late mutation. The worker confirms activation and
+persistence before the server updates its binding cache.
 
-Remote services support ordered `add_application_event_listener` /
-`remove_application_event_listener` and `add_capabilities_changed_listener` /
-`remove_capabilities_changed_listener` subscriptions. Event callbacks run
-synchronously after lease validation; authority callbacks may be asynchronous
-and are awaited in order. Callback failures propagate. Services should subscribe
-at startup and unsubscribe at shutdown. Domain-specific authority reactions stay
-in their owning plugins.
+## Reset coordination
 
-## Application calls
+The generic `SessionRuntime.reset_session()` deliberately reports unavailable
+(HTTP 501). The application selects its reset policy, normally by overriding that
+method and using `reset_runtime_state(transaction_factory=...)`. A configured
+low-level factory alone does not turn on a public destructive endpoint.
 
-`ApplicationBridge.dispatch()` accepts a worker call and executes it independently
-of worker reception. Results still return through the correlated application
-protocol. Register with `contextual="call"` to receive the complete
-`ApplicationCall` as the `call` keyword; `contextual=True` supplies only
-`command_id`. A slow asynchronous service must not prevent status replies or call
-cancellations from being received. The bridge limits concurrent calls, cancels
-running calls on `ApplicationCancel`, and drains them on shutdown or worker
-recovery. Service handlers must cooperate with cancellation; synchronous work
-that blocks the event loop should use an asynchronous adapter.
+`FileResetTransaction(root, paths)` stages selected relative paths. They must not
+overlap, escape the root or traverse directory symlinks. Failed worker restart
+restores selected originals and removes newly created selected paths. This is
+in-process rollback, **not** a crash-recovery journal or a user-data backup.
+A per-call transaction factory receives the canonical session path; it does not
+replace the runtime's default policy permanently.
 
-Worker-output observers are ordered with reception. Their exceptions are logged
-without losing the worker response; observers must not wait for replies from
-that same worker.
+`runtime.register_reset_hooks(suspend=..., resume=...)` requires at least one
+callback, synchronous or async. Suspensions run in reverse registration order
+before workers stop. Resumptions run in registration order after commit or
+recovery. Failed suspension aborts and recovers previously suspended participants.
+Voice/plugin-specific reconciliation belongs to that plugin's reset hooks, not
+conditional branches in the application's reset handler.
 
----
+Remote services may subscribe through `add_application_event_listener` and
+`add_capabilities_changed_listener` (paired remove methods). Application-event
+callbacks run synchronously after lease validation; capability-authority
+callbacks may be async and are awaited in order. Failures propagate. Subscribe
+at startup and unsubscribe at shutdown; authority policy belongs to the feature.
 
-[Reference index](README.md) · [Documentation paths](../README.md)
+## Local desktop ownership
+
+`the_framework.server.runtime.local.LocalServer` owns an HTTP **process** lease,
+loopback listener, private discovery descriptor and credentials. Enter its context
+before composing the app, pass `process.request_restart` as the BuildContext
+restart callback, then await `process.serve(app)`. It returns 75
+(`RESTART_EXIT_CODE`) after requested restart or zero on normal stop. Its context
+releases discovery/listener/lease even when app construction fails.
+
+A desktop supervisor owns replacement of that process. The starter retains an
+inherited listener; each child closes its own copy, not the supervisor's. Another
+supervisor can keep a fixed configured port so an existing browser reconnects.
+`shutdown_event()` scopes SIGINT/SIGTERM handlers; `serve(parent_stream=...)` can
+stop a child when its parent pipe closes. This code assumes an appropriate local
+process/event-loop host; it is not a cross-platform deployment promise.
+
+The browser RPC daemon separately owns Chromium contexts/tabs/unsent UI state.
+LocalServer never closes that browser on backend replacement. The daemon's own
+async lifecycle closes its resources at daemon shutdown. Reconnecting a browser
+is not the same operation as resuming the canonical worker Session.
+
+Process bearer credentials rotate; `ui-session.key` beside the discovery file
+persists the browser credential. Policies validate each credential in its intended
+channel. Do not print/copy private discovery records or bootstrap links into
+conversation history. See [security](security.md), [browser](browser.md), and
+[immutable backend deployment](../deployment.md).
+
+Sources: `server/runtime/{session,bridge,local}.py`,
+`agent/runtime/{bridge,worker,protocol}.py`, `server/composition/application.py`.

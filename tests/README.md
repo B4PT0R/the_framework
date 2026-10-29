@@ -39,7 +39,8 @@ Node discovers both layers, including newly added agentic tests.
 
 ## Reproducible browser runtime
 
-The Framework pins the Playwright driver; applications resolve the same version.
+Use the browser revision required by the installed Playwright driver. The package
+metadata does not pin an exact driver version.
 Tests ignore inherited `PLAYWRIGHT_BROWSERS_PATH` so a running application cannot
 silently select another driver revision. By default they use Playwright's standard
 user cache. To select another prepared cache, run `python -m pytest --browser-cache PATH`.

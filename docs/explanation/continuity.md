@@ -1,86 +1,84 @@
-# Continuity: keeping the conversation through changes
+# Continuity and failure boundaries
 
-[Documentation](../README.md) / Understand / Continuity
+Continuity means reconstructing work from committed records after temporary
+execution changes. It does not mean that every observation survives, a summary
+is lossless, or an interrupted external action is safe to repeat.
 
-You can ask for a change, discuss it, replace the interface or restart the
-backend, then continue the exchange. The application supports this by saving
-the conversation separately from the processes and connections running it.
+## What survives depends on its owner
 
-## Follow a saved conversation
-
-When a worker commits a conversation item, it becomes part of the canonical
-`Session` record. The session also holds saved configuration, extension state
-and agent bindings. A file-backed session writes this state to disk; hosted
-sessions use durable storage by default.
-
-After a restart, the application opens that record, constructs the agent and
-resumes execution. A reconnecting client retrieves a projection of the saved
-history. The browser and the previous worker can disappear while the record
-remains available.
-
-For a deliberately temporary agent, `Session()` provides an in-memory session.
-Retaining context between tasks and persisting it between process lifetimes
-are separately configurable choices, particularly for specialists.
-
-## What happens when you change something?
-
-| Change | How the conversation continues |
+| State | Owner and recovery |
 | --- | --- |
-| Refresh or reconnect a client | It retrieves retained history from the server; local drafts follow the client’s own saving policy |
-| Publish a managed interface release | The client loads a new UI while the session stays with the application; rollback restores the preceding UI release |
-| Replace an interrupted worker | The supervisor reconstructs execution around the canonical session; unfinished tool work needs inspection before retrying |
-| Replace the server through its supervised host | Resources are rebuilt from declarations and saved data; the starter’s desktop parent retains its browser and listener |
-| Compact the model context | The model receives a shorter working context while archived conversation remains available through history projections |
+| Conversation, configuration, extension state, bindings, command receipts | File-backed `Session`; reopen the canonical snapshot |
+| Memory, registry, notes, scheduler records and other feature data | Their feature-owned stores; back them up separately |
+| Active model history and compaction anchors | `Session`; compaction replaces active history and bounds the retained archive |
+| Browser observation, provider sample, streamed token deltas, sockets/processes | Temporary execution; reconstruct or explicitly preserve useful conclusions |
+| Client draft or device permissions | Client-specific policy; not implied by session persistence |
 
-An active voice call has a temporary connection and needs its own cleanup and
-recovery when execution changes. Durable conversation and reconnection provide
-the basis for resuming the exchange.
+`Session()` is memory-only. `Session.open(path)` enables snapshots, while
+`retain_history` controls conversational retention across worker tasks. Durable
+settings do not imply retained conversation when that policy is false.
 
-## Keep history and working context distinct
+## After an interruption
 
-The session stores the conversation. `Context` prepares what the model receives
-for its next turn: active history, instructions and fresh provider output. A
-provider might supply the current browser page or a status snapshot. Its next
-output can replace the previous one.
+A worker acquires the session writer lease before opening its record. Startup
+sanitizes unfinished tool sequences and recovers command receipts. An incomplete
+tool call receives a recorded failure explaining that its external side effects
+are unknown. Ordinary queued/active/waiting commands become interrupted; deferred
+work with saved delivery information remains waiting for its owning mechanism.
+This is protocol repair, not automatic success or an instruction to repeat tools.
 
-Compaction summarizes working context to make room for further turns. The
-archive preserves the earlier exchange, but the model’s next input contains a
-selection of that information. When a temporary observation matters for later
-work, save the useful conclusion in the conversation, memory or another durable
-owner before closing its source.
+A file may already have been written, a process may still be running, or a
+remote request may have been accepted before its result reached canonical
+history. Inspect actual state before retrying. Command ids and receipts help
+correlate delivery; they do not make arbitrary external operations exactly-once.
+Atomic snapshot replacement protects a store from partial JSON writes, not from
+inconsistency with other stores or external systems.
 
-This gives different storage roles a clear purpose:
+## Model context is not the full conversation
 
-| State | Examples | How to preserve it |
+Clients retrieve a retained archive projection. The text model receives active
+history, instructions and fresh provider output. A disappearing provider view
+is not evidence that it was never observed: its output was deliberately ephemeral.
+Before closing a temporary source, preserve the decisions, facts and uncertainty
+needed later in canonical conversation or the relevant durable feature store.
+
+Compaction asks the backend to replace working input with a shorter response.
+It does not sample live providers, and a summary cannot be assumed to preserve
+every detail. The archive retains earlier material only within the configured
+anchor limit; it is **not an unlimited audit log or backup**. See
+[Context](../reference/context.md) for exact preparation, request and trimming
+rules and a deterministic persistence example.
+
+## Change and recovery matrix
+
+| Change | Retained basis | Limits to verify |
 | --- | --- | --- |
-| Canonical session | Conversation, settings, bindings, compaction archive | Keep the session’s durable storage |
-| Feature-owned data | Memory, registry, scheduler records, managed surface releases | Include each feature’s private store in backups |
-| Temporary execution and observations | Processes, sockets, streamed text, browser DOM, voice calls | Reconnect or reconstruct; save needed conclusions explicitly |
+| Client refresh/reconnect | Canonical archive, current server state | Local drafts, reconnect policy, device permissions; provisional chunks are not committed messages |
+| Managed UI publication/rollback | Same backend/session; previous UI release | Candidate behavior, client compatibility and refresh timing |
+| Worker replacement | Saved session and feature data | Interrupted commands, unknown tool effects, in-memory pending compaction flags |
+| Supervised server replacement | Private stores and declared composition | Host continuation protocol, cleanup/reconnection, schema compatibility and startup health |
+| Context compaction | New active history plus bounded archive | Summary omissions, archive retention and backend failure |
+| Voice reconnection | Canonical contributions already committed | Temporary media transport, pending delegation and fresh context reconciliation |
 
-## Know what has actually survived
+The local desktop host can retain the listener and browser while replacing its
+server child. Other deployment modes must supply their own corresponding host
+contract. Neither rebuilding source nor building a candidate activates it.
+Publication, worker restart and backend replacement are distinct operations.
 
-Committed items are the replayable record. Streaming text and operational events
-show work in progress. Clients recover history from that committed record rather
-than replaying old streaming chunks as messages.
+## Prepare a recoverable update
 
-External effects have their own state: a command may have written a file before
-the worker stopped, or a service may have accepted a request before the result
-was saved. Inspect that state before retrying interrupted work. Atomic snapshot
-replacement protects individual stores from partial writes; recovery across
-plugin stores and external systems requires the application’s own checks.
+Keep private data outside replaceable code/releases. Inventory session and
+feature stores, back them up together at an appropriate application boundary,
+and test restoration. Before a backend/storage change, verify the candidate can
+open the intended data or provide an explicit migration/recovery plan. A valid
+build alone does not prove compatibility or continuity.
 
-## Plan recovery alongside activation
+For application self-modification, preserve the canonical session and pending
+work, verify the changed behavior, then activate through the host's supported
+mechanism. Changes to interface or backend do not expand authorization: external
+publication, destructive migrations and external effects still need appropriate
+permission.
 
-Keep private data across source and release changes, back it up, and test how
-your host resumes it. For an interface change, retain the previous release.
-For backend or storage changes, verify that the candidate can open the intended
-data and keep an appropriate recovery path before activation.
-
-Continuity rests on these concrete arrangements: durable records, replaceable
-execution and a verified path back to work. Permissions, retention and backups
-are application choices that should match its users and deployment.
-
-**Next:** [Your first application](../guides/first-application.md) includes stopping
-and reopening the starter. Exact contracts: [Sessions](../reference/sessions.md),
-[Context providers](../reference/providers.md), [Artifacts](../reference/artifacts.md)
-and [Deployment](../deployment.md).
+**Contracts:** [Sessions](../reference/sessions.md),
+[Hosting](../reference/hosting.md), [Client surfaces](../reference/surfaces.md),
+[Deployment](../deployment.md).

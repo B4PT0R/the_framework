@@ -1,92 +1,121 @@
-# Public events
+# Events and committed output
 
-[Documentation](../README.md) / [Reference](README.md)
+An agent emits typed Framework events; a hosted session wraps them in worker
+protocol envelopes. Neither is the backend's raw Responses/Live wire stream.
+Use events for progress and provisional display, and canonical item commits plus
+session pages for durable history.
 
-Clients use events to show an agent’s progress, stream its reply and learn when
-a conversation item has been saved. Plugins can declare events for their own
-features using the same public transport.
+## Local observation and plugin declarations
 
-The event contract separates provisional activity from committed history and
-keeps inference-backend wire details inside their adapters.
-
-## Public event contract
-
-Agent streams, hooks, command sockets, specialist activity and realtime captions
-use Framework events. Responses and Live wire events stay inside their adapters.
-There is no raw-event passthrough: unknown backend diagnostics and binary chunks
-are filtered. Known signals are converted by selecting declared fields. Backend
-sequence numbers, logprobs and response envelopes are not public event metadata.
-
-| Event | Meaning |
-| --- | --- |
-| `agent.turn.*`, `agent.step.*`, `agent.generation.start` | Worker execution lifecycle |
-| `agent.generation.end` | `status` (completed/incomplete/interrupted/failed), optional usage and error |
-| `agent.output_item.started` | Provisional item identity, role and phase; no history write |
-| `agent.text.delta`, `agent.text.done` | Item text: `item_id`, `channel` (output/refusal/reasoning/summary), `part_index`, Framework `sequence`, and delta/text |
-| `agent.tool_input.delta`, `agent.tool_input.done` | Streaming tool input, item identity and Framework sequence |
-| `agent.remote_tool.status` | Inference-service tool execution: tool, item identity, started/running/completed/failed |
-| `agent.response_item.added` | Canonical item, emitted once after the session write succeeds |
-| `agent.tool_call.*`, `agent.tool_calls.*` | Execution of local tools and user-facing feedback |
-| `agent.compaction.*`, `agent.interrupted`, `agent.task.*` | Context lifecycle, interruption and generic specialist requests/results |
-| `agent.config.updated`, `agent.state.updated`, `agent.plugin.binding.updated` | Session-owned settings changes |
-| `agent.provider_artifacts.updated` | Current-turn presentations; never canonical history |
-
-The streaming sequence is allocated by the Framework per generation and compared
-within an item's stream. Part indices identify text/summary parts. Output text
-can be displayed provisionally; reasoning is a separate channel. Only canonical
-item events and session pages supply durable chat history. Unknown or partial
-image/audio chunks do not become chat presentations: use an explicit Artifact.
-`on_event` sees converted Framework events before output items are committed;
-returning a transformed `AgentResponseItemAdded` changes the item to commit.
-Subscribers see that event only after persistence succeeds. Usage is recorded
-internally and exposed on generation completion, without forwarding a response.
-
-The optional `after_generation(payload)` hook runs on the worker event loop after
-stream processing, including when the stream fails, and before local tool calls.
-It receives `None` and may be synchronous or asynchronous. Plugins can use it to
-await application capabilities (for example to publish their own durable outputs).
-Keep feature-specific decoding, storage and presentation in the plugin, not the
-Responses adapter; `on_event` can first transform an output into a local reference
-before any binary payload reaches canonical history or downstream subscribers.
-
-`Event.from_dict()` reconstructs declared types and rejects unknown types;
-event fields reject undeclared keys. `CommandEvent.event`, `SubagentEvent.event`
-and `RealtimeEvent.event` all enforce this boundary. The existing command,
-worker and application-control envelopes remain Framework-owned protocols.
-`AgentPluginBindingUpdated` names the typed binding event.
-
-### Plugin-owned events
-
-Declare an event where its behavior belongs. The core declares only events needed
-for generic worker operation. Events used only by a plugin's feature lifecycle
-are declared and emitted in that plugin, without a worker-core branch or central
-feature-specific import. For example, in a plugin's `events.py`:
+This complete example registers a feature-owned event, observes it without a
+model request, then serializes it through the same typed command envelope used
+by workers:
 
 ```python
-from the_framework.agent import LocalEvent
+import json
+from the_framework.agent import Agent, Event, LocalEvent
+from the_framework.agent.runtime.protocol import CommandEvent
 
-class WeatherUpdated(LocalEvent):
-    type: str = "weather.updated"
-    temperature: float
+class NotebookIndexed(LocalEvent):
+    type: str = "notebook.indexed"
+    project: str
+    count: int
 
-# In the owning plugin:
-# self.agent.emit(WeatherUpdated(temperature=18.5))
+agent = Agent(client=object())  # no inference is performed
+observed = []
+agent.on("notebook.indexed", observed.append)
+agent.emit(NotebookIndexed(project="demo", count=3))
+assert observed[0].count == 3
+
+payload = json.loads(json.dumps(CommandEvent(
+    request_id="request-1", command_id="command-1", event=observed[0],
+)))
+restored = CommandEvent(**payload)
+assert isinstance(restored.event, NotebookIndexed)
+assert Event.from_dict(payload["event"]).project == "demo"
+try:
+    Event.from_dict({"type": "response.unregistered_backend_event"})
+except ValueError:
+    pass
+else:
+    raise AssertionError("unknown backend events must not cross the boundary")
 ```
 
-Import that plugin's event declarations in each Python process that reconstructs
-them (normally when loading the plugin declaration). Type names follow the
-existing dotted/underscored class naming convention. An extension to the event
-vocabulary is explicit, not a raw backend catch-all.
+Import plugin event declarations in **every Python process** reconstructing them,
+normally through plugin loading. Declare feature events with their owner, not in
+the generic worker core. Unknown types are rejected; event models forbid extra
+fields. `CommandEvent.event`, `SubagentEvent.event` and `RealtimeEvent.event`
+reconstruct declared Framework types rather than accepting arbitrary backend JSON.
 
-The Realtime plugin owns `voice.transcript.updated` (role and cumulative text),
-`voice.turn.completed` (role, turn id, transcript and interruption),
-`voice.response.state`, `voice.speech.state` and `voice.error`. It also declares
-its reconnect and delegation lifecycle events. Clients receive these typed
-signals in `RealtimeEvent`; they do not assemble backend transcript fragments.
-A completed voice turn clears the transient caption; the worker remains the
-only writer of the canonical voice transcript. WebRTC carries client audio and
-session negotiation remains an internal transport concern.
+`agent.on(type, callback)` and `agent.on("*", callback)` register synchronous
+callbacks. They run inline in the emitting thread; they are not awaited, isolated
+background tasks or a durable subscription. Exceptions propagate and can fail the
+producer. During `agent.stream()` the producer runs in a daemon thread; do not
+mutate a browser/event-loop resource directly from its callback. Prefer consuming
+`agent.astream()` in asynchronous code; close it explicitly on early exit as
+shown in [Agents](agents.md).
 
----
+## Event vocabulary
 
-[Reference index](README.md) · [Documentation paths](../README.md)
+| Family | Fields / purpose |
+| --- | --- |
+| `agent.turn.start/end`, `agent.step.start/end` | Turn and model/tool-step boundaries |
+| `agent.generation.start/end` | End includes `status` completed/incomplete/interrupted/failed, optional `usage`/`error` |
+| `agent.output_item.started` | Provisional item/phase; no canonical write |
+| `agent.text.delta/done` | `item_id`, `kind`, channel, `part_index`, Framework `sequence`, delta or complete text |
+| `agent.tool_input.delta/done` | Incremental arguments/input for an identified tool item |
+| `agent.remote_tool.status` | Service-side hosted tool: `tool`, `item_id`, started/running/completed/failed |
+| `agent.tool_calls.start/end`, `agent.tool_call.start/end` | Local tool batch and individual call; feedback and eventual output |
+| `agent.response_item.added` | Canonical item, emitted after its session write succeeds |
+| `agent.provider_artifacts.updated` | Replace current provider presentations; no history commit |
+| `agent.compaction.start/end` | Compaction lifecycle, response and retired archive anchor/items |
+| `agent.interrupted`, `agent.error`, `agent.task.*` | Interruption/error and specialist task lifecycle |
+| `agent.config.updated`, `agent.state.updated`, `agent.plugin.binding.updated` | Canonical settings and agent binding changes |
+
+Text channels are `output`, `refusal`, `reasoning`, `summary`; they are not
+interchangeable user-visible assistant text. A sequence is allocated per generation
+by the Framework, not copied from backend `sequence_number`. Compare it within
+that generation/item stream, track part identity, and reset transient state when
+reconciling. Backend logprobs, opaque response envelopes, unknown diagnostics and
+binary image/audio chunks do not become public event metadata or presentations.
+For a generated image/audio presentation, the owning integration must explicitly
+produce an [Artifact](artifacts.md).
+
+## Hooks versus subscribers
+
+The generation adapter converts known wire signals before running `on_event`.
+For a converted `AgentResponseItemAdded`, the hook can replace its item **before**
+commit; then the canonical writer appends it and emits the committed event to
+subscribers. Seeing a text delta or output-item start does not imply that this
+commit has happened. A write failure must not be displayed as a durable answer.
+
+`on_event` is a generation transformation hook, not a callback for every event
+from every tool/plugin. `after_generation` runs on the worker event loop after
+stream processing, even on failure, and before local tool execution; its payload
+is currently `None` and it may be sync or async. Keep feature decoding/storage in
+the owning plugin. [Extensions](extensions.md) lists hook names and execution
+contracts; [Tools](tools.md) describes tool acknowledgements versus output items.
+
+## Hosted envelopes and recovery
+
+The event socket sends `CommandEvent` (`type="command_event"`) with `request_id`,
+`command_id`, nested `event` and optional canonical `watermark`. It also sends
+acceptance/completion/failure/status envelopes. `SubagentEvent` adds private agent,
+session and task identity; show it as transient child activity, not as primary
+conversation text. The actual specialist result returns through ordered caller
+input. Realtime owns its `realtime_event` envelope and `voice.*` event declarations.
+
+The ordinary socket has no replay cursor; reconnect via history/status as in
+[Conversation transports](conversation.md). Paired remote clients have a separate
+sequenced transport; do not treat its sequence/replay protocol as a property of
+every Framework event. Transient lifecycle/control signals (restart, UI refresh,
+voice reconnect) are not conversation messages.
+
+## Source and verification
+
+`agent/models/{events,lifecycle}.py`, `agent/runtime/{event_loop,responses_events,
+protocol,agentic_loop}.py` own the core contract. `plugins/realtime/{events,
+live_events}.py` own voice conversion. `tests/general/test_framework_events.py`
+checks normalized fields, unknown-type rejection, commit timing, plugin ownership,
+usage and voice boundaries; `test_event_loop.py` checks producer lifetime. The
+example above is executed by `test_documented_agent_contracts.py` without inference.

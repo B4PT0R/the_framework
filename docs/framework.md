@@ -9,120 +9,120 @@ in its new location; the content has not been replaced by an historical snapshot
 
 ## Responsibility map
 
-See [Responsibility map](reference/application.md#responsibility-map).
+See [Responsibility map](reference/application.md#resource-scopes-and-lookup).
 
 ## Application and session lifetime
 
-See [Application and session lifetime](reference/application.md#application-and-session-lifetime).
+See [Application and session lifetime](reference/application.md#independent-conversations).
 
 ## The small path
 
-See [The small path](reference/services.md#the-small-path).
+See [The small path](reference/services.md#a-complete-composition-and-request-test).
 
 ## Adding state and lifecycle
 
-See [Adding state and lifecycle](reference/services.md#adding-state-and-lifecycle).
+See [Adding state and lifecycle](reference/services.md#factory-injection-and-scope).
 
 ## Model-based endpoint contracts
 
-See [Model-based endpoint contracts](reference/services.md#model-based-endpoint-contracts).
+See [Model-based endpoint contracts](reference/services.md#http-request-and-response-contracts).
 
 ## Conversation runtime integration
 
-See [Conversation runtime integration](reference/hosting.md#conversation-runtime-integration).
+See [Conversation runtime integration](reference/hosting.md#standard-assembly).
 
 ## Standard conversation assembly
 
-See [Standard conversation assembly](reference/hosting.md#standard-conversation-assembly).
+See [Standard conversation assembly](reference/hosting.md#standard-assembly).
 
 ## Local desktop process ownership
 
-See [Local desktop process ownership](reference/hosting.md#local-desktop-process-ownership).
+See [Local desktop process ownership](reference/hosting.md#local-desktop-ownership).
 
 ## Application calls
 
-See [Application calls](reference/hosting.md#application-calls).
+See [Application calls](reference/hosting.md#application-bridge).
 
 ## Service lifecycle
 
-See [Service lifecycle](reference/services.md#service-lifecycle).
+See [Service lifecycle](reference/services.md#lifecycle-and-failure).
 
 ## Pairing the worker and server sides of a plugin
 
-See [Pairing the worker and server sides of a plugin](reference/plugins.md#pairing-the-worker-and-server-sides-of-a-plugin).
+See [Pairing the worker and server sides of a plugin](reference/plugins.md#declaration-contract).
 
 ## Agentic: persistent work and turn controls
 
-See [Agentic: persistent work and turn controls](reference/work-and-scheduling.md#agentic-persistent-work-and-turn-controls).
+See [Agentic: persistent work and turn controls](reference/work-and-scheduling.md#agentic-goals).
 
 ## Scheduler: tasks, wake-ups and response deadlines
 
-See [Scheduler: tasks, wake-ups and response deadlines](reference/work-and-scheduling.md#scheduler-tasks-wake-ups-and-response-deadlines).
+See [Scheduler: tasks, wake-ups and response deadlines](reference/work-and-scheduling.md#scheduler-ownership-and-configuration).
 
 ## Realtime service
 
-See [Realtime service](reference/realtime.md#realtime-service).
+See [Realtime service](reference/realtime.md#client-and-tool-lifecycle).
 
 ## Independent application sessions
 
-See [Independent application sessions](reference/sessions.md#independent-application-sessions).
+See [Independent application sessions](reference/sessions.md#host-multiple-independent-conversations).
 
 ## Public event contract
 
-See [Public event contract](reference/events.md#public-event-contract).
+See [Public event contract](reference/events.md#event-vocabulary).
 
 ## Plugin-owned events
 
-See [Plugin-owned events](reference/events.md#plugin-owned-events).
+See [Plugin-owned events](reference/events.md#local-observation-and-plugin-declarations).
 
 ## Agent construction
 
-See [Agent construction](reference/agents.md#agent-construction).
+See [Agent construction](reference/agents.md#recipe-fields-and-construction-order).
 
 ## Optional live context
 
-See [Optional live context](reference/context.md#optional-live-context).
+See [Optional live context](reference/providers.md#sampling-points-and-channels).
 
 ## Shared mechanics, separate ownership
 
-See [Shared mechanics, separate ownership](reference/context.md#shared-mechanics-separate-ownership).
+See [Shared mechanics, separate ownership](explanation/continuity.md).
 
 ## Security and endpoint contracts
 
-See [Security and endpoint contracts](reference/security.md#security-and-endpoint-contracts).
+See [Security and endpoint contracts](reference/security.md#endpoint-boundary).
 
 ## Context providers
 
-See [Context providers](reference/providers.md#context-providers).
+See [Context providers](reference/providers.md#declare-sample-and-inspect).
 
 ## Client file bucket
 
-See [Client file bucket](reference/artifacts.md#client-file-bucket).
+See [Client file bucket](reference/artifacts.md#publish-local-bytes).
 
 ## Conversation artifacts
 
-See [Conversation artifacts](reference/artifacts.md#conversation-artifacts).
+See [Conversation artifacts](reference/artifacts.md#choose-the-right-output).
 
 ## Built-in application primitives
 
-See [Built-in application primitives](reference/primitives.md#built-in-application-primitives).
+See [Built-in application primitives](reference/primitives.md#feature-map).
 
 ## Versioned client surfaces
 
-See [Versioned client surfaces](reference/surfaces.md#versioned-client-surfaces).
+See [Versioned client surfaces](reference/surfaces.md#declare-the-interface).
 
 ## Standalone example
 
-See [Standalone example](reference/examples.md#standalone-example).
+See [Standalone example](reference/examples.md#standalone-agent-a-complete-tool-turn).
 
 ## The Harness as a larger application example
 
-See [The Harness as a larger application example](reference/examples.md#the-harness-as-a-larger-application-example).
+See [The Harness as a larger application example](reference/examples.md#editable-starter-and-larger-consumers).
 
 ## Design rule
 
-See [Design rule](reference/examples.md#design-rule).
+See [Design rule](explanation/architecture.md).
 
 ## Canonical chat and optional live context
 
-See [Canonical chat and optional live context](reference/conversation.md#canonical-chat-and-optional-live-context).
+See [Canonical chat and optional live context](reference/conversation.md#read-and-reconcile).

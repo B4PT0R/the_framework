@@ -1,244 +1,313 @@
-# Immutable Docker backends (opt-in)
+# Immutable backend deployment and recovery
 
-[Documentation](README.md) / Deployment
+Deploy an installed application as an exact Docker image, validate that image
+without production data, then select it for the next supervised start. This is
+an **optional host-owned workflow**, not what the local starter launcher does.
+It neither installs Docker nor opens a public service. Start with
+[First application](guides/first-application.md) for ordinary local use.
 
-Use an immutable backend when you want to build a specific application version,
-test that exact image, select it for the next start and retain a recovery path.
-A host supervisor manages the backend container while private data stays outside
-the image.
+## Ownership and the release state machine
 
-This optional workflow complements the local starter launcher. Begin with
-[Your first application](guides/first-application.md) for a local setup. To follow
-the workflow here, provide an existing Docker daemon running Linux containers
-and `uv`; deployment actions are explicit calls.
+| Component / operation | Owns or changes | Does not do |
+| --- | --- | --- |
+| `BackendImage` / `build()` | Explicit trusted wheels/projects → full local `sha256:` image ID | Test, select, launch, push or prune |
+| `Deployment.test(image, ...)` | Disposable container; durable proof for the exact image and normalized application options | Use production environment/workspaces/host services or send a model prompt |
+| `Deployment.select(image)` | Record `selected`, requiring existing validation proof and a locally available image | Interrupt a turn, change `current`, or restart |
+| `Deployment.serve(runtime)` | Foreground **host** supervisor; readiness, promotion and recovery | Run inside the backend, supervise indefinitely after unexpected failure, or roll back data |
+| In-image runner | Factory, ASGI/worker lifecycle, authenticated probes; exit 75 for requested restart | Build images or access the engine |
+| Application | Security policy, safe startup, storage compatibility, restart intent and device/remote effects | Delegate those policies to Docker or the validation flag |
 
-## Four operations, distinct responsibilities
+`status()` reads the release record. `current` is the last committed healthy
+image, `previous` its predecessor, `selected` the requested next image;
+`validated` contains proofs, and `pending` journals an uncommitted transition.
+A built or selected candidate is not necessarily running. A dead backend can
+still be recorded as `current`: check runtime health, not just this ledger.
+Backend activation and [UI publication](reference/surfaces.md) are independent.
+
+## Build inputs, runtime inputs and secrets
+
+Public imports are from `the_framework.deployment`: `BackendImage`,
+`BackendRuntime`, `Deployment`, `DeploymentError`, `HostEndpoint`, `HostServices`.
+Construction/imports do not contact Docker. The example below creates only a
+recipe, using a temporary **placeholder** wheel; it does not build or install it.
 
 ```python
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from the_framework.deployment import BackendImage, BackendRuntime, Deployment
 
-recipe = BackendImage(
-    "my_app.server:create_app",
-    projects=(Path("/explicit/app-project"),),
-    # wheels=(Path("/explicit/local-dependency.whl"),),
-    # packages=("ffmpeg",),  # only if required by this application
-)
-image = recipe.build()                  # full sha256 ID, not a mutable tag
-releases = Deployment("/private/backend")
-releases.test(image)                    # isolated startup, not selection
-releases.select(image)                  # records next image, does not restart
-releases.serve(BackendRuntime(          # foreground HOST process
-    token="a-stable-private-token", browser_token="a-different-private-token",
-    port=8765,
-))
+with TemporaryDirectory() as directory:
+    root = Path(directory)
+    wheel = root / "example_app-1.0-py3-none-any.whl"
+    wheel.write_bytes(b"placeholder, not an installable wheel")
+    recipe = BackendImage("example_app.server:create_app", wheels=(wheel,))
+    runtime = BackendRuntime(
+        token="test-http-only", browser_token="test-browser-only",
+        port=8765, options={"feature_enabled": True},
+    )
+    releases = Deployment(root / "backend")
+    assert releases.status()["current"] is None
+    assert not releases.root.exists()  # Construction/status are inert.
+    assert runtime.settings()["validation"] is False
 ```
 
-Wheels/projects are explicit trusted build inputs. Project wheels are built on
-the host with `python -m build --wheel`; only resulting wheels and generated metadata
-enter the Docker context. No recursive repository copy, dotenv, home directory
-or implicit credential forwarding. **A wheel can itself contain secrets or run
-build code: audit its packaging.** Public Python dependencies resolve during the
-image build; a custom `base`/explicit OS `packages` belong to the app recipe.
-These inputs are not a reproducible dependency lock: the returned image ID is
-the authoritative tested artifact. Include a modified local Framework wheel or
-project explicitly when it is not yet available from the package index.
+In an application-owned deployment script, use **real packaged wheels** or
+`projects=(Path("/explicit/app-project"), ...)`. Projects must contain
+`pyproject.toml`; the host runs `uv build --wheel --out-dir ... PROJECT` for each.
+Only the resulting wheels and generated metadata/Dockerfile enter the Docker
+context—not the repository, home directory, dotenv or implicit credentials.
+A wheel/build backend can contain secrets or execute code: audit packaging and
+trust all supplied projects. Include an explicit Framework wheel/project when
+using local changes not available from the index.
 
-The installed application code and dependencies are immutable. An optional
-`BackendRuntime(workspaces={"app": Path("/explicit/checkout")})` exposes editable
-source at `/workspaces/app`, never over site-packages. Editing that checkout does
-not change the running backend. The host recipe can build its next wheel from
-it. General execution tools run inside the backend container unless the application
-explicitly installs and authorizes the optional host execution service below.
-This does not provision tool runtimes, compilers or package managers in images.
+The default base is `python:3.12-slim`. `base` and OS `packages` are explicit
+recipe inputs; no toolchain/browser/model runtime is provisioned implicitly.
+Public Python dependencies resolve during the image build. This is **not a
+reproducible dependency lock**; retain the exact tested image ID, not a tag.
+The workflow performs no registry push or image pruning.
 
-## Application factory
+`BackendRuntime` supplies stable, distinct HTTP and browser credentials,
+loopback `port`, optional exact HTTP(S) `origin`, numeric `user`, `environment`,
+application `options`, optional host endpoint and explicit mounts. Secrets are
+outside the image in a private settings file (0600 on POSIX); environment is
+installed by the runner, not passed as Docker environment arguments. Docker and
+host administrators remain trusted.
 
-Provide a side-effect-free importable `module:create_app` callable. It receives
-`data_root: Path`, `token`, `browser_token`, `origin`, `restart`, `validation`,
-and optionally `host` when explicitly configured. It returns an ASGI application.
-`BackendRuntime.options` adds JSON application-specific keyword inputs; core
-inputs cannot be overridden. Keep options nonsecret: they are stored in release
-validation records. Runtime secrets belong in the explicit token/environment
-fields, outside images. Options must be a mapping with string keys, or `None`
-for no options; false/zero/empty sequences are not mappings. Mapping values are
-copied/revalidated at launch. Ports and numeric UIDs must be integers (not
-booleans); environment keys/values must be valid strings. Invalid inputs fail
-before any engine call.
+`options` is a string-keyed, JSON-compatible mapping (or `None` for empty); it
+cannot override core factory inputs. Options are copied/normalized and recorded
+in validation proofs: **do not put secrets there**. Port/UID reject booleans;
+environment requires valid string keys/values. Mutable runtime mappings are
+snapshotted/revalidated before serving. Host ownership/ACLs remain your job;
+choose a private deployment root, separate from live development data.
 
-Pass `validation` into the Framework `BuildContext`; disable application-owned
-startup effects (host access, device actions, remote registration, scheduled
-external work) in that mode. The runner starts a real worker/HTTP lifecycle but
-Framework rejects queued worker commands and omits directory broadcasts in
-validation. Factory construction/imports must not do external work regardless.
-A factory that ignores this contract is not made safe by the validation flag.
+## Application factory contract
 
-## What a test proves — and does not
+The recipe names an importable `module:create_app` synchronous callable. The
+runner calls it with keyword inputs:
 
-`test(image, session=Path(...), options={...}, timeout=90)`:
+| Input | Meaning |
+| --- | --- |
+| `data_root: Path` | `/data`, writable persistent runtime data or disposable validation tmpfs |
+| `token`, `browser_token` | Separate provisioned credentials; application must actually enforce authentication |
+| `origin` | Expected browser/HTTP origin; not an authorization policy by itself |
+| `restart` | Async callback accepting a restart intent; requests graceful runner exit 75 |
+| `validation: bool` | Disable application-owned external startup effects and pass through to `BuildContext` |
+| `host` | `HostEndpoint`, passed only when explicitly configured; never in validation |
+| Additional keyword inputs | Normalized application `options` |
 
-- uses the exact local image ID, a disposable readonly-root container, no network,
-  dropped capabilities/no-new-privileges, bounded memory/CPU/PIDs and tmpfs data;
-- mounts only a generated temporary settings file; uses fresh HTTP credentials;
-- optionally copies **only** the explicit canonical session JSON, never task,
-  goal or restart journals, production settings, workspaces, host/browser secrets;
-- verifies unauthenticated rejection, authenticated health/status/config/session
-  and the saved session identity; never sends a model prompt;
-- removes the container even after failure; cleanup failure cannot grant proof.
+Return the ASGI adapter from the declared `Application.build(...)`, providing
+an explicit module reference and `BuildContext(data_root=..., origin=...,
+restart=..., validation=...)`, plus the application's security and handshake.
+Use the [security reference](reference/security.md) for the policy contract and
+[hosting reference](reference/hosting.md) for lifecycle responsibilities.
+The repository's [deployment fixture](../tests/fixtures/deployment_app/deployment_fixture/__init__.py)
+is a complete headless factory with real Framework workers and test-only bearer
+security; it is not a browser credential provisioning design.
 
-The proof binds image ID and normalized application options. A failing retest
-invalidates that image's old proof/selection. Tests for the same image cannot
-race. Selection/launch fail closed without matching proof; a proof invalidated
-during startup prevents committing promotion. State updates are atomic and
-single-writer; a second supervisor for the same root is refused.
+Imports/factory construction must be free of external actions in **all** modes.
+During validation, Framework blocks queued worker commands and skips directory
+broadcasts. Your application must separately suppress host/device access,
+remote registration and scheduled external effects. A factory ignoring this
+contract is not made safe by setting `validation=True`.
 
-This is a startup/auth/persistence check, not a model/tool acceptance suite, a
-host browser connectivity test, or a hostile-code security sandbox. It deliberately
-excludes production environment, mounted workspaces, remote services and desktop.
-Applications remain responsible for functional tests and explicit production
-preflight checks. Image administrators and Docker administrators are trusted.
+## Offline example: validation is not activation
 
-## Runtime and recovery
+This sequence exercises real release-state persistence with a fake engine.
+It checks selection, cleanup and failed-retest invalidation; the fake probe
+**does not prove Docker, HTTP authentication or application readiness**.
+No engine, listener, model account or existing data is used.
 
-The host publishes HTTP **only on `127.0.0.1:<port>`**. External clients need an
-independently authorized private proxy/route; this module exposes none. Production
-settings (mode 0600 on POSIX) and persistent `root/data` remain outside the image.
-The container runs as the configured numeric UID (host UID by default on Unix),
-with readonly image files, dropped capabilities, writable data and `/tmp`.
-Use a private root; host filesystem ACLs/ownership remain the operator's job.
+```python
+from the_framework.deployment import DeploymentError
 
-`serve` journals stopping/starting before replacing an incumbent, drains it,
-starts the target and records `current`/`previous` only after readiness. Failure
-restores the last healthy image **and its application options**, without a retry
-loop. Interrupted uncommitted promotions restore the known-good image on the next
-host launch. Failed recovery retains its journal for another explicit attempt.
-A first-launch failure has no fallback. A failed drain does not authorize killing
-an active turn. Unexpected exits stop the supervisor with an error rather than
-restarting indefinitely; investigate then relaunch it explicitly.
+class ExampleEngine:
+    def __init__(self):
+        self.calls = []
+        self.failed = False
 
-**Image rollback never rolls back data.** A candidate may write production data
-before readiness fails. Schema compatibility, backups and migrations remain the
-application's responsibility. Keep prior images available locally for recovery.
-No registry push, garbage collection or automatic pruning is performed.
+    def run(self, *args, timeout=60):
+        self.calls.append(args)
+        return "test diagnostics" if args[0] == "logs" else ""
 
-The application's existing durable restart action completes the current turn
-and calls the supplied `restart` callback. The image runner exits 75 after graceful
-ASGI shutdown; the external supervisor then activates the selected image (or
-restarts current). Selecting alone does not interrupt the conversation. UI
-candidate publication remains a separate operation; backend selection is not UI
-publication. Stopping the foreground host supervisor drains/removes its backend.
+    def inspect(self, name, *, timeout=60):
+        return {"State": {"Running": not self.failed, "ExitCode": 1}}
+
+    def remove(self, name):
+        self.calls.append(("remove", name))
+
+image = "sha256:" + "a" * 64
+with TemporaryDirectory() as directory:
+    engine = ExampleEngine()
+    releases = Deployment(Path(directory) / "release", docker=engine)
+    try:
+        releases.select(image)
+        raise AssertionError("untested image selected")
+    except DeploymentError:
+        pass
+    assert releases.test(image, options={"feature_enabled": True})["status"] == "ok"
+    assert releases.select(image) == image
+    state = releases.status()
+    assert state["selected"] == image and state["current"] is None
+    assert state["validated"][image]["options"] == {"feature_enabled": True}
+    create = next(call for call in engine.calls if call[0] == "create")
+    assert create[create.index("--network") + 1] == "none"
+    assert "--publish" not in create
+    assert engine.calls[-2][0] == "remove"  # Followed only by selection's image inspect.
+
+    engine.failed = True
+    try:
+        releases.test(image)
+        raise AssertionError("failed candidate received proof")
+    except DeploymentError:
+        pass
+    state = releases.status()
+    assert image not in state["validated"] and state["selected"] is None
+    assert engine.calls[-1][0] == "remove"
+```
+
+A real `test(image, session=Path(...), options=..., timeout=90)` creates a
+network-disabled, readonly-root container with dropped capabilities,
+no-new-privileges, bounded memory/CPU/PIDs and tmpfs `/data`/`/tmp`. Its only
+mount is a temporary settings file, with fresh credentials. Optional `session`
+copies **only** the explicitly supplied canonical JSON file, never production
+settings, task/goal/restart journals, workspaces or host/browser secrets.
+The complete probe checks unauthenticated rejection, authenticated health,
+status/config/session object responses and preservation of a copied session ID.
+It never sends an inference prompt.
+
+Cleanup is mandatory even after failure; cleanup failure cannot grant proof.
+A retest invalidates prior proof/selection before probing; a failed candidate
+stays unvalidated. Invalid inputs can fail before that invalidation. Concurrent
+tests of the same image are refused. Proof binds **image ID and options**, not
+production secrets, environment, mounts, external services or future schema
+compatibility. Selection checks image proof; launch additionally requires the
+runtime options to match. Proof changed during readiness prevents promotion.
+This is a startup/auth/persistence probe, not a model/tool acceptance suite or a
+hostile-code sandbox.
+
+## Serving, restart and recovery
+
+After explicit build → test → select, call `releases.serve(runtime)` from a
+foreground **host process**, not a worker or the image. It acquires a single
+supervisor lease for the root, publishes HTTP only on `127.0.0.1:<port>`, and
+runs the container with the configured numeric UID, readonly installed code,
+writable `root/data` and `/tmp`, dropped capabilities and no-new-privileges.
+Production networking is not validation's `--network none`. Remote clients
+require an independently authorized proxy/private route; this module opens none.
+
+The supervisor journals stopping/starting, drains an incumbent, starts the
+target and commits `current`/`previous` only after authenticated readiness.
+A failed drain refuses replacement rather than killing an active turn.
+A failed candidate restores the last healthy image **and its options**, without
+an infinite retry loop. Interrupted promotions restore the known-good image on
+the next host launch; failed recovery retains its journal. First launch has no
+fallback. Unexpected container exit stops the supervisor with an error; inspect
+and relaunch explicitly. Keep prior images available locally.
+
+**Image rollback never rolls back data.** A candidate can write production data
+before readiness fails. Backups, migrations and schema compatibility remain
+application responsibilities.
+
+The application's durable turn-boundary restart action calls the supplied
+`restart` callback after finishing the turn. Graceful ASGI shutdown exits 75;
+the host then activates the selected image, or restarts current. Selection alone
+does nothing to the running turn. Normal requested supervisor shutdown drains
+and removes its backend; crashes/engine failures need explicit recovery.
+
+### Explicit source and data mounts
+
+`workspaces={"app": Path("/explicit/checkout")}` exposes editable source at
+`/workspaces/app`; editing it does not replace installed site-packages. Build a
+new wheel/image to activate backend changes. For narrower application paths,
+`mounts={"/models": {"source": Path("/explicit/cache"), "readonly": True}}`
+uses readonly by default. Sources must exist; targets must be normalized,
+non-overlapping absolute application paths outside reserved OS/data/workspace
+roots. These are explicit host authority, not a tool sandbox. Validation never
+imports these mounts; files are not implicitly shared across execution targets.
 
 ## Optional trusted host services
 
-`HostServices` exposes only host-registered `build()` (zero arguments), test,
-select, status, the optional existing browser service and optional named process
-recipes. Deployment/browser RPC never accepts arbitrary commands, paths, Docker
-options or sockets. Validation session/options
-are fixed by the host. Accepted deployment operations finish even if their client
-disconnects; after a timeout inspect status before retrying.
+A backend has no host authority by default. Explicitly compose `HostServices`
+with fixed zero-argument `build`, fixed validation session/options, optional
+browser service and optional named execution recipes. Deployment RPC accepts
+build/test/select/status—not arbitrary commands, paths, Docker flags or sockets.
+Accepted operations finish after client disconnection; after timeout, inspect
+status before retrying. Restart is not a host RPC operation.
 
-Configure `BackendRuntime.host=HostEndpoint(("explicit-container-reachable-host", port),
-token="control-secret", browser_token="browser-rpc-secret")`. These two tokens
-must differ from each other and from backend HTTP/browser tokens. Bind the host
-listener to an **explicit private IP**; wildcard/public binds are rejected. This
-is private authenticated TCP, **not TLS**. It is unsuitable for untrusted networks.
-No default listener or guessed route is opened. A container cannot reach a host
-loopback listener through its own `127.0.0.1`; choose and authorize the appropriate
-private engine interface deliberately. Docker Desktop routing differs; it is not
-configured automatically. Never solve this by exposing `0.0.0.0` or docker.sock.
+Set `BackendRuntime.host=HostEndpoint(("container-reachable-private-host", port),
+token=..., browser_token=...)`. Bind the host listener to an **explicit private
+IP**; wildcard/public binds are rejected. This is authenticated private TCP,
+**not TLS**. Control/browser credentials must differ from each other and from
+backend HTTP/browser credentials. Never expose `0.0.0.0` or docker.sock to solve
+routing. Container `127.0.0.1` is not the host; choose an authorized engine
+interface deliberately. Docker Desktop routing is not configured automatically.
 
-The browser stays host-owned across backend replacement. RPC reuses fixed browser
-method allowlists and its separate credential. Observations transfer frozen image
-bytes; backend screenshot paths never become host write paths. Workers discover
-the explicit private endpoint through runner settings. The local Unix browser
-path remains unchanged. Browser authorization does not grant execution authority.
+The optional browser stays host-owned across backend replacement. Its separate
+credential and fixed method allowlist do not authorize execution. Observations
+transfer frozen screenshot bytes; backend screenshot paths are not host write
+capabilities. See [Browser](reference/browser.md).
 
-### Explicit process execution
+For execution, compose `ProcessHost` with explicitly registered recipe callables
+and pass `HostServices(execution=..., execution_token=...)`; configure the same,
+separate `HostEndpoint.execution_token`. Nothing is enabled by default. A recipe
+receives an inherited socket descriptor and returns worker argv. The backend
+requests only its registered name. `launch_process(..., target="local"|"host")`
+never falls back between targets; protocol traffic and bounded process control
+use separate connections. Validation cannot acquire host execution.
 
-Applications may additionally compose `ProcessHost` from `the_framework.execution`
-and pass it to `HostServices(execution=..., execution_token=...)`. Register a mapping
-of trusted recipe names to local callables; each callable receives an inherited
-socket descriptor and returns worker argv. Configure the same separate
-`HostEndpoint.execution_token` in runtime settings. It must differ from control,
-browser and backend credentials. No service is enabled by default. The generic
-CLI accepts an application-owned `execution_factory`, but never supplies worker
-recipes itself.
+A Bash/Python recipe intentionally grants arbitrary execution with that host
+account's permissions: transport/recipe allowlists are **not per-command
+permissions or an OS sandbox**. EOF/shutdown retires processes; workers own child
+cleanup. The bundled Bash worker cleans tracked jobs cooperatively, but SIGKILL,
+machine failure and detached descendants can escape. See
+[Execution](reference/execution.md) for ownership, cancellation and limits.
 
-`launch_process(target, name, recipe)` requires `target="local"` (this backend's
-environment) or `"host"` (the explicitly configured host). The host resolves only
-its registered name, never a client-supplied command or module. A duplex channel
-carries the worker's own protocol, including reverse RPC; process control uses a
-separate bounded connection so busy user code can still be interrupted. Missing
-host configuration, failed authentication or disconnection fails explicitly;
-there is no local fallback. Isolated image validation cannot acquire this service.
+## Application-owned CLI
 
-A registered general-purpose Bash/Python worker deliberately **does** grant arbitrary
-code execution with its host account's permissions. The transport and recipe list
-are not a sandbox or per-command permission system. Protect the execution credential
-accordingly; no root elevation or Docker socket is needed. Paths and interpreters
-belong to the chosen target; file contents are not implicitly shared or transferred.
-
-EOF or host-service shutdown retires a process; workers must clean up their own
-children. The bundled Bash worker cleans tracked jobs on EOF/SIGTERM/SIGINT, and
-its commands/jobs retain explicit target ownership. SIGKILL, machine failure and
-children that deliberately detach can escape cooperative cleanup. This is not a
-durable host job service. Unix socketpair/pass_fds/process-group and signal behavior
-is tested on Linux only, not a Windows/macOS compatibility guarantee.
-
-## CLI composition
-
-Apps can call `the_framework.deployment.cli.main(factory, projects=(... ),
-browser_factory=..., execution_factory=...)` or pass an explicit `BackendImage`
-recipe. This composes
-build/test/select/status/serve without application Docker boilerplate:
+An app can call `the_framework.deployment.cli.main("my_app.server:create_app",
+projects=(...), browser_factory=..., execution_factory=...)`, or supply an
+explicit `BackendImage`. The CLI does not install a service or select implicitly.
+For a module exposing that call:
 
 ```sh
 python -m my_app.deployment --root /private/backend --project /explicit/dependency build
-python -m my_app.deployment --root /private/backend test sha256:FULL_64_HEX
+python -m my_app.deployment --root /private/backend --runtime /private/runtime.json test sha256:FULL_64_HEX
 python -m my_app.deployment --root /private/backend select sha256:FULL_64_HEX
+python -m my_app.deployment --root /private/backend status
 python -m my_app.deployment --root /private/backend --runtime /private/runtime.json serve
 ```
 
-`--wheel` and `--project` repeat; they add only explicit trusted inputs. Status,
-test and select need no source checkout. For test, `--runtime` supplies only
-`options`; production secrets/environment are not forwarded. `--session` is an
-optional session copy for validation. For serve, the runtime JSON supplies the
-`BackendRuntime` fields (keep it private, with stable distinct credentials). If
-`host` is configured, `--host-bind` is required and the listener port is taken
-from `host.address`. Runtime `workspaces` maps names to existing host directories.
-Do not put secrets in a shell command or commit runtime JSON.
+`--wheel`/`--project` repeat. Status/test/select need no source checkout.
+For test, `--runtime` forwards only `options`, not production environment/secrets;
+`--session` supplies an optional canonical copy. Serve requires private runtime
+JSON containing `BackendRuntime` fields with stable distinct credentials.
+Do not commit that file or put secrets on the command line. With `host`, supply
+`--host-bind`; the port comes from `host.address`. Host-enabled serve also needs
+the fixed build recipe's source/wheel inputs available for host build calls.
 
-The optional `execution_factory` is a zero-argument callable returning a host
-execution service (usually `ProcessHost` with explicit application recipes). It is
-called only for `serve` with `host.execution_token`; a credential without a factory
-is rejected before allocating browser/backend resources. Without the credential
-the factory is never called. The CLI closes allocated resources on startup failure,
-cancellation and shutdown; `HostServices` owns the execution service once composed.
-This configures the host process, not an in-container fallback or an authorization
-to run arbitrary workers.
+`execution_factory` is a zero-argument host-service factory, called only for
+serve with an explicit execution credential. A credential without a factory is
+rejected before allocating browser/backend resources; without the credential,
+the factory is never called. CLI cleanup closes composed resources after startup
+failure/cancellation/shutdown. `HostServices` owns its execution service once
+composed, while the CLI owns the optional browser's final stop.
 
 ## Verification and portability
 
-Pure unit tests/imports do not need Docker. The explicit opt-in test is:
+Offline coverage lives in `tests/general/test_deployment*.py`: image staging,
+proof invalidation, runner probes, options/credential validation, CLI ownership,
+host authorization and supervisor rollback/recovery with fake engines. The
+Python sequences on this page are also executed by the documentary tests.
+
+Only with explicit permission to build/run Docker images:
 
 ```sh
 FRAMEWORK_DOCKER_TEST=1 python -m pytest -q tests/agentic/test_docker_deployment.py
 ```
 
-It uses real Framework workers and disposable sessions, checks authenticated
-readiness, image replacement and failed-start rollback, and removes only images
-created by that test (never prunes existing images). Linux Docker is the verified
-engine. New host deployment primitives use pathlib, filelock, TCP and subprocess
-argument arrays rather than systemd/fcntl; this is **not evidence of Windows or
-macOS compatibility**. UID/bind-mount behavior, Desktop routing and the rest of
-an application's platform-specific plugins still need platform testing.
-
-### Explicit application bind mounts
-
-When named `/workspaces` are insufficient, `BackendRuntime.mounts` maps an
-absolute container application path to `{"source": Path(...), "readonly": True}`.
-Readonly is the default. Sources must exist; targets must be normalized,
-non-overlapping application paths, not reserved OS/data/workspace roots.
-Use narrow mounts for model caches, credentials or existing saved absolute paths;
-this is explicit host authority, not a sandbox for untrusted tools. The installed
-backend remains immutable. Isolated image validation never imports these mounts.
+That opt-in suite uses real Framework workers and disposable sessions, checks
+readiness/replacement/failed-start rollback, and removes only images it created.
+It does not prune existing images. Linux Docker is the tested engine. Use of
+`pathlib`, filelock, TCP and subprocess argument arrays is **not** a Windows or
+macOS compatibility guarantee. UID/bind mounts, Desktop routing and platform
+plugins need their own tests; Unix execution uses socketpair/pass_fds/signals.

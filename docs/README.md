@@ -1,53 +1,45 @@
 # Documentation
 
-Build an application whose agent can help change its tools, backend and interface
-while keeping the conversation with its user. Start by seeing what that involves,
-try the editable application, then look up the contracts needed for your changes.
+These pages document the current checkout. An installed release can differ; use
+its accompanying docs and [changelog](../CHANGELOG.md). Historical audits are
+[separate](history/README.md), not another API reference.
 
-## Understand what you are building
+## Start with runnable behavior
 
-1. [Building an application that can evolve](explanation/intention.md) — a concrete
-   example of changing the application through conversation, and the foundation
-   that supports it.
-2. [Architecture](explanation/architecture.md) — how to assemble an agent, its
-   features and its interface, and why each has its own role.
-3. [Continuity](explanation/continuity.md) — how the conversation is saved and
-   resumed as interfaces, processes and model context change.
-
-## Make it yours
-
-1. [Your first application](guides/first-application.md) — create a local desktop
-   app, get a reply, change its instructions and reopen the same conversation.
-2. [Your first plugin](guides/first-plugin.md) — add a tool that reports the time,
-   then see how a feature can grow into a backend service or integration.
-3. [Development](guides/development.md) — work from source, check changes and
-   choose how to activate them.
-
-The [starter manual](../starter/README.md) explains everyday operation and
-customization: settings, attachments, voice, browser access and private data.
-Read the relevant section when you use that feature.
-
-## Follow a specific task
-
-| Your task | Reading path |
+| You want | Read / run |
 | --- | --- |
-| Evaluate whether this fits your application | Project explanation → Architecture |
-| Run a local agent | First application → starter manual as needed |
-| Add a tool or integration | First plugin → plugin or services reference |
-| Change the interface | First application → client surfaces reference |
-| Build another client | Architecture → events → artifacts → conversation ingress → security |
-| Investigate a restart or lost context | Continuity → sessions or context reference |
-| Operate an immutable backend | Deployment and recovery |
-| Maintain the library | Development → relevant contract → source and tests |
+| A local desktop application you can edit | [First application](guides/first-application.md) — install, login, reply, change instructions, resume |
+| An agent without a server or account | [Agents](reference/agents.md#execute-a-complete-turn-without-a-model-account) — deterministic stream, real tool pipeline and history |
+| A complete custom feature | [Notebook tutorial](guides/first-plugin.md) — SQLite, authenticated routes, worker bridge, tools, command, configuration/state, provider |
+| An editable application already using the library | [Starter manual](../starter/README.md) — launcher, UI, settings, attachments, voice and private data |
+| To extend the browser UI or implement a client | [Client integration](guides/client-integration.md) — authenticated feature requests, live display, reconciliation and activation |
+| To diagnose a failing boundary | [Troubleshooting](guides/troubleshooting.md) — preparation, auth, workers, models, media and activation |
+| To develop the library | [Development](guides/development.md) — environment, tests, wheel checks, activation boundaries |
 
-## Look up the details
+The examples state what is actually exercised. A scripted backend verifies the
+Framework's execution path; it does not prove account compatibility or the
+quality of a model's decisions.
 
-The [technical reference](reference/README.md) groups exact declarations,
-lifetimes and protocols by the task they support. Examples identify where they
-belong in your application. [Deployment and recovery](deployment.md) covers the
-optional immutable-backend workflow.
+## Understand the runtime
 
-These docs follow the checkout. The [changelog](../CHANGELOG.md) records release
-changes. Maintainers can consult [historical notes](history/README.md) for earlier
-reasoning; the [old single-page guide](framework.md) redirects existing section
-bookmarks to the current topics.
+- [Architecture](explanation/architecture.md): declarations, process ownership and
+  the path from client input to committed history.
+- [Continuity](explanation/continuity.md): what survives reconnect, compaction,
+  worker replacement, server restart and loss of a device connection.
+- [Application intent](explanation/intention.md): application-level choices and
+  the optional self-modification workflow.
+
+## Find the contract
+
+| Area | Reference |
+| --- | --- |
+| Assemble and host | [Application](reference/application.md), [Plugins](reference/plugins.md), [Services](reference/services.md), [Hosting](reference/hosting.md) |
+| Program an agent | [Agents / specialists](reference/agents.md), [Tools](reference/tools.md), [Extensions / state / commands / hooks](reference/extensions.md), [Providers](reference/providers.md) |
+| Store and prepare a conversation | [Sessions](reference/sessions.md), [Context / compaction](reference/context.md) |
+| Implement a client | [Conversation ingress](reference/conversation.md), [Events](reference/events.md), [Artifacts](reference/artifacts.md), [Security](reference/security.md) |
+| Device and interface integration | [Surfaces](reference/surfaces.md), [Browser](reference/browser.md), [Realtime](reference/realtime.md) |
+| Reuse bundled features | [Primitives](reference/primitives.md), [Execution / Bash](reference/execution.md), [Work / scheduling](reference/work-and-scheduling.md), [Composition examples](reference/examples.md) |
+| Operate immutable backends | [Deployment and recovery](deployment.md) |
+
+[Full reference and import map](reference/README.md). The former
+[single-page guide](framework.md) keeps a short map for old links.

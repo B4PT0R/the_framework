@@ -1,86 +1,59 @@
-# Building an application that can evolve
+# Why a full-stack agent application?
 
-[Documentation](../README.md) / Understand / Purpose
+A useful agent needs more than an inference loop: tools, persistent conversation,
+application services, permissions and an interface through which people can act
+on its results. The Framework supplies reusable contracts for those pieces.
+The application chooses the agent's identity, product behavior and authority.
 
-The Framework is a framework for assembling full-stack agentic applications,
-designed so that the hosted agent can modify the application itself while
-continuing its conversation with the user.
+One intended use is an application that its hosted agent can help evolve while
+continuing the conversation that motivated the change. That is an application
+capability to compose and authorize—not a claim that every agent automatically
+has source access or that self-written code is safe.
 
-You build both sides of that experience: an agent that can do useful work, and
-an application that gives it tools, displays its results and keeps the exchange
-going. The reusable foundation handles conversation storage, execution and
-component lifetimes. Your application defines the agent’s role, its permissions
-and the interface people use.
+## A concrete development loop
 
-## A request that changes the application
+Suppose a document assistant needs a side-by-side comparison view. The request
+can lead to ordinary work in the existing application:
 
-Suppose you use an agent to work on documents. You ask it for a better way to
-compare the results side by side. That request may lead to a change in the
-interface. Later, you ask for an import tool, which may require Python code and
-a backend service.
+1. Inspect its editable interface and the server data contract.
+2. Implement and test the comparison behavior.
+3. Build an isolated interface candidate and inspect its read-only preview.
+4. Publish the verified candidate when authorized, or discard it without changing
+   the active release.
+5. Continue discussing the documents in the same canonical conversation.
 
-With access to the relevant source and development tools, the hosted agent can
-make those changes as part of the work. It can inspect the existing code, edit
-it, run checks and prepare a version for use. You keep discussing the result in
-the conversation where the need arose.
+A later import feature might also need a backend service, worker tools and a
+storage decision. Those have different owners and activation requirements.
+Backend replacement uses the chosen supervisor; an immutable deployment tests
+and selects an exact image before activation. UI publication is not backend
+activation, and neither proves that a user saw the result.
 
-This is what **full-stack** means here: the application’s interface, backend,
-agent behavior and integrations can all take part in that development loop.
-The starter gives you a concrete beginning: a Python backend with a React
-interface in a local Chromium window, editable as application source.
+This is what **full-stack** means here: agent behavior, interface, server and
+integrations can participate in one development loop without being collapsed
+into one process or one mutable global object. The editable starter is one
+application; The Harness is another consumer, not a hidden Framework dependency.
 
-## Why build on a shared foundation?
+## Continuity is a storage and lifecycle contract
 
-Changing a running application raises practical questions. Where is the
-conversation saved? Can the interface be replaced while keeping it? How do you
-start a new service, inspect a candidate version or return to an earlier one?
+Keeping a conversation through a change requires more than leaving a window
+open. A canonical Session owns saved history/configuration/state; a worker owns
+inference and tool execution; the server owns services and supervision; clients
+own local rendering and media/device execution. Temporary observations and live
+captions are not durable memory. Browser reconnection does not make arbitrary
+external effects exactly-once.
 
-The Framework supplies reusable, tested building blocks for those jobs:
+[Architecture](architecture.md) explains these boundaries;
+[Continuity](continuity.md) distinguishes reconnect, compaction, worker/server
+replacement and recovery. Applications still need compatible storage changes,
+backups, explicit permissions and verification of the active version. Code
+execution capabilities act with their configured account's authority, not an
+implicit safety sandbox.
 
-- **Keep the exchange:** durable sessions store conversation and saved settings.
-  A worker can resume execution around that record.
-- **Add behavior:** plugins bring together a feature’s tools, backend resources
-  and dependencies, with a common startup and shutdown lifecycle.
-- **Try an interface change:** managed client surfaces separate building a
-  candidate, previewing it, publishing it and rolling back.
-- **Replace execution:** worker supervision and server-replacement mechanisms
-  support resuming the application from durable state.
+## Start smaller than self-modification
 
-You can use the same foundation for applications with different purposes,
-interfaces and agents. The editable starter shows one composition; The Harness
-is a separate, larger application built on the library.
-
-## How a change becomes part of the application
-
-A useful change has several observable stages:
-
-1. **Understand the request.** Decide whether it calls for an answer, use of an
-   existing feature or a code change.
-2. **Edit and check.** Work on the relevant source and test the behavior being
-   changed.
-3. **Prepare a candidate.** Build the interface or backend version that will
-   actually run.
-4. **Activate and inspect.** Publish the UI or replace the backend through its
-   managed lifecycle, then check the result in the running application.
-5. **Continue.** Keep the request, decisions and results in the same conversation.
-
-The Framework provides mechanisms for these stages. The application connects
-them to its agent’s tools and decides which actions need user approval. UI
-releases use the [client-surface workflow](../reference/surfaces.md); backend
-activation follows the chosen host, with an optional
-[immutable deployment workflow](../deployment.md).
-
-Verification and recovery make self-modification practical: test a candidate
-before using it, retain a way back, and inspect interrupted work before retrying.
-Tests and approvals should match the change’s effects. A tool that edits files
-or runs commands acts with its configured account’s permissions.
-
-## Start with one small change
-
-Create the starter and change its instructions. Add a tool once you know what
-you want the agent to do. Adapt the interface when an actual interaction calls
-for it. The same application composition supports these increasingly substantial
-changes, while the saved conversation provides their shared context.
-
-**Next:** [Architecture](architecture.md) explains how to assemble these pieces.
-Or follow [Your first application](../guides/first-application.md) to try them.
+First run a local application and change its instructions. Then add one useful
+feature with tests. The [Notebook tutorial](../guides/first-plugin.md) follows a
+feature across HTTP, persistent storage, worker tools and context. The
+[development guide](../guides/development.md) describes verification and activation;
+[Surfaces](../reference/surfaces.md) and [Deployment](../deployment.md) provide the
+specific release contracts when those mechanisms are needed.

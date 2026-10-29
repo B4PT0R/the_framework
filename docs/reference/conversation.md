@@ -1,158 +1,163 @@
-# Chat ingress and live-context integration
+# Conversation HTTP and WebSocket transports
 
-[Documentation](../README.md) / [Reference](README.md)
+The server accepts commands; one worker writes each session. HTTP acceptance,
+worker completion, canonical persistence and client display are different stages.
+A successful submission is not a model answer or proof that the user saw it.
 
-Chat ingress accepts the user’s text and attachments and hands them to the
-conversation’s worker. When voice is installed, it also coordinates submissions
-with call transitions so the two entry paths agree about the current work.
+Applications with declared agents receive the host-owned `chat`, `runtime` and
+`canonical_transport` services. They are not optional agent plugins. Service-only
+applications have no canonical conversation API. Paths below address the default
+session; [independent sessions](sessions.md#host-multiple-independent-conversations) describe
+explicit session routing.
 
-The contracts below cover submission APIs, restart barriers and feature-owned
-live-context contributions. [Architecture](../explanation/architecture.md#a-conversation-through-the-system)
-shows where ingress sits in a turn.
+## Submit text or attachments
 
-## Canonical chat and optional live context
+| Request | Input | Successful response |
+| --- | --- | --- |
+| `POST /api/v1/agent/prompt` | JSON `{id, prompt}`; nonempty strings, id at most 200 characters | HTTP 202 `{id, status: "submitted"}` |
+| `POST /api/v1/agent/attachments` | Multipart `id`, 1–32 repeated `files`, optional `prompt` | Same acceptance envelope |
+| `POST /api/v1/agent/interrupt` | JSON with optional nullable `reason` | HTTP 202; interruption is queued, not confirmed |
+| `POST /api/v1/agent/compact` | No inputs | HTTP 202; compaction is sequential worker work |
 
-For an application declaring agents, `Application.build()` installs the host-owned `chat` service,
-including `POST /api/v1/agent/prompt` and `POST /api/v1/agent/attachments`.
-It is part of the conversation assembly, absent from the plugin catalogue, and
-cannot be disabled through plugin controls. A client can omit the chat UI while
-keeping these APIs available. An application without declared agents
-has no conversation services.
-Both accept a client-generated command `id`; attachments use multipart form data
-with `files` and an optional `prompt`. The service coordinates with the installed
-Realtime API's lock, so attachment acceptance and voice startup cannot race.
-`BuildContext.data_root` owns storage; uploads use its shared `bucket/` tree.
-No voice plugin is required for text-only apps.
+Generate a command id on the client, keep it when correlating progress, and do not
+interpret a lost response as proof that submission failed. Attachment copying may
+already have succeeded and worker acceptance may already have occurred. Chat HTTP
+does not implement an application-level transactional receipt store across upload
+and worker execution. Repeated file submissions are not an exactly-once upload
+protocol.
 
-`Application.max_upload_bytes` defaults to 64 MiB of combined attachment contents
-per request. The composed chat service passes this limit to its transactional copy;
-`copy_uploaded_files(..., max_total_bytes=...)` uses the same default independently.
-All declarative multipart endpoints also bound their actual incoming stream to this
-limit plus 1 MiB for fields, filenames and framing, before feeding it to the parser.
-They do not trust `Content-Length`; a crossing chunk is rejected with HTTP 413
-(`upload_too_large`) and partial spools are closed. A request within the envelope
-whose files exceed the content limit is rejected by chat with HTTP 422. There are
-at most 32 files per multipart request. Parsed uploads are closed after dispatch,
-including schema errors; copying removes partial files and never overwrites existing
-paths. Set a positive byte count to change the limit, or explicitly `None` to opt out
-of the byte limits (the file-count and parser field limits still apply). These limits
-are not a server-wide body policy: raw plugin routes and JSON requests are unaffected.
+An authenticated same-origin browser can submit this JavaScript after the hosting
+application has provisioned its credentials:
 
-Other client transports inject the host-owned `chat` service into their factory,
-then reuse `chat.ingress.submit(PromptRequest(...))`. Do not inspect voice state
-and submit directly: selection and acceptance must hold the same lock as voice
-startup, shutdown and binding changes. The operation returns `{"id": ..., "route":
-"text" | "realtime"}`; in voice mode the id is the voice turn id. HTTP contracts,
-authorization and per-client idempotent receipts remain owned by the caller.
-The local prompt endpoint still returns its client-generated id.
+```javascript
+const id = crypto.randomUUID();
+const response = await fetch("/api/v1/agent/prompt", {
+  method: "POST",
+  credentials: "same-origin",
+  headers: {"Content-Type": "application/json"},
+  body: JSON.stringify({id, prompt: "Summarize the current project."}),
+});
+const receipt = await response.json();
+if (!response.ok) throw new Error(receipt.error?.message || "Submission failed");
+// Keep receipt.id for correlation; read events/history for the actual result.
+```
 
-`ChatIngress` is also available from `the_framework.server.runtime.ingress` for
-non-HTTP applications. Construct it with a runtime and, optionally, the installed
-realtime service (controller and transition lock). Without voice it uses an
-optional `text_lock`, or its own lock. Share one ingress between transports.
-`PromptRequest.response_kind` selects the canonical kind of generated assistant
-messages and their streamed text events for that command. It is scoped to the
-turn (including steering), restored on completion or failure and absent from
-model API input. Realtime delegation uses `realtime_delegation`; spoken canonical
-transcripts retain `realtime`, allowing clients to distinguish both on replay.
+The starter additionally sends `X-Client-Instance` and connects its event socket
+with the matching `client_instance` query parameter. This tab identity routes
+explicit client media operations; it is **not** authentication. Reuse
+[`starter/ui/src/api.js`](../../starter/ui/src/api.js) and
+[`client-output.js`](../../starter/ui/src/client-output.js) when extending that UI.
 
-Successful voice-call creation also queues a canonical developer message of kind
-`realtime_mode`, announcing the start of realtime interaction. The same message
-is included in the voice model's initial context, reserving one initial-item
-slot. Shutdown and transport cleanup queue one matching end marker. Both carry
-a stable `voice_session_id` and `voice_state`; repeated delivery is idempotent.
-These markers remain hidden from the display projection, but are included in
-text context and later voice projections. Failed call creation emits no markers.
+Uploads are stored in the shared `BuildContext.data_root / "bucket"` tree, not
+inside the browser or one session's JSON. Chat creates attachment/copy-reference
+messages and vision inputs for supported decoded image files. It does not parse
+PDFs or Office documents. The user-facing file notice and developer path reference
+are ordered inputs to the worker. Attachments are rejected with `409 voice_active`
+while a call is active; stop voice first.
 
-`ExternalEventRequest.input_items` permits ordered canonical input without
-starting inference. Items are committed by the worker before dispatching the
-external event, even when its plugin binding has been removed. Realtime mode
-markers use this mechanism so disabling voice cannot discard an accepted end
-marker. Shutdown drains the worker only after final transport cleanup and marker
-submission; tool-initiated shutdown may queue these writes without waiting for
-its own command to finish.
+### Upload limits and failure
 
-Supervised server restarts prepare every open session before closing HTTP or
-WebSocket transports. Session services register `register_restart_hook()` callbacks;
-Realtime pauses input, finishes the current spoken turn, closes the call and drains
-canonical writes. A worker barrier then finishes pending conversation work. Local
-supervisors can POST `/api/v1/server/prepare-restart` (scope `server:write`) before
-replacing the server. The system plugin chooses recovery from the actual active client call at the
-completed-turn boundary, not the originating command type. It reconnects that
-work only through a ready call presenting the previous owner id. Agentic
-continuations wait during recovery; after 45 seconds without a bound delegation,
-the canonical text agent resumes instead. This fallback never opens a microphone.
+`Application.max_upload_bytes` defaults to 64 MiB **combined file contents** per
+request. Set a positive count or explicitly `None` to disable byte limits.
+Declarative multipart parsing also bounds the actual incoming stream to that
+limit plus 1 MiB of fields/filenames/framing, regardless of `Content-Length`.
+Crossing this envelope returns `413 upload_too_large`; file contents over the
+copy limit return chat's `422 invalid_attachment`. There are at most 32 files;
+parser field limits still apply with byte limits disabled.
 
-The starter's browser retains voice intent and the previous client call id in
-tab-local `sessionStorage`, never credentials or audio. WebSocket loss releases
-local media without clearing that intent. After reconnection, idle canonical
-status permits exactly one new call; explicit stop cancels recovery. Interface
-publication first POSTs `/api/v1/realtime/calls/current/suspend` with the owning
-call id, finishing and persisting its turn before reload. The replacement UI uses
-the same recovery path. A changed or unrelated call id cannot stop another client.
+Parsed uploads close even after validation errors. Failed copies remove partial
+files; successful copies never overwrite existing paths. Invalid supported image
+files are rejected and that copy batch is removed. These are not server-wide body
+limits: JSON and raw application routes need their own policy. File storage,
+publication and browser rendering are described under [Artifacts](artifacts.md).
 
-Voice accepts ordinary user prompts only: input items, suppressed prompts,
-custom roles/kinds and per-command reasoning overrides raise `ValueError` rather
-than silently losing text-only semantics. Voice submission failures also raise
-`ValueError`; callers choose their transport error representation. Cancellation
-and failures release the barrier. Attachment storage continues to hold this same
-barrier until its ordered text command is accepted.
+## Read and reconcile
 
-A feature that produces live context can contribute a factory through
-`the_framework.plugins.realtime.context.CONTEXT_FACTORY` in its server assembly.
-The factory receives the voice controller. Contexts implement `start(projection)`
-synchronously and optionally `ready()`, `flush()`, `handle_worker_output(output)`
-and `close()`; those optional hooks may be synchronous or awaitable. The controller
-calls them at its existing transport barriers. Each producer owns its state and
-must cancel its tasks in `close`; every producer gets cleanup even when another
-producer fails. Recovery prefixes may be declared as `recoverable_context_prefixes`.
-The memory and registry plugins are independent examples of this seam.
-A producer may declare `provider_name` to run only when that provider is selected
-in the voice projection's `providers` list. Selection combines the agent binding,
-realtime channel and application whitelist. Installed producers with no selected
-provider receive no delivery hooks; all producers still receive cleanup.
+| Request | Use |
+| --- | --- |
+| `GET /api/v1/session?limit=25&before=…` | Display-projected page of archived turns, `has_more` and `next_before`; limit 1–100 |
+| `GET /api/v1/status` | Worker/queue, context estimates, cache/quota measurements and server identity |
+| `GET /api/v1/config`, `PATCH /api/v1/config` | Canonical configuration; patch waits for the worker's applied result |
+| `GET /api/v1/state` | Plugin state projections, not arbitrary process memory |
+| `DELETE /api/v1/session` | Application-owned reset; returns 501 when no reset policy is installed |
 
-A plugin is a complete vertical application feature, rather than a tool palette.
-Installing or removing one changes startup composition and requires a server
-restart; changing its agent binding leaves its installed services and data intact.
-These changes are expected to be infrequent. While voice is active, a binding
-change closes the ephemeral call and clears pending context and producer tasks.
-The canonical worker owns transcription commits independently of the realtime
-binding: a final accepted transcript still persists if voice is disabled before
-its queued execution. It applies the binding and drains final voice turns before the
-server publishes `realtime_reconnect_requested` with the owning browser's client
-`call_id`. The starter and Harness renegotiate from a fresh canonical snapshot.
-Reconciliation runs outside the binding operation, so an agent tool can request
-its own binding change without waiting for itself to finish.
+Read [Sessions](sessions.md) for page/watermark semantics, [Context](context.md)
+for estimates, and [Extensions](extensions.md) for config/state schemas. One
+status timeout has a historical special response: HTTP 503 with a string `error`,
+not the ordinary structured error object. Clients should tolerate that explicitly.
 
-A manual stop cancels the client's intent to reconnect. Stale or foreign call IDs
-are ignored, and disabling the realtime binding ends voice without restarting it.
-Failed reconciliation reports an error rather than opening a call from uncertain
-history. Server shutdown cancels pending reconnect tasks. This is a full call
-replacement; no claim is made that an existing model can unsee provider context.
-The reconnect signal is transient control data, never a conversation item.
+### Canonical event socket
 
+`/api/v1/events` sends JSON **worker output envelopes**, not bare events:
 
-Keep this seam narrow: it supplies context, not another event bus or task runtime.
-Applications do not need a new controller subclass just to combine these plugins.
+```json
+{"type":"command_event","request_id":"client-id","command_id":"client-id","event":{"type":"agent.text.delta","item_id":"reply-id","kind":"message","channel":"output","part_index":0,"delta":"Hello","sequence":0}}
+```
 
+Other envelopes include `command_accepted`, `command_completed`, `command_failed`,
+`worker_status` and `subagent_event`. The typed vocabulary and commit boundary are
+in [Events](events.md). Read the command type before interpreting completion: a
+config command is not a completed conversational reply.
 
-Response waits use the same scheduler persistence, lock and worker queue.
-`create_wait(wait_json)` records a nonblocking reply/ACK deadline; `list_waits`,
-`get_wait` and `resolve_wait` inspect or resolve it. Optional alert occurrences
-start their ACK deadline at the alert time. A human prompt resolves at most one
-next-reply wait without an additional agent turn; native ACK/timeout dispatches a
-stable queue command. Silence is never consent or task completion. Device receipts
-and late responses remain inspectable. There is no semantic reply classifier or
-automatic urgency policy. The plugin instructions document the full contract.
+The canonical socket is a live subscription, **not a replay log**. A runtime
+subscriber queue holds 512 outputs; overflow removes the subscriber and closes
+its stream rather than silently delivering an incomplete live feed. The transport
+accepts one primary event connection per session; a second primary is rejected
+with 1013. Read-only preview connections are distinct. This limit does not prohibit
+independent sessions or the separate paired-client transport.
 
-`SchedulerService.native_alerts()` is a read-only seven-day projection of known
-next wake occurrences, active task reminders and explicit ACK alerts. It never
-moves recurrence to clients or changes task/wake state. Truncation is explicit;
-clients must not replace a complete local schedule with a partial snapshot.
-Delivery adapters authenticate device receipts and call `wait_call("receipt", ...)`;
-the Framework does not select a mobile push vendor or assume client connectivity.
+On connection/reconnection, fetch history and status, merge by item id, discard
+transient provider/specialist/caption state and reconstruct the current UI. Do not
+append a delta after a canonical item has replaced its provisional text. The
+starter opens the socket before fetching snapshots and reconciles again after
+prompt completion. It implements exponential reconnect backoff, not event replay.
+See the [client integration guide](../guides/client-integration.md).
 
----
+`/api/v1/application` is the exclusive desktop capability bridge, not the chat
+stream. It accepts only a primary role and executes application-owned operations;
+an ordinary web/mobile client must not claim that bridge. [Hosting](hosting.md)
+describes its correlation, cancellation and execution boundary.
 
-[Reference index](README.md) · [Documentation paths](../README.md)
+## Reuse ingress from another transport
+
+Inject the session-scoped `chat` service and call
+`await chat.ingress.submit(PromptRequest(...))`. `ChatIngress` is also importable
+from `the_framework.server.runtime.ingress` for explicit non-HTTP assembly. Share
+one instance across transports, with the installed voice service or a shared
+`text_lock`. Authentication, receipt persistence and wire errors remain the
+transport owner's responsibility.
+
+Ingress selects text or active voice under the **same lock** as voice transitions.
+It returns `{id, route: "text" | "realtime"}`; voice returns the voice turn id,
+whereas the local HTTP endpoint preserves its submitted client id. Voice accepts
+ordinary user text only: structured input, suppressed prompts, custom role/kind,
+response kind or per-command reasoning overrides raise `ValueError` rather than
+silently losing semantics. HTTP maps voice submission failure to 409.
+
+For text commands, `PromptRequest.response_kind` labels generated messages and
+text events for that turn, including steering; it is restored after completion
+or failure and never sent as an extra model field. Realtime delegates use
+`realtime_delegation`; canonical spoken transcripts use `realtime`.
+
+## Planned restart signals
+
+`POST /api/v1/server/prepare-restart` requires the `server:write` authorization
+requirement. It prepares every open session before transport shutdown: service
+restart hooks run, then the worker barrier drains conversation work. A supervisor
+still owns actual process replacement; preparing is not restarting.
+
+Clients receive transient `server_restarting` with `instance_id`/`phase`, or
+`server_restart_failed` with an error if preparation/restart fails. Status exposes
+`server: {instance_id, phase}` after the worker answers. Compare process identities:
+a socket reconnect alone does not prove a new server. Voice has additional
+post-drain signals and explicit client-owned recovery; see [Realtime](realtime.md).
+
+## Source and verification
+
+- `server/api/{chat,agent,transport,uploads}.py`, `server/runtime/ingress.py`:
+  acceptance, file handling and locking.
+- `server/runtime/session.py`: live queue, overflow and command correlation.
+- `tests/general/test_chat_ingress.py`, `test_uploads.py`,
+  `test_canonical_transport_presence.py`, `test_server_restart_status.py`.
+- The starter's `main.jsx`/`session.js` are actual display/reconnect consumers,
+  not a second owner of canonical history.

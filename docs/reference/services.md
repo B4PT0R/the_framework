@@ -1,236 +1,210 @@
-# HTTP services and lifecycle
+# Services, dependency injection and HTTP
 
-[Documentation](../README.md) / [Reference](README.md)
+Server services own resources shared by HTTP, workers through the application
+bridge, or other services. Declare them through `ServerExtension`: the framework
+constructs the dependency graph, installs declared transports and owns lifespan.
+Do not register routes by mutating FastAPI during plugin startup.
 
-A backend service gives a feature a long-lived resource or an HTTP API. The
-Framework constructs services from declared dependencies, starts them in order
-and exposes their declared routes with validated inputs and outputs.
+For durable domain storage used by both tools and HTTP, read the
+[Notebook implementation](../../examples/notebook/README.md). This page uses the
+smaller, existing [counter service](../../examples/minimal_agent_app.py) to make
+HTTP behavior easy to verify. Despite that file's historical name, it is
+**service-only**, not a model-backed agent application. Its hardcoded bearer token
+is an executable test credential, not a production authentication design; its
+in-memory counter is neither durable nor a concurrency-safe database.
 
-Begin with the greeting service below, then add state and lifecycle as needed.
-For a tool that only runs inside the agent, follow
-[Your first plugin](../guides/first-plugin.md).
+## A complete composition and request test
 
-## On this page
-
-- [The small path](#the-small-path)
-- [Adding state and lifecycle](#adding-state-and-lifecycle)
-- [Model-based endpoint contracts](#model-based-endpoint-contracts)
-- [Service lifecycle](#service-lifecycle)
-
-## The small path
-
-A complete HTTP service can be assembled without manipulating FastAPI or a
-lifecycle callback. This deliberately public greeting is a small local example,
-not an authentication policy for a private agent application:
+The example imports the counter's strict `Increment`/`CounterValue` models,
+authenticated decorated method and security policy. A second component receives
+the same counter by dependency injection and exposes a scoped read endpoint:
 
 ```python
-from the_framework import (
-    Application,
-    ServerExtension,
-    Plugin,
-    endpoint,
-)
+from fastapi.testclient import TestClient
+from the_framework import Application, ServerExtension, endpoint
+from examples.minimal_agent_app import BearerSecurity, CounterService
 
+lifecycle = []
 
-@endpoint("get", "/api/v1/greeting", authenticated=False)
-def greeting() -> dict[str, str]:
-    return {"message": "hello"}
+class CounterReadApi:
+    def __init__(self, context, counter):
+        self.owner = context.application
+        self.counter = counter
 
+    def start(self):
+        assert self.counter.running
+        lifecycle.append("reader started")
+
+    def stop(self):
+        assert self.counter.running  # dependency stops after its consumer
+        lifecycle.append("reader stopped")
+
+    @endpoint("get", "/api/v1/counter", context="ctx",
+              authorization={"scope": "counter:write"})
+    def read(self, ctx):
+        assert ctx.application is self.owner
+        return {"value": self.counter.value, "reader": ctx.principal.id}
 
 application = Application(
-    name="Example",
-    version="1.0",
-    plugins=(Plugin(name="greeting", server_extensions=ServerExtension(
-        name="greeting_api", endpoints=(greeting,),
-    )),),
+    name="Counter API", version="1", surfaces=(), security=BearerSecurity(),
+    server_extensions=(
+        ServerExtension(name="reader", service_factory=CounterReadApi),
+        ServerExtension(name="counter", service_factory=CounterService),
+    ),
 )
-
 app = application.build()
+headers = {"Authorization": "Bearer example-secret"}
+with TestClient(app) as client:
+    assert application.service_graph.started == ["counter", "reader"]
+    path = "/api/v1/counter/increment"
+    assert client.post(path, json={"amount": 2}).status_code == 401
+    assert client.post(path, headers=headers, json={"amount": 0}).status_code == 422
+    assert client.post(path, headers=headers, json={"amount": "2"}).status_code == 422
+    reply = client.post(path, headers=headers, json={"amount": 2})
+    assert reply.status_code == 200 and reply.json() == {"value": 2}
+    assert client.get("/api/v1/counter", headers=headers).json() == {
+        "value": 2, "reader": "example-client",
+    }
+    operation = client.get("/openapi.json").json()["paths"][path]["post"]
+    assert "requestBody" in operation
+assert lifecycle == ["reader started", "reader stopped"]
 ```
 
-The declaration is immutable. `Application.build()` validates the complete
-graph before installing routes: duplicate names and paths, missing or cyclic
-dependencies, malformed JSON schemas, missing security policy and duplicate
-mounts fail immediately with a precise composition error.
+This exercises ASGI authentication, request/model validation, handler context,
+response validation, dependency order and shutdown. It does not open a TCP
+listener or test identity provisioning. The Notebook tests additionally verify
+SQLite reopen, session separation and calls from actual subprocess workers.
 
-Structured declarations and runtime records use `modict`. Construct them with
-named fields or a mapping; runtime declarations can contain non-JSON references
-without converting or copying those objects. Browser execution handles live in
-attributes outside its configuration mapping. For a coordinated change, rebuild
-the complete declaration, for example
-`Application({**application, "plugins": plugins, "server_extensions": server_extensions})`:
-validation then sees the final state, not intermediate per-key assignments.
+## ServerExtension fields
 
-## Adding state and lifecycle
+| Field | Behavior |
+| --- | --- |
+| `name` | Unique service identity; letters/numbers/underscores, except reserved `context`. |
+| `service` | Existing object, used as supplied, not cloned. Mutually exclusive with factory. |
+| `service_factory` | Sync class/callable or `module:factory` reference, resolved during build. |
+| `scope` | `application` (default) shared service, or `session` per conversation. |
+| `requires_services`, `optional_services` | Named dependencies and additional ordering constraints. |
+| `endpoints`, `websockets` | `None` discovers on the service; `()` hides that surface; explicit tuple selects sources. |
+| `critical` | Defaults true; false permits a runtime factory/start failure to remain visible without aborting by itself. |
+| `start`, `stop`, `health` | Optional explicit `(service, service_context)` adapters, sync or async. |
+| `middleware` | Tuple of `(middleware_class, options)` declarations. |
+| `mounts` | Tuple of `(path, asgi_app, name_or_none)` declarations. Collisions are checked. |
 
-HTTP declarations belong to the server: import `endpoint` and `Endpoint` from
-`the_framework.server`, or `endpoint` from `the_framework`. Decorated functions
-and service methods are discovered directly by `ServerExtension`; no agent
-registry or extension activation is required. `AgentExtension` contributes only
-to the worker. Existing services that share an implementation with an agent
-extension can still be explicit endpoint sources, without loading that extension.
+Without a service/factory, an extension can expose explicit endpoint or socket
+sources. Only decorated methods/declarations are discovered; ordinary methods
+are not endpoints. Conventional socket discovery calls
+`service.websocket_declarations()`; see [conversation transports](conversation.md).
 
-### Model-based endpoint contracts
+## Factory injection and scope
 
-Without an explicit `request`, `@endpoint` uses the handler's signature and
-docstring schema: supported annotations validate JSON inputs and coerce path
-and query values, parameters with defaults remain optional, and injected
-`context` stays outside the payload. An argument-free handler needs no empty
-request schema. For example:
+Factory **parameter names** are service identities. A required named parameter
+is a required dependency; one with a default is optional. `context` receives the
+BuildContext instead. Keyword-only parameters work; positional-only parameters
+and `*args` do not. A factory's `**kwargs` receives declared service dependencies,
+not every BuildContext input. Additional explicit dependency names are used for
+ordering but passed only if accepted by the signature or `**kwargs`.
 
-```python
-@endpoint("get", "/items/{item_id}", authenticated=False)
-def item(item_id: int, limit: int = 25):
-    return {"item_id": item_id, "limit": limit}
-```
+String factories defer server imports until build, then undergo the same
+signature analysis. Factories must return synchronously; asynchronous acquisition
+belongs in `start()`. Optional absent dependencies are not passed, preserving the
+Python default. A present optional dependency participates in ordering and must
+start successfully for its consumer to start.
 
-Explicit request/response schemas and models take precedence. Use them for
-additional constraints or types outside signature inference. `request={}` is
-an explicit permissive schema for a handler accepting dynamic keyword inputs.
-Response schemas documented in YAML are used when no explicit response is given.
+Constructor injection sees constructed instances **before startup**. Do not use
+`context.services` to find them in a constructor: its read-only live view contains
+only successfully started services. Use it later in deferred callbacks where
+appropriate. Fixed paths/options are explicit `context.require(...)` and
+`context.plugin(...)` reads, never guessed from parameter names.
 
-`@endpoint("post", "/route", request=RequestModel, response=ReplyModel)` accepts
-`modict` classes as well as explicit JSON Schema mappings. Request fields are
-passed as handler keyword arguments after the usual authentication, transport
-parsing and validation. Model construction supplies defaults and applies native
-modict validators. Response validation also constructs the declared model.
+Application services may depend only on shared services. Session services can
+consume shared services and services from that session, never another session.
+Inject `runtime` into a **session-scoped** service when it needs worker access.
+Use `runtime.service(name)` for scoped operational lookup; the root
+`application.service("runtime")` is invalid. On a session HTTP route,
+`ctx.request.app.state.session` selects the controller explicitly. There is no
+global current-session value. [Application ownership](application.md) explains
+the root/default-session distinction.
 
-The OpenAPI adapter projects field hints, requiredness and extra-field policy;
-it supports JSON scalars, literals, unions, lists, string-keyed dictionaries and
-nested models. It does not execute default factories during registration or
-attempt to translate arbitrary Python validators. Such constraints remain enforced
-at runtime but are not advertised as JSON Schema constraints. Unsupported or
-recursive field hints fail registration and require an explicit schema. Explicit
-schemas remain unchanged and are preferable for detailed wire-level constraints.
+For a dependency supplied by another plugin, declare both the service name and
+a versioned [capability requirement](plugins.md#capabilities-are-contracts-services-are-objects).
+Names/graph/capability validation happens before startup.
 
-See `examples/minimal_agent_app.py` for a complete authenticated example. No
-Pydantic DTO, model serialization layer or second validation implementation is
-introduced; model metadata is adapted only at the HTTP/OpenAPI boundary.
+## Lifecycle and failure
 
-### Service lifecycle
+`start()` and `stop()` may be synchronous or asynchronous. Explicit adapters take
+precedence over conventional methods. A decorated HTTP method named `start`,
+`stop` or `health` is not called as a lifecycle method; use an adapter if needed.
 
-Use constructor callbacks for permanent service relationships and the existing
-`ServerExtension.start`/`stop` adapters for lifecycle-specific integration. A callback
-such as a restart barrier is not itself a new service or manager. Keep an absent
-capability absent: wrapping a missing restart callback would falsely advertise
-restart support and fail only when invoked.
+1. All factories run during build, in dependency order.
+2. Lifespan starts services in that order and publishes each in the live context
+   only after successful `start()`.
+3. On critical startup failure or cancellation, already started services stop in
+   reverse order. A failing service must clean up its **own partial start**.
+4. Shutdown tries every started service in reverse order, removes each lookup
+   even if stop fails, and preserves multiple failures in a BaseExceptionGroup.
 
-An ordinary service only needs conventional `start()` and `stop()` methods:
+A factory with `critical=False` may fail without exposing its routes, sockets,
+mounts or middleware. Its error is retained in health. Failed dependencies also
+make consumers unavailable; a critical consumer still aborts. Optional startup
+failure similarly leaves the service unavailable. Declaration errors, missing
+services, incompatible signatures and async factories are composition errors,
+not optional degradation. Rebuild to retry construction; restarting the same
+graph does not rerun a failed factory. Factory-body resource acquisition is the
+factory's cleanup responsibility.
 
-```python
-library = MediaLibrary(...)
+`await application.service_graph.health()` reports running/stopped/error/degraded
+and optional probe details. A running probe raising, or returning a dict with
+`status` of `error`, `degraded` or `unhealthy`, is degraded. `critical` determines
+whether degraded service health affects aggregate health; it is not an automatic
+restart policy. The health API can apply an application projection.
 
-media = ServerExtension(
-    name="media",
-    service=library,
-    endpoints=(browse_media, stream_media),
-    requires_services=("runtime",),
-)
-```
+Services tied to canonical state may register suspend/resume callbacks using
+`runtime.register_reset_hooks()`. These are separate from server lifecycle;
+see [reset coordination](hosting.md#reset-coordination).
 
-Services start in dependency order and stop in exact reverse order. A partial
-startup is rolled back, including cancellation; startup and cleanup failures
-are both preserved when rollback fails. A service must release any resources
-acquired by its own unsuccessful `start()`. Services with `critical=False` can
-fail during factory execution or startup without taking down the application.
-The graph health report retains the error. A failed factory contributes no routes,
-WebSockets, mounts or middleware; its dependents are unavailable too, and a
-critical dependent still aborts composition/startup. An optional dependency that
-is installed participates in this ordering; its default is used only when absent.
-Construction failures are retried by building a new application, not by restarting
-the same service graph. Factories must clean up resources acquired before raising.
-Invalid declarations, missing dependencies, incompatible factory signatures and
-asynchronous factories remain composition errors regardless of `critical`.
-Explicit `start`, `stop` and `health` adapters exist for advanced
-or third-party services, but are not required by the common path.
-An `@endpoint` method named `start` or `stop` is an HTTP handler, not a
-lifecycle hook; provide an explicit adapter if that service also needs startup
-or shutdown behavior.
+## HTTP request and response contracts
 
-A service that depends on the canonical worker may also need to pause while
-that worker's persisted session is reset. Register a `suspend`/`resume` pair on
-`SessionRuntime.register_reset_hooks()` when constructing that service.
-Normal server startup and shutdown still belong to `ServerExtension` lifecycle;
-reset hooks run only around a session reset, suspend in reverse registration
-order, and resume after either a successful reset or restoration of the previous
-session.
+Import `endpoint` from `the_framework` or `the_framework.server`. Its arguments
+are `method`, `path`, and keyword-only `request`, `response`, `authenticated`,
+`authorization`, `context`, `status_code`, `request_encoding`.
 
-When construction depends on other declared services, use a synchronous factory
-or a service class. Its named parameters declare the services to inject: a
-parameter without a default is required, and one with a default is optional.
-Construction happens before startup, while the live `ServiceContext` receives
-each instance only after its successful start:
+- Authentication defaults **true**. An authenticated endpoint without a security
+  policy fails registration. `authenticated=False` deliberately bypasses policy
+  authentication and authorization for that route.
+- `request`/`response` accept JSON Schema mappings or `modict` model classes.
+  Without explicit schemas, supported signature annotations and YAML docstring
+  schemas provide inference. Handler defaults are optional HTTP inputs (unlike
+  strict model tool schemas). `request={}` explicitly permits dynamic payloads.
+- Model request validation constructs the model (validators/defaults included),
+  then passes its fields as keyword arguments, not as one DTO parameter.
+  Response model construction/validation is enabled by default.
+- `context="ctx"` removes that parameter from the wire schema and injects
+  `EndpointContext(request, principal, application)`. The application is global;
+  principal is None on a public route.
+- `GET`, `DELETE`, `HEAD` parse query values; other methods parse JSON by default.
+  Repeated query values become lists for declared array fields. Path fields are
+  coerced and merged; repeating a path field in query/body is rejected.
+- `request_encoding="multipart"` parses form/files under the application upload
+  ceiling. It is not an arbitrary-body streaming endpoint; see [artifacts](artifacts.md).
+- A returned Starlette `Response` bypasses JSON result validation. `None` with
+  status 204/205/304 produces an empty response. Ordinary values become JSON.
 
-```python
-realtime = ServerExtension(
-    name="realtime",
-    service_factory=lambda runtime: RealtimeController(runtime),
-)
-```
+OpenAPI adapts model field types, defaults/requiredness and extra-field policy.
+It supports scalar JSON, literals, unions, lists, string-keyed dicts and nested
+models. Arbitrary Python validators are enforced at runtime but not translated
+into schema constraints. Default factories are not executed at registration.
+Unsupported/recursive hints require explicit schemas; models are not Pydantic
+wrappers and the adapter is not a general Python type serializer.
 
-For example, `service_factory=ConversationApi` can use a constructor
-`__init__(self, runtime, realtime=None)` without repeating either dependency.
-A present optional service starts before its consumer; an absent one is not
-passed to the factory, preserving the parameter's default. This is a
-service-name dependency, distinct from a plugin's versioned public capability
-dependency. A parameter named `context` receives this build's `BuildContext`,
-not a service. Other parameters still name services; fixed inputs are never
-injected by guessing their names or passed implicitly to `**services`.
-The name `context` is reserved and cannot identify a service.
+### Errors
 
-A factory or constructor can therefore read paths and options without an enclosing
-factory or a closure:
+`HttpError(status_code, code, message, details=..., retryable=False)` exposes a
+controlled `{"error": {"code", "message", "retryable", ...}}` response. Do not put
+secrets in it. Standard failures include authentication 401, authorization 403,
+malformed JSON 400, unsupported content type 415, invalid input 422, multipart
+ceiling 413 and invalid endpoint result 500. Upstream exceptions recognized by
+the registry become retryable 502 errors; unexpected failures are logged with a
+correlation id and returned as generic 500 errors, not raw tracebacks.
 
-```python
-class WeatherService:
-    def __init__(self, context, runtime):
-        self.root = context.require("data_root")
-        self.options = context.plugin("weather")
-        self.runtime = runtime
-
-weather = Plugin(name="weather", server_extensions=ServerExtension(
-    name="weather", scope="session", service_factory=WeatherService,
-))
-```
-
-Use `service_factory="your_app.weather.server:WeatherService"` to defer server
-imports until assembly. Construction and worker compilation do not import that
-module. At server build time, the framework resolves the reference and infers its
-service dependencies before ordering construction. The factory must be synchronous;
-its returned service owns the usual `start`, `stop` and `health` methods.
-
-Use `requires_services` and `optional_services` for additional ordering
-constraints, or to make an input with a default mandatory. Additional names are
-not passed to the factory unless it accepts them as named parameters or through
-`**services`. Positional-only and `*args` factories are rejected: injection uses
-service names, including keyword-only parameters.
-
-The same dependency injection applies to a `ServerExtension` returned by a plugin's
-server runtime factory. A plugin requiring another plugin's service must also
-declare the corresponding versioned public `CapabilityRequirement`; the
-compiler rejects undeclared cross-plugin service edges, and the capability
-dependency determines startup order. A required dependency cannot be declared
-without its provider; an optional one can be absent. Installed plugin runtimes are fixed for the server
-lifetime; removing a provider requires updating the startup declaration and
-restarting the server.
-
-A service's decorated `@endpoint` methods and `websocket_declarations()` are
-normally discovered on the constructed instance. This is the same rule for a
-direct service and one returned by a factory; undecorated methods are never HTTP
-routes. Omitting `endpoints` or `websockets` (their default is `None`) enables this
-convention. Use `endpoints=()` / `websockets=()` to keep that surface private, or an
-explicit tuple to expose selected declarations or another object. Authentication,
-route collisions and schema validation still apply before startup.
-There is no string discovery flag or separate pre-build step.
-
-Runtime lookup goes through the single application context:
-
-```python
-runtime = app.state.application.service("runtime")
-```
-
-Domain code should not create additional untyped `app.state` attributes.
-
----
-
-[Reference index](README.md) · [Documentation paths](../README.md)
+Sources: `server/composition/{declarations,application,services}.py`;
+`server/api/{declarations,endpoints,uploads}.py`, `utils/model_schema.py`.
