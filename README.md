@@ -1,366 +1,81 @@
 # The Framework
 
-The Framework is a Python library for building applications around a persistent
-AI agent. It supplies the parts that are easy to get wrong repeatedly: one
-durable conversation, a supervised agent worker, plugin and specialist-agent
-lifecycle, authenticated HTTP/WebSocket connections, and versioned web
-interfaces. You supply the agent's identity, instructions, application
-services, security policy and user experience.
+Build an application around an agent whose conversation can outlive a browser
+window, a worker process and changes to the application itself.
 
-You can use it for a local desktop companion, a private agent with tools and
-memory, or another agent application whose browser and backend need to survive
-worker restarts without losing the conversation. It is a library, not a hosted
-agent service. The included [starter](https://github.com/B4PT0R/the_framework/blob/main/starter/README.md) is an editable
-application that shows the pieces working together; you are free to build a
-different frontend or none at all.
+The Framework is a Python library for **persistent, extensible agent
+applications**. It brings together a durable conversation, supervised execution,
+modular features and authenticated clients. Your application supplies the agent’s
+identity, instructions, access policy and user experience.
 
-The PyPI distribution is named `b4pt0r-the-framework`. Python code imports
-`the_framework`, and the template command is `the-framework`. Python 3.12 or
-newer is required. The examples below describe the 0.3 composition API in this
-checkout. Releases can differ during this experimental phase; use the checkout's
-editable-install instructions below to try this exact API.
+The intention is to make an agent application a coherent, evolvable system—not
+a collection of scripts that loses its place whenever its interface changes.
+The foundation should carry the continuity and lifecycle machinery, while the
+application remains free to choose what its agent is and what it may do.
 
-To install the published package in a virtual environment:
+## Start at the level you need
+
+| Your question | Start here |
+| --- | --- |
+| Why does this project exist? Is it for me? | [Intention and boundaries](docs/explanation/intention.md) |
+| How do the parts fit, and why are they separate? | [Architecture](docs/explanation/architecture.md) |
+| What survives a restart or context compaction? | [Continuity](docs/explanation/continuity.md) |
+| Can I try it and make my own application? | [Your first application](docs/guides/first-application.md) |
+| How do I add a feature? | [Your first plugin](docs/guides/first-plugin.md) |
+| I need a precise API or runtime contract | [Technical reference](docs/reference/README.md) |
+
+[All documentation and reading paths →](docs/README.md)
+
+## The main pieces, in plain terms
+
+- **Application** assembles the system and owns its server lifecycle.
+- **AgentSpec** describes an agent; a **Session** remembers its conversation and settings.
+- A supervised **worker** executes agent turns and writes that session.
+- A **Plugin** owns a feature, from tools to server services when needed.
+- A **client surface** presents the conversation; it is not the conversation’s owner.
+
+A single application can host independent conversations. Private specialist
+agents can help without becoming authors of the main conversation. Text chat
+is assembled by the host; voice, memory, scheduling and browser control are
+optional features rather than obligations for every application.
+
+## Try the editable starter
+
+Requires **Python 3.12+**, **uv**, **Node.js/npm**, and the system libraries needed
+by Playwright Chromium. In a Python environment of your choice:
 
 ```sh
-python3 -m venv .venv
-. .venv/bin/activate
 python -m pip install b4pt0r-the-framework
+the-framework bootstrap --code-dir /path/to/my-agent-code --data-dir /path/to/my-agent-data --run
 ```
 
-The Python wheel includes the framework and editable starter template. The
-bootstrap CLI prepares its Python environment, browser UI and Chromium runtime;
-these generated dependencies are not bundled in the wheel.
-
-## What an application is made of
-
-| Part | What it does | What your application decides |
-| --- | --- | --- |
-| `Application` | Validates and assembles one application | Name, version, plugins, server services, security and client surfaces |
-| `AgentSpec` | Describes reusable agent identity and behavior | Instructions, model configuration, tools and resources |
-| `Session` | Keeps canonical conversation, settings, bindings and history policy | In-memory or file-backed storage; history across tasks |
-| `AgentExtension` | Contributes to one agent | Tools, instructions, providers, hooks, configuration and state |
-| `Plugin` | Owns one modular feature, including its agent binding, server runtime and dependencies | Which capabilities exist and when they are exposed |
-| `ServerExtension` / `@endpoint` | Describes advanced server components and validated API routes inside a plugin | Service dependencies, route schemas and authorization |
-| `ClientSurface` | Builds, previews, publishes and rolls back an editable web UI | Source, build command, routes and release policy |
-
-Bundled plugins are imported as complete features:
-
-```python
-from the_framework.plugins.scheduler import SCHEDULER
-from the_framework.plugins.system import SYSTEM
-
-# In your Application:
-# plugins=(SCHEDULER, SYSTEM)
-```
-
-Their declarations include server wiring and lifecycle; applications supply
-storage inputs and restart policy rather than reconstruct those integrations.
-
-The default is one durable conversation. Applications can also host independent
-concurrent sessions, each with its own supervised worker, history, configuration,
-extension state and plugin bindings. Private specialist agents use the same agent
-and session primitives; they return results and transient activity only to their
-caller and cannot edit its history directly.
-The server supervises workers and owns authentication and client transport;
-workers own inference and their own sessions; a browser client owns its local
-interface and device/media execution. This separation lets a client reconnect
-or refresh while the main conversation remains intact.
-
-Public streams expose typed Framework events, with backend signals converted or
-filtered at their adapter boundary. Plugins own their feature-specific events;
-the worker core contains only generic lifecycle events. See the
-[public event contract](docs/framework.md#public-event-contract).
-
-To implement agent-side tools and hooks, subclass `AgentExtension` from
-`the_framework.agent` and pass that class as `Plugin(agent_extension=...)`. A plugin may
-have agent-side behavior, server-side behavior, or both. Every plugin declared
-at startup keeps its server routes and services until shutdown. Its binding to
-the agent can change live: turning off tools does not remove routes that a
-settings screen or safety control still uses. To remove the runtime, remove
-the plugin from the startup declaration and restart the server.
-Specialists, durable task delivery and versioned public capabilities are
-available when a simple plugin is not enough. More detail is in the
-[framework guide](https://github.com/B4PT0R/the_framework/blob/main/docs/framework.md).
-
-## Compose conversation features without rebuilding their transport
-
-`build()` includes text submission, atomic file attachments and the
-text/voice mode barrier as host services. No chat plugin is needed; `REALTIME`
-optionally adds voice:
-
-```python
-from the_framework.plugins.memory import MEMORY
-from the_framework.plugins.registry import REGISTRY
-from the_framework.plugins.realtime import REALTIME
-
-# In your Application:
-# plugins=(MEMORY, REGISTRY, REALTIME)
-# build() assembles the supervised runtime from BuildContext(data_root=...).
-```
-
-When voice is installed, memory and registry contribute their own live context
-producers. Voice owns delivery and cleanup, without knowing which application
-or feature produced the context. Without voice, those contributions create no
-live producers or background tasks. An application can replace its memory
-curation or voice instructions through the plugins' agent extensions without
-rewriting the transport. The starter uses these same public features.
-
-The neutral The Harness application is the canonical, more complete consumer:
-it combines these declarations with a persistent browser, desktop lifecycle,
-application-specific instructions and a user interface. Its needs are evidence
-for useful primitives, not a reason to add application policy to the library.
-
-## Assemble the conversation
-
-Declare one global `Application` in your application module. It owns the running
-server and its sessions; `server.state.application` is this same object. Its ASGI
-lifespan activates `Application.current()` and releases it on shutdown. Importing
-or compiling the object in a worker starts no server. Each concurrent conversation
-keeps an explicit `SessionRuntime` and its own scoped services.
-
-The editable starter's server uses one assembly operation:
-
-```python
-from the_framework import BuildContext
-
-app = application.build(
-    "my_app.application:application",
-    BuildContext(data_root=data_dir),
-    security=security,
-    handshake=security.handshake,
-)
-```
-
-It constructs the default session worker supervisor, runtime, authenticated HTTP API and
-WebSocket transports, and derives storage paths from the data directory. Supply
-your own access policy; the framework never installs an implicit allow-all policy.
-Advanced applications can customize runtime construction, transport handshakes,
-projections and extra server extensions through this same operation.
-Plugin-specific construction options live in `BuildContext(plugins={...})`;
-services are injected into factories and exposed separately in the read-only
-`context.services` view after startup. Inputs stay fixed, and feature contributions
-are sealed before services are constructed.
-
-## Try a working application
-
-Use a Python environment of your choice and install Node.js/npm. From this
-checkout run:
-
-```sh
-python -m pip install -e ".[dev]"
-npm --prefix starter/ui ci
-npm --prefix starter/ui run build
-PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright-browsers" python -m playwright install chromium
-PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright-browsers" python -m starter
-```
-
-Playwright Chromium also needs its system libraries; on Linux,
-`python -m playwright install --with-deps chromium` can install them if you have
-the required system permissions. The starter opens a local Chromium window with
-chat, settings, file attachments and an editable React interface. Its server
-listens on loopback and authenticates the browser. You can inspect the UI and
-settings without model credentials; generating replies, using hosted search or
-embeddings, and voice features require a usable account/capabilities through
-`codex-backend-sdk`. The [starter guide](https://github.com/B4PT0R/the_framework/blob/main/starter/README.md) covers sign-in,
-data storage and feature-by-feature behavior.
-
-To make an independent, editable copy, run `the-framework bootstrap` in the
-environment where you installed the package. From this checkout, use that same
-environment:
-
-```sh
-the-framework bootstrap --code-dir /path/to/my-agent-code --data-dir /path/to/my-agent-data
-```
-
-Both directories must be empty or absent, distinct and non-overlapping. Install
-`uv` and Node.js/npm first; missing prerequisites are reported before creation.
-The command copies editable source, creates a `pyproject.toml` and a private
-`.venv`, installs Chromium and UI dependencies, then builds the interface.
-It pins the installed framework version; from a development checkout it links
-that checkout explicitly in the generated manifest.
-
-Start it with:
-
-```sh
-the-framework run --code-dir /path/to/my-agent-code
-```
-
-Add `--run` to `bootstrap` to create, prepare and start in one command. Use
-`bootstrap --no-prepare` for source only, or `the-framework prepare --code-dir ...`
-to resume or refresh preparation without overwriting the app. `run` checks the
-real Python environment and Chromium before installing anything, reuses successful
-npm stages and rebuilds changed UI sources. It accepts `--port`,
-`--headless` and `--no-browser`. Commands also work as `python -m the_framework`;
-inside the generated project, `uv run the-framework run` uses its own environment.
-
-A simple agent application needs no surface declaration: its editable `ui/`
-directory beside the application module is the standard desktop client. Use
-`surfaces=()` for no UI, or explicit `ClientSurface` declarations for custom builds
-and multiple device interfaces.
-
-Change `starter/application.py` and `starter/instructions.md` first;
-`starter/ui/` contains the editable interface. Keep the data directory private:
-it holds conversation history, configuration, the file bucket, memory and browser
-profiles. Backend account sign-in and optional capabilities follow the starter
-guide; preparation does not make an inference request or install system packages.
-
-## A small agent and a plugin
-
-The generated starter already supplies the authenticated server, desktop lifecycle
-and editable UI. Its `starter/application.py` is where you choose agent recipes
-and installed features. A minimal declaration looks like this:
-
-```python
-from datetime import datetime, timezone
-from the_framework import Application, AgentSpec, AgentExtension, Plugin, tool
-
-
-class Clock(AgentExtension):
-    @tool
-    def now(self):
-        """Return the current time in UTC."""
-        return datetime.now(timezone.utc).isoformat()
-
-
-application = Application(
-    name="My assistant",
-    version="0.1.0",
-    agents=(AgentSpec(name="assistant", instructions="Help the user with their work."),),
-    plugins=(Plugin(name="clock", agent_extension=Clock),),
-)
-```
-
-Start it with `the-framework run --code-dir /path/to/my-agent-code`. One declared
-agent is selected automatically. Its default conversation is persisted, and the
-neighboring `ui/` is the desktop surface; neither choice requires extra wiring.
-The full starter includes browser, shell, memory and voice features that you may
-keep alongside your own plugins.
-
-Use `Session()` or `Session.open(path)` when constructing an agent directly;
-ordinary hosted applications let Application own session construction. See the
-[composition guide](docs/framework.md#agent-construction) for advanced recipes,
-resource factories and specialist invocation policies.
-
-## A service-only application
-
-Save the following as `example.py`. It is a complete HTTP application; the
-repository also includes an [expanded version](https://github.com/B4PT0R/the_framework/blob/main/examples/minimal_agent_app.py)
-with `modict` request/response models and a health endpoint.
-
-```python
-from the_framework import Application, Plugin, ServerExtension, endpoint
-from the_framework.server.api.endpoints import Principal
-
-
-class BearerSecurity:
-    async def authenticate(self, request):
-        if request.headers.get("authorization") != "Bearer example-secret":
-            return None
-        return Principal(id="example-client", scopes=frozenset({"counter:write"}))
-
-    async def authorize(self, principal, requirement, request):
-        return requirement is None or requirement.get("scope") in principal.scopes
-
-
-class Counter:
-    def __init__(self):
-        self.value = 0
-        self.running = False
-
-    async def start(self):
-        self.running = True
-
-    async def stop(self):
-        self.running = False
-
-    @endpoint(
-        "post", "/api/v1/counter/increment",
-        request={"type": "object", "properties": {"amount": {"type": "integer"}},
-                 "required": ["amount"], "additionalProperties": False},
-        response={"type": "object", "properties": {"value": {"type": "integer"}},
-                  "required": ["value"]},
-        authorization={"scope": "counter:write"},
-    )
-    def increment(self, amount: int):
-        """Increment the application counter."""
-        self.value += amount
-        return {"value": self.value}
-
-
-application = Application(
-    name="Counter Service",
-    version="0.1",
-    security=BearerSecurity(),
-    plugins=(Plugin(name="counter", server_extensions=ServerExtension(
-        name="counter", service_factory=Counter,
-    )),),
-)
-app = application.build()
-```
-
-Start it with:
-
-```sh
-python -m uvicorn example:app --host 127.0.0.1 --port 8000
-```
-
-Then, in another terminal:
-
-```sh
-curl -sS -X POST http://127.0.0.1:8000/api/v1/counter/increment \
-  -H 'Authorization: Bearer example-secret' \
-  -H 'Content-Type: application/json' \
-  -d '{"amount": 2}'
-```
-
-The result is `{"value":2}`. The literal bearer secret is **only** for this
-loopback demonstration; use a real authentication policy for an application.
-An application with declared agents builds its canonical chat, supervised worker
-and authenticated transports through `Application.build(reference, context, ...)`.
-Construction does not start inference. `@endpoint` validates request and response data and contributes an
-OpenAPI schema. Declare server components through `Plugin.server_extensions`;
-use `ServerExtension(service=...)` for a constructed service or
-`ServerExtension(service_factory=...)` for dependency-aware construction.
-The default `endpoints=None` automatically
-enables discovery of decorated routes. Set `endpoints=()` to keep them private.
-Factories may request `context` for fixed build inputs alongside named service
-dependencies; a `module:factory` reference keeps server-only imports deferred.
-During build, the combined dependency graph and routes are validated before
-services start.
-
-For the next step, read [composition and runtime](https://github.com/B4PT0R/the_framework/blob/main/docs/framework.md) for
-plugins, private specialists, persistent resources, security, voice and client
-surfaces. The [starter source](https://github.com/B4PT0R/the_framework/tree/main/starter) shows these features in one application
-without requiring you to adopt its UI design.
-
-## Develop and package
-
-In the shared suite, activate `../.venv` and use the workspace installer instead
-of reinstalling this member alone. Standalone development can use any environment.
-
-```sh
-python -m pip install -e ".[dev]"
-python -m pytest -q tests/general tests/agentic
-python -m build
-```
-
-The build produces a wheel and source archive in `dist/`. The wheel contains
-the typed `the_framework` package, runtime prompts and the editable starter
-template; it does **not** bundle Node modules or a prebuilt browser UI. The
-test suite includes a wheel-only import/bootstrap check outside the checkout.
-For UI changes, also run `npm --prefix starter/ui test` and
-`npm --prefix starter/ui run build`.
-
-This repository is [MIT licensed](https://github.com/B4PT0R/the_framework/blob/main/LICENSE). See the [changelog](https://github.com/B4PT0R/the_framework/blob/main/CHANGELOG.md)
-for version notes. Publishing to PyPI is a separate release action; building
-locally does not publish anything.
-
-## Immutable backend deployment (opt-in)
-
-`the_framework.deployment` provides a small explicit API to build an immutable
-Docker image, validate it in isolation, select it and serve it under an external
-host supervisor. The existing local development launcher remains independent;
-there is no automatic installation or cutover. See [deployment and recovery](docs/deployment.md)
-for factories, optional host browser/control services, data rollback limits and
-platform verification. Requires an existing Docker daemon with Linux containers.
+Choose two empty or absent, non-overlapping directories. Bootstrap copies
+editable application source, prepares its environment and builds the UI.
+It does not install OS packages or sign in to a model account. The window and
+settings can start without model credentials; replies and optional hosted
+features require a usable backend account. See the
+[first-application guide](docs/guides/first-application.md) for prerequisites,
+expected results, sign-in and recovery.
+
+The distribution is `b4pt0r-the-framework`, the Python namespace is
+`the_framework`, and the CLI is `the-framework`. The included
+[starter](starter/README.md) is application source you can change, not a mandatory
+frontend or a required agent personality.
+
+## Scope and maturity
+
+This is an **alpha-stage** library. These docs describe the checkout’s API;
+published versions may differ. It is not a hosted service, a general sandbox,
+or a promise of safe autonomous self-modification. Tools run with their
+configured account’s permissions. The starter is local-only; do not expose its
+port publicly as a substitute for a remote access policy.
+
+The broader ambition is an application that can evolve through conversation
+while preserving continuity. The library supplies reusable mechanisms toward
+that goal, not a finished product policy or a guarantee that every change is
+safe. The separate **The Harness** application is a larger consumer; the
+Framework does not depend on it.
+
+For source work, see [Development](docs/guides/development.md).
+For opt-in immutable backends, see [Deployment and recovery](docs/deployment.md).
+See also the [changelog](CHANGELOG.md) and [MIT license](LICENSE).

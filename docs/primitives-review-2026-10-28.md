@@ -1,5 +1,8 @@
 # Framework primitives: clarity and composition review
 
+> Historical design note, not the current API contract. Start with the
+> [documentation paths](README.md) or the [technical reference](reference/README.md).
+
 Review date: 2026-10-28. Scope: public construction vocabulary, its main
 implementation paths, and real uses in the Harness. This is not a line-by-line
 audit of every bundled plugin or a claim of measured developer productivity.

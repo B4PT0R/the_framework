@@ -1,5 +1,9 @@
 # Local Agent starter
 
+For a guided first launch, start with [Your first application](../docs/guides/first-application.md).
+For the project’s intent and architecture, use the [documentation paths](../docs/README.md).
+This manual covers the starter’s detailed behavior and customization.
+
 A small, editable desktop application built with `the_framework`: one persistent
 conversation, a Python worker, an authenticated loopback server and a Chromium
 window. This is application source to make your own, not a mandatory framework UI.
@@ -230,7 +234,7 @@ published local files. Extensions may return `Artifact(kind=..., payload=...)`
 directly; tools/commands persist it and providers display it only during the
 current turn. `Image` remains vision-only. Add a React renderer through `App`'s
 `artifactRenderers` prop for a custom widget kind; unknown kinds fall back to JSON.
-See [the artifact contract](../docs/framework.md#conversation-artifacts).
+See [the artifact contract](../docs/reference/artifacts.md#conversation-artifacts).
 
 All uploaded and published client files share `data_root/bucket/`, including images,
 video and other media. `ARTIFACTS` serves this tree through authenticated

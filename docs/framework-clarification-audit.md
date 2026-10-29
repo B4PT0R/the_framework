@@ -1,5 +1,8 @@
 # Framework clarification follow-up
 
+> Historical design note, not the current API contract. Start with the
+> [documentation paths](README.md) or the [technical reference](reference/README.md).
+
 > Historical design/audit record. API names, paths and verification counts below
 > describe that iteration; use [the current guide](framework.md), README and
 > CHANGELOG for the supported composition API.

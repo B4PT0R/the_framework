@@ -1,5 +1,10 @@
 # Immutable Docker backends (opt-in)
 
+[Documentation](README.md) / Deployment
+
+This is an opt-in advanced operating workflow, not a prerequisite for a local
+application. New users should start with [Your first application](guides/first-application.md).
+
 This is a separate deployment path, not a replacement for the local development
 launcher. Nothing installs a service, selects an image or switches a running
 application on import. An existing Docker daemon running Linux containers and
