@@ -2,7 +2,13 @@
 
 [Documentation](../README.md) / [Reference](README.md)
 
-Use this when contributing information to model input without appending it to the durable conversation. See also [Continuity](../explanation/continuity.md).
+A provider gives the model current information when its input is prepared:
+for example, a status snapshot or a fresh observation. Its output is temporary
+context, refreshed separately from the saved conversation.
+
+Channels select which projections receive the information, such as text or
+realtime. See [Continuity](../explanation/continuity.md) for how working context
+relates to durable history.
 
 ## Context providers
 

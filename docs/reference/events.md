@@ -2,7 +2,12 @@
 
 [Documentation](../README.md) / [Reference](README.md)
 
-Use this when implementing a client or emitting plugin-owned events. Framework events, backend wire signals and canonical conversation items are different contracts.
+Clients use events to show an agent’s progress, stream its reply and learn when
+a conversation item has been saved. Plugins can declare events for their own
+features using the same public transport.
+
+The event contract separates provisional activity from committed history and
+keeps inference-backend wire details inside their adapters.
 
 ## Public event contract
 

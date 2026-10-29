@@ -1,62 +1,53 @@
 # Documentation
 
-The Framework lets an application keep a continuous agent conversation while
-its execution, features and interfaces evolve. You do not need to learn every
-runtime contract before trying it.
+Build an application whose agent can help change its tools, backend and interface
+while keeping the conversation with its user. Start by seeing what that involves,
+try the editable application, then look up the contracts needed for your changes.
 
-## 1. Understand the project
+## Understand what you are building
 
-Read these in order for the short conceptual path. No setup is required.
+1. [Building an application that can evolve](explanation/intention.md) — a concrete
+   example of changing the application through conversation, and the foundation
+   that supports it.
+2. [Architecture](explanation/architecture.md) — how to assemble an agent, its
+   features and its interface, and why each has its own role.
+3. [Continuity](explanation/continuity.md) — how the conversation is saved and
+   resumed as interfaces, processes and model context change.
 
-1. [Intention and boundaries](explanation/intention.md) — the problem, goals,
-   non-goals and the difference between ambition and delivered mechanisms.
-2. [Architecture](explanation/architecture.md) — components, ownership and the
-   reasons for the main boundaries, followed by one conversation’s journey.
-3. [Continuity](explanation/continuity.md) — durable state, temporary context,
-   restarts and what “persistent” does not promise.
+## Make it yours
 
-## 2. Build something
+1. [Your first application](guides/first-application.md) — create a local desktop
+   app, get a reply, change its instructions and reopen the same conversation.
+2. [Your first plugin](guides/first-plugin.md) — add a tool that reports the time,
+   then see how a feature can grow into a backend service or integration.
+3. [Development](guides/development.md) — work from source, check changes and
+   choose how to activate them.
 
-1. [Your first application](guides/first-application.md) — prerequisites,
-   bootstrap, first launch, first reply and the files to change.
-2. [Your first plugin](guides/first-plugin.md) — add one small tool, understand
-   installation versus agent binding, then grow only as needed.
-3. [Development](guides/development.md) — work from source, verify changes and
-   keep development, frontend publication and backend deployment distinct.
+The [starter manual](../starter/README.md) explains everyday operation and
+customization: settings, attachments, voice, browser access and private data.
+Read the relevant section when you use that feature.
 
-The [starter manual](../starter/README.md) covers everyday UI behavior, data,
-voice, browser operation and advanced customization. It is a companion to the
-first application guide, not prerequisite reading.
+## Follow a specific task
 
-## 3. Look up a contract
-
-Use the [technical reference](reference/README.md) by topic: application,
-services, plugins, sessions, agents, events, security, context, artifacts,
-client surfaces, realtime, conversation ingress and scheduling.
-The [deployment guide](deployment.md) covers the separate, opt-in immutable
-backend workflow. It is not needed to bootstrap a local application.
-
-## Choose a shorter route
-
-| You are… | Suggested route |
+| Your task | Reading path |
 | --- | --- |
-| Evaluating the idea | Intention → Architecture → scope/maturity in the root README |
-| Trying a local agent | First application → starter manual as needed |
-| Adding tools | First plugin → plugin/agent reference |
-| Writing a client | Architecture → events → artifacts → ingress → security |
-| Integrating backend services | Architecture → services → plugin composition |
-| Investigating recovery | Continuity → application/sessions → deployment if used |
-| Maintaining this repository | Development → the relevant reference → source/tests |
+| Evaluate whether this fits your application | Project explanation → Architecture |
+| Run a local agent | First application → starter manual as needed |
+| Add a tool or integration | First plugin → plugin or services reference |
+| Change the interface | First application → client surfaces reference |
+| Build another client | Architecture → events → artifacts → conversation ingress → security |
+| Investigate a restart or lost context | Continuity → sessions or context reference |
+| Operate an immutable backend | Deployment and recovery |
+| Maintain the library | Development → relevant contract → source and tests |
 
-## Status and reading conventions
+## Look up the details
 
-- **Explanation** gives reasons and a mental model, not exhaustive signatures.
-- **Guides** give an ordered path and expected outcomes.
-- **Reference** gives precise contracts; some examples are intentionally fragments.
-- **Historical notes** record decisions and audits, not the current API contract.
+The [technical reference](reference/README.md) groups exact declarations,
+lifetimes and protocols by the task they support. Examples identify where they
+belong in your application. [Deployment and recovery](deployment.md) covers the
+optional immutable-backend workflow.
 
-The documentation targets the source in this checkout. The
-[changelog](../CHANGELOG.md) helps reconcile release differences.
-[Historical notes](history/README.md) are available for maintainers, outside the
-learning path. The old [single-page guide](framework.md) remains a section-link
-map so existing bookmarks still lead to their topics.
+These docs follow the checkout. The [changelog](../CHANGELOG.md) records release
+changes. Maintainers can consult [historical notes](history/README.md) for earlier
+reasoning; the [old single-page guide](framework.md) redirects existing section
+bookmarks to the current topics.

@@ -2,7 +2,13 @@
 
 [Documentation](../README.md) / [Reference](README.md)
 
-Use this when a feature spans an agent and the server, or depends on another feature. For a small agent-only feature, follow [Your first plugin](../guides/first-plugin.md).
+A plugin packages one feature across the agent and backend: its tools, context,
+services, routes and any private specialists. The application installs the
+feature once and resolves the contributions and dependencies it declares.
+
+Start with [Your first plugin](../guides/first-plugin.md) to add one tool. The
+contracts here cover growing that feature, sharing capabilities and controlling
+its binding to individual agents.
 
 ## On this page
 

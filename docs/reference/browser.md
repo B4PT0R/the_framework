@@ -2,8 +2,13 @@
 
 [Documentation](../README.md) / [Reference](README.md)
 
-Use this for browser RPC ownership, observation sessions, DOM handles and
-window/tab cleanup. Browser observation is temporary model context, not chat history.
+Browser tools let an agent inspect pages and act on their elements. An
+observation session supplies a current DOM and screenshot; browser RPC connects
+the agent to the process that owns the windows and profiles.
+
+The contracts below cover that connection, element handles, application-UI
+access and cleanup. Save useful conclusions from observations before closing
+their source when later work will need them.
 
 ## Browser and application roots
 

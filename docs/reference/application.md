@@ -2,7 +2,13 @@
 
 [Documentation](../README.md) / [Reference](README.md)
 
-Use this when you need exact ownership, construction and session-lifecycle rules. For the mental model first, read [Architecture](../explanation/architecture.md).
+`Application` assembles agent recipes, installed features and client interfaces
+into one running system. It owns shared server resources and hosts the runtimes
+for individual conversations.
+
+The contracts below describe how that composition is built, started and stopped,
+and which resources belong to the application or to a session. For the assembly
+walkthrough, see [Architecture](../explanation/architecture.md).
 
 ## Responsibility map
 

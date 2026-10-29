@@ -2,7 +2,12 @@
 
 [Documentation](../README.md) / [Reference](README.md)
 
-Use this to find the reusable configuration, storage and lifecycle building blocks before introducing application-specific plumbing.
+Bundled plugins provide capabilities such as memory, file presentation,
+command execution and scheduling. Shared storage and lifecycle helpers support
+features that need their own state.
+
+This page points to those implementations and their extension points so you can
+reuse the existing mechanism when adding application behavior.
 
 ## On this page
 

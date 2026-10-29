@@ -2,7 +2,9 @@
 
 [Documentation](../README.md) / [Reference](README.md)
 
-Use this to locate complete applications and understand their relationship to the library. The Harness is a separate consumer, not a dependency of this package.
+The editable [starter](../../starter/README.md) is the complete starting point
+for an agent application. The examples below illustrate two other scales:
+a small backend service and The Harness’s larger agent application.
 
 ## Standalone example
 

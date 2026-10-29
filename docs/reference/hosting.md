@@ -2,9 +2,13 @@
 
 [Documentation](../README.md) / [Reference](README.md)
 
-Use this for the hosted worker/runtime assembly, desktop process ownership and
-server-to-worker calls. The ordinary application builder already assembles these
-parts; customize them only when your application needs a different policy.
+Hosting connects each saved conversation to a supervised worker, client
+transports and the services it uses. The standard application builder assembles
+these resources; a desktop launcher can also keep the window and listener alive
+across server replacement.
+
+This page describes those connections and lifetimes for applications that need
+to customize their host or make server-to-worker calls.
 
 ## On this page
 

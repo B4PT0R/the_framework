@@ -1,12 +1,14 @@
 # Local Agent starter
 
-For a guided first launch, start with [Your first application](../docs/guides/first-application.md).
-For the project’s intent and architecture, use the [documentation paths](../docs/README.md).
-This manual covers the starter’s detailed behavior and customization.
+The starter is an editable local desktop agent application: a Python backend,
+a React interface in Chromium and a persistent conversation. Use it as the
+starting source for your own application, then change its instructions, tools
+and interface.
 
-A small, editable desktop application built with `the_framework`: one persistent
-conversation, a Python worker, an authenticated loopback server and a Chromium
-window. This is application source to make your own, not a mandatory framework UI.
+[Your first application](../docs/guides/first-application.md) walks through launch,
+a first reply and a source change. This manual provides the operational details
+for settings, files, voice, browser access and customization. For the underlying
+assembly, see [Architecture](../docs/explanation/architecture.md).
 
 ## Create your own copy
 

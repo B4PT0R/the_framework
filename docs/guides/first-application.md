@@ -2,9 +2,12 @@
 
 [Documentation](../README.md) / Build / First application
 
-**Goal:** create an independent, editable local application, launch its interface
-and know where to make your first change. You do not need to understand server
-composition or deployment first.
+Create a local desktop agent application with a Python backend and a React
+interface in Chromium. By the end, you will have exchanged a message, changed
+the agent’s instructions and reopened the same conversation.
+
+The starter supplies the working application. You choose its editable code
+location and a separate location for private data.
 
 ## 1. Check the prerequisites
 
@@ -17,8 +20,9 @@ You will choose two **empty or absent, distinct and non-overlapping** directorie
 - a code directory for source you can edit;
 - a private data directory for conversation, settings, plugin stores and files.
 
-Keep private data out of source control. Tools in this application can use real
-account privileges; this setup is not a sandbox.
+Keep private data out of source control. The starter’s command tools execute
+with your account’s permissions; review its installed features and instructions
+before giving it work.
 
 ## 2. Install and bootstrap
 
@@ -35,9 +39,9 @@ launches it. Its code remains yours to edit. The installed Framework version is
 pinned; an editable Framework checkout is linked explicitly instead.
 
 **Expected result:** a local Chromium window with conversation and settings.
-Preparation and opening the UI do not prove that inference credentials work.
-The starter listens on loopback and installs browser credentials privately.
-Do not make its port publicly accessible.
+The next step connects a model account so the agent can reply. The starter
+listens on loopback and installs browser credentials privately; keep that port
+local.
 
 ## 3. Make the first reply possible
 
@@ -50,13 +54,13 @@ cd /path/to/my-agent-code
 uv run python -c 'from codex_backend_sdk import OpenAI; OpenAI().authenticate()'
 ```
 
-Then send a short message. A successful reply verifies text inference for that
-account and model—not voice, embeddings or every optional service. If necessary,
-select an available model in Settings. Never paste credentials into application
-configuration. See [Backend login](../../starter/README.md#backend-login) for the
+Then send a short message and check that a reply arrives. If necessary, select
+an available model in Settings. This establishes text chat; optional features
+such as voice have their own setup. Keep credentials in the backend’s account
+store. See [Backend login](../../starter/README.md#backend-login) for the
 starter’s account behavior.
 
-## 4. Find the application, not just its configuration
+## 4. Find the source you will change
 
 In the generated project:
 
@@ -69,26 +73,34 @@ In the generated project:
 | `starter/server.py` | See the single build call and explicit storage/security inputs |
 | `starter/security.py` | Understand the starter’s loopback access policy before changing transport |
 
-Start with a small instruction change. Application/server source changes require
-reconstruction of the running application; do not expect an imported declaration
-to hot-reload. Saved session settings take precedence over declaration defaults,
-so edit an existing conversation’s model in Settings rather than assuming a new
-source default overrides it. For adding code behavior, continue with
-[Your first plugin](first-plugin.md).
+These are the same sources an agent with authorized development tools can
+work on. Start with a manual change to see how source, activation and saved
+conversation fit together.
 
-## 5. Stop, relaunch and recover setup
+## 5. Change the instructions and resume
 
-Stop the local application deliberately when finished, then launch the same
-project with:
+Add a short preference to `starter/instructions.md`, such as “Use concise replies
+and include file paths when discussing code.” Stop the local application and
+relaunch it with the same code and data locations:
 
 ```sh
 the-framework run --code-dir /path/to/my-agent-code
 ```
 
-It reuses the configured data directory and successful setup stages, checking
-Python dependencies and whether Chromium can launch. Existing retained history
-should appear again. This is session continuity; it does not restore unsaved UI
-drafts or undo external tool effects.
+The starter reads the instructions when constructing the agent. Your previous
+exchange should still appear. Ask a new question to see the updated instructions
+in use. Changes to application/server source likewise take effect when the
+application is reconstructed.
+
+Saved session settings take precedence over recipe defaults. To change the model
+of an existing conversation, use Settings. To add executable behavior, continue
+with [Your first plugin](first-plugin.md).
+
+## 6. Repair setup when needed
+
+`run` reuses the configured data directory and successful setup stages, checking
+Python dependencies and whether Chromium can launch. Keep that data directory
+to retain the conversation. Save any local UI drafts before closing the window.
 
 If preparation failed, correct the reported prerequisite and resume without
 recreating or overwriting your source:
@@ -110,5 +122,5 @@ For checkout-based setup instead of a generated app, see
 - [Architecture](../explanation/architecture.md) to understand assembly.
 - [Reference](../reference/README.md) only when you need a specific contract.
 
-Immutable backend deployment is optional and separate. You do not need Docker
-to follow this guide.
+For versioned backend images and supervised activation, continue later with
+[Deployment and recovery](../deployment.md).

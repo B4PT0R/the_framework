@@ -1,77 +1,86 @@
-# Continuity: what persists, what is temporary
+# Continuity: keeping the conversation through changes
 
 [Documentation](../README.md) / Understand / Continuity
 
-“Persistent agent” does not mean one immortal process or one infinitely large
-model prompt. It means the application keeps durable state and has explicit
-ways to reconstruct execution around it.
+You can ask for a change, discuss it, replace the interface or restart the
+backend, then continue the exchange. The application supports this by saving
+the conversation separately from the processes and connections running it.
 
-## Three different kinds of state
+## Follow a saved conversation
 
-| Kind | Examples | Consequence |
+When a worker commits a conversation item, it becomes part of the canonical
+`Session` record. The session also holds saved configuration, extension state
+and agent bindings. A file-backed session writes this state to disk; hosted
+sessions use durable storage by default.
+
+After a restart, the application opens that record, constructs the agent and
+resumes execution. A reconnecting client retrieves a projection of the saved
+history. The browser and the previous worker can disappear while the record
+remains available.
+
+For a deliberately temporary agent, `Session()` provides an in-memory session.
+Retaining context between tasks and persisting it between process lifetimes
+are separately configurable choices, particularly for specialists.
+
+## What happens when you change something?
+
+| Change | How the conversation continues |
+| --- | --- |
+| Refresh or reconnect a client | It retrieves retained history from the server; local drafts follow the client’s own saving policy |
+| Publish a managed interface release | The client loads a new UI while the session stays with the application; rollback restores the preceding UI release |
+| Replace an interrupted worker | The supervisor reconstructs execution around the canonical session; unfinished tool work needs inspection before retrying |
+| Replace the server through its supervised host | Resources are rebuilt from declarations and saved data; the starter’s desktop parent retains its browser and listener |
+| Compact the model context | The model receives a shorter working context while archived conversation remains available through history projections |
+
+An active voice call has a temporary connection and needs its own cleanup and
+recovery when execution changes. Durable conversation and reconnection provide
+the basis for resuming the exchange.
+
+## Keep history and working context distinct
+
+The session stores the conversation. `Context` prepares what the model receives
+for its next turn: active history, instructions and fresh provider output. A
+provider might supply the current browser page or a status snapshot. Its next
+output can replace the previous one.
+
+Compaction summarizes working context to make room for further turns. The
+archive preserves the earlier exchange, but the model’s next input contains a
+selection of that information. When a temporary observation matters for later
+work, save the useful conclusion in the conversation, memory or another durable
+owner before closing its source.
+
+This gives different storage roles a clear purpose:
+
+| State | Examples | How to preserve it |
 | --- | --- | --- |
-| Canonical session data | Conversation, saved configuration, extension state, agent bindings, compaction archive | A file-backed session can resume without relying on client memory |
-| Feature-owned durable data | Memory stores, registry, scheduler records, managed surface releases | Each owner has its own storage/lifecycle; back up the application’s private data, not just chat text |
-| Temporary execution and presentation | Worker processes, sockets, streamed deltas, provider snapshots, browser DOM, voice calls | Reconnect, rebuild or explicitly preserve needed conclusions; do not mistake these for saved history |
+| Canonical session | Conversation, settings, bindings, compaction archive | Keep the session’s durable storage |
+| Feature-owned data | Memory, registry, scheduler records, managed surface releases | Include each feature’s private store in backups |
+| Temporary execution and observations | Processes, sockets, streamed text, browser DOM, voice calls | Reconnect or reconstruct; save needed conclusions explicitly |
 
-`Session()` can also be in-memory. Persistence is a hosting/storage choice, not
-a magical property of every agent instance. Hosted sessions are durable by
-default. Retaining context across tasks and storing it across process restarts
-are separate choices, especially for specialists.
+## Know what has actually survived
 
-## Canonical history is not model input
+Committed items are the replayable record. Streaming text and operational events
+show work in progress. Clients recover history from that committed record rather
+than replaying old streaming chunks as messages.
 
-The session is the record. The `Context` prepares what the model receives:
-active history, instructions and current provider output. Providers can supply
-fresh information without writing it to the conversation. Their output may be
-replaced or disappear on the next generation.
+External effects have their own state: a command may have written a file before
+the worker stopped, or a service may have accepted a request before the result
+was saved. Inspect that state before retrying interrupted work. Atomic snapshot
+replacement protects individual stores from partial writes; recovery across
+plugin stores and external systems requires the application’s own checks.
 
-Compaction reduces the active model context while retaining archived conversation
-for history projections. It does not erase the canonical archive, nor guarantee
-that every detail is present in the model’s next input. If a temporary observation
-matters later, preserve the conclusion in an appropriate durable owner before
-closing its source.
+## Plan recovery alongside activation
 
-## What clients can rely on
+Keep private data across source and release changes, back it up, and test how
+your host resumes it. For an interface change, retain the previous release.
+For backend or storage changes, verify that the candidate can open the intended
+data and keep an appropriate recovery path before activation.
 
-Streaming text and operational events are provisional. Committed session items
-provide replay; display projections choose what the UI shows. An image supplied
-for vision is not automatically a displayed image. A persisted artifact requests
-presentation, but does not prove that someone saw it.
+Continuity rests on these concrete arrangements: durable records, replaceable
+execution and a verified path back to work. Permissions, retention and backups
+are application choices that should match its users and deployment.
 
-The same distinction applies to scheduling: a task, a notification and a human
-acknowledgement are different facts. Neither silence nor delivery establishes
-consent or task completion.
-
-## What survives a change?
-
-- **Client refresh or disconnect:** a client can recover retained history from
-  the server. Local unsaved drafts and media state have their own client policy.
-- **Worker interruption:** the canonical session remains; supervision and context
-  preparation provide recovery mechanisms. Arbitrary external tool side effects
-  still require inspection before retrying.
-- **Managed frontend publication:** the UI release changes, not the conversation’s
-  owner. Preview/publish/rollback is independent of backend replacement.
-- **Supervised server replacement:** the application reconstructs resources from
-  declarations and durable data. The starter’s parent retains its browser and
-  listener. An active voice call needs explicit cleanup/recovery, not an assumption
-  that its temporary connection survived.
-- **Data deletion or incompatible changes:** persistence alone cannot recover
-  deleted files, reverse migrations or undo external effects. Keep backups and
-  test recovery for the deployment you operate.
-
-Atomic snapshot replacement protects individual owners from partial writes; it
-is not a transaction across all plugin stores or external systems. No framework
-mechanism can make every arbitrary command exactly-once.
-
-## Keep mechanisms and policy separate
-
-The Framework supplies storage, supervision, projections and release mechanisms.
-The application decides permissions, retention, backup strategy, acceptable
-restart boundaries and how to verify a generated change before activation.
-A build is not activation; activation is not behavioral verification.
-
-**Next:** [Your first application](../guides/first-application.md).
-For exact contracts: [Sessions](../reference/sessions.md),
+**Next:** [Your first application](../guides/first-application.md) includes stopping
+and reopening the starter. Exact contracts: [Sessions](../reference/sessions.md),
 [Context providers](../reference/providers.md), [Artifacts](../reference/artifacts.md)
 and [Deployment](../deployment.md).

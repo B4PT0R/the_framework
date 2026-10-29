@@ -2,11 +2,16 @@
 
 [Documentation](../README.md) / [Reference](README.md)
 
-Use this for voice controller, projection and transport contracts. Read [Continuity](../explanation/continuity.md) before integrating a new client.
+The Realtime plugin adds a live voice call alongside the text conversation.
+Its controller manages call startup, readiness, delegated work and graceful
+shutdown; clients supply their microphone permissions and media connection.
+
+The contracts below describe call control. For coordinating voice with text
+submissions and feature updates, see [Conversation ingress](conversation.md).
 
 ## Realtime service
 
-The neutral realtime plugin exposes call creation/readiness/stop endpoints and
+The Realtime plugin exposes call creation/readiness/stop endpoints and
 its controller, with an optional `realtime.client_factory` plugin option.
 Its agent tools `start_session`, `stop_session` and `session_status` control the
 same call. Start/stop acknowledge a deferred request, not a completed transition:

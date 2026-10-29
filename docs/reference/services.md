@@ -2,7 +2,13 @@
 
 [Documentation](../README.md) / [Reference](README.md)
 
-Use this to add stateful backend services, validated endpoints or custom server assembly. Agent-only tools do not need this machinery: start with [Your first plugin](../guides/first-plugin.md).
+A backend service gives a feature a long-lived resource or an HTTP API. The
+Framework constructs services from declared dependencies, starts them in order
+and exposes their declared routes with validated inputs and outputs.
+
+Begin with the greeting service below, then add state and lifecycle as needed.
+For a tool that only runs inside the agent, follow
+[Your first plugin](../guides/first-plugin.md).
 
 ## On this page
 

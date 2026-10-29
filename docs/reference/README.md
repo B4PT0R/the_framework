@@ -2,9 +2,11 @@
 
 [Documentation](../README.md) / Reference
 
-Look up a contract here after you understand its role. Examples within these
-pages may be fragments with application-provided names, not standalone programs.
-For a runnable starting point, use [Your first application](../guides/first-application.md).
+Find the declaration or runtime contract for the feature you are implementing.
+Each page starts with the job it supports, then gives the API details and examples.
+For a guided implementation, begin with
+[Your first application](../guides/first-application.md) or
+[Your first plugin](../guides/first-plugin.md).
 
 | You need to… | Read |
 | --- | --- |
@@ -17,7 +19,7 @@ For a runnable starting point, use [Your first application](../guides/first-appl
 | Implement a client event stream | [Public events](events.md) |
 | Define access policies and endpoint contracts | [Security](security.md) |
 | Add generation-time information | [Context providers](providers.md) |
-| Understand live context and shared persistence mechanics | [Context](context.md) |
+| Deliver feature updates during a voice call | [Context](context.md) |
 | Publish files, images or widgets | [Artifacts](artifacts.md) |
 | Reuse storage/configuration/lifecycle building blocks | [Application primitives](primitives.md) |
 | Build, preview, publish or roll back an interface | [Client surfaces](surfaces.md) |

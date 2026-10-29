@@ -2,7 +2,13 @@
 
 [Documentation](../README.md) / [Reference](README.md)
 
-Use this for text/file submission, voice transitions, restart barriers and live-context contribution contracts. For an overview, read [A conversation through the system](../explanation/architecture.md#a-conversation-through-the-system).
+Chat ingress accepts the user’s text and attachments and hands them to the
+conversation’s worker. When voice is installed, it also coordinates submissions
+with call transitions so the two entry paths agree about the current work.
+
+The contracts below cover submission APIs, restart barriers and feature-owned
+live-context contributions. [Architecture](../explanation/architecture.md#a-conversation-through-the-system)
+shows where ingress sits in a turn.
 
 ## Canonical chat and optional live context
 

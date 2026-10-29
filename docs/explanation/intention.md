@@ -1,73 +1,86 @@
-# Intention and boundaries
+# Building an application that can evolve
 
-[Documentation](../README.md) / Understand / Intention
+[Documentation](../README.md) / Understand / Purpose
 
-## The problem: an agent is more than one model request
+The Framework is a framework for assembling full-stack agentic applications,
+designed so that the hosted agent can modify the application itself while
+continuing its conversation with the user.
 
-A useful agent application has a life beyond its next reply. It needs to remember
-a conversation, use tools, present results, reconnect clients, recover interrupted
-work and change over time. Reimplementing that machinery for every application
-makes it hard to tell who owns state and what a restart will destroy.
+You build both sides of that experience: an agent that can do useful work, and
+an application that gives it tools, displays its results and keeps the exchange
+going. The reusable foundation handles conversation storage, execution and
+component lifetimes. Your application defines the agent’s role, its permissions
+and the interface people use.
 
-The Framework aims to provide that foundation without deciding the product.
-Its central idea is **continuity with explicit ownership**: keep the conversation
-durable, make execution replaceable, and let interfaces and features evolve
-around it.
+## A request that changes the application
 
-## What the project is trying to make possible
+Suppose you use an agent to work on documents. You ask it for a better way to
+compare the results side by side. That request may lead to a change in the
+interface. Later, you ask for an import tool, which may require Python code and
+a backend service.
 
-The broader ambition is a full-stack agent application that can evolve through
-conversation. A user should be able to ask for new behavior or a better interface
-without treating each change as a new, disconnected assistant.
+With access to the relevant source and development tools, the hosted agent can
+make those changes as part of the work. It can inspect the existing code, edit
+it, run checks and prepare a version for use. You keep discussing the result in
+the conversation where the need arose.
 
-That ambition implies more than adding tools:
+This is what **full-stack** means here: the application’s interface, backend,
+agent behavior and integrations can all take part in that development loop.
+The starter gives you a concrete beginning: a Python backend with a React
+interface in a local Chromium window, editable as application source.
 
-- **Continuity:** distinguish the lasting conversation from temporary model
-  context, client connections and processes.
-- **Composable capabilities:** install features with clear ownership rather
-  than stitching together separate registries, lifecycles and routes by hand.
-- **Controlled evolution:** make interface candidates inspectable before
-  publication and preserve the session through supervised server replacement.
-- **Readable construction:** keep the ordinary path small and expose advanced
-  mechanisms only when they solve a real need.
-- **Application freedom:** keep identity, prompting, permissions, device behavior
-  and visual design outside the reusable library.
+## Why build on a shared foundation?
 
-These are design goals, not a claim that arbitrary self-modification is safe,
-autonomous or fully implemented. An application must still establish permission,
-verification and recovery policies.
+Changing a running application raises practical questions. Where is the
+conversation saved? Can the interface be replaced while keeping it? How do you
+start a new service, inspect a candidate version or return to an earlier one?
 
-## What exists in this checkout
+The Framework supplies reusable, tested building blocks for those jobs:
 
-The library provides declarations for applications, agents and plugins; durable
-sessions; supervised workers; authenticated HTTP/WebSocket assembly; private
-specialists; and versioned client surfaces. Bundled optional plugins cover such
-features as memory, registry, scheduling, voice and browser control.
+- **Keep the exchange:** durable sessions store conversation and saved settings.
+  A worker can resume execution around that record.
+- **Add behavior:** plugins bring together a feature’s tools, backend resources
+  and dependencies, with a common startup and shutdown lifecycle.
+- **Try an interface change:** managed client surfaces separate building a
+  candidate, previewing it, publishing it and rolling back.
+- **Replace execution:** worker supervision and server-replacement mechanisms
+  support resuming the application from durable state.
 
-The editable starter puts these pieces together into a local desktop application.
-It includes application instructions and personality choices; those are examples
-to change, not policies imposed by the framework. The separate The Harness
-application exercises a larger composition using the same public primitives.
+You can use the same foundation for applications with different purposes,
+interfaces and agents. The editable starter shows one composition; The Harness
+is a separate, larger application built on the library.
 
-## What it deliberately does not decide
+## How a change becomes part of the application
 
-The Framework is not a hosted model service, a universal agent personality or a
-mandatory user interface. It does not infer authorization from a task, guarantee
-the correctness of generated code, or turn a shell tool into a sandbox.
+A useful change has several observable stages:
 
-Persistence does not replace backups. A successful delivery is not evidence that
-a person read it. A successful UI build is not proof that the UI is usable.
-Remote hosting needs an explicit access policy; the local starter is not a
-public deployment recipe. Cross-platform behavior and optional backend features
-must be verified in the target environment, not inferred from the architecture.
+1. **Understand the request.** Decide whether it calls for an answer, use of an
+   existing feature or a code change.
+2. **Edit and check.** Work on the relevant source and test the behavior being
+   changed.
+3. **Prepare a candidate.** Build the interface or backend version that will
+   actually run.
+4. **Activate and inspect.** Publish the UI or replace the backend through its
+   managed lifecycle, then check the result in the running application.
+5. **Continue.** Keep the request, decisions and results in the same conversation.
 
-## Is it the right starting point?
+The Framework provides mechanisms for these stages. The application connects
+them to its agent’s tools and decides which actions need user approval. UI
+releases use the [client-surface workflow](../reference/surfaces.md); backend
+activation follows the chosen host, with an optional
+[immutable deployment workflow](../deployment.md).
 
-It is useful when you want a long-lived agent application with tools, private
-state and clients that can reconnect or evolve independently of execution.
-You can also use its service composition without declaring an agent.
-For a single stateless model request, the whole application stack may be more
-than you need.
+Verification and recovery make self-modification practical: test a candidate
+before using it, retain a way back, and inspect interrupted work before retrying.
+Tests and approvals should match the change’s effects. A tool that edits files
+or runs commands acts with its configured account’s permissions.
 
-**Next:** [Architecture](architecture.md) explains the few boundaries that make
-this possible. Or go directly to [Your first application](../guides/first-application.md).
+## Start with one small change
+
+Create the starter and change its instructions. Add a tool once you know what
+you want the agent to do. Adapt the interface when an actual interaction calls
+for it. The same application composition supports these increasingly substantial
+changes, while the saved conversation provides their shared context.
+
+**Next:** [Architecture](architecture.md) explains how to assemble these pieces.
+Or follow [Your first application](../guides/first-application.md) to try them.

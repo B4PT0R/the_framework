@@ -2,9 +2,10 @@
 
 [Documentation](../README.md) / Build / First plugin
 
-**Goal:** add one tool to the application created in
-[Your first application](first-application.md). No HTTP route, service factory
-or custom lifecycle is needed for this example.
+Give the agent a tool that reads the current UTC time. You will add a Python
+method, install it as a feature, then ask the agent to use it and inspect the
+result. Start from the application created in
+[Your first application](first-application.md).
 
 ## 1. Give the feature one job
 
@@ -42,9 +43,8 @@ plugins=(
 ),
 ```
 
-This is an **editing fragment**, not a second Application to paste beside the
-first. Keep the original plugin entries in that tuple unless you intend to
-remove their capabilities. Application-level plugins bind to its public agents
+Edit the tuple inside your existing `Application` declaration, keeping the
+other plugin entries you want. Application-level plugins bind to its public agents
 according to their binding policy.
 
 ## 3. Reconstruct and verify
@@ -69,8 +69,8 @@ while the application runs. Disabling a binding does not remove installed routes
 stop shared services or delete saved plugin data. This distinction matters as
 soon as a feature has settings or safety controls outside its tools.
 
-Our clock has only an agent side. Do not add a server component just to imitate
-a larger example.
+The clock is complete with its agent-side implementation. A server component
+becomes useful when the feature needs a long-lived backend resource or endpoint.
 
 ## 5. Grow along the right boundary
 

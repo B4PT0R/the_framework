@@ -2,7 +2,13 @@
 
 [Documentation](../README.md) / [Reference](README.md)
 
-Use this for ephemeral live context and the boundary between reusable mechanics and feature-owned state.
+A live voice conversation can receive current information from installed
+features while the text worker continues its work. Realtime transports those
+updates; each contributing feature owns the information and its refresh logic.
+
+This page describes live-context delivery and the storage/lifecycle helpers
+features can share. For adding information to ordinary model input, see
+[Context providers](providers.md).
 
 ## Optional live context
 

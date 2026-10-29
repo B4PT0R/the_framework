@@ -2,7 +2,14 @@
 
 [Documentation](../README.md) / [Reference](README.md)
 
-Use this to distinguish goals, tracked tasks, timed wake-ups and response deadlines. These are optional plugin features, not permissions for an agent to act.
+An application can keep work across turns and return to it at a chosen time.
+Goals record an agent’s ongoing objective; tracked tasks record obligations;
+wake-ups schedule a future agent turn; response waits track an expected reply
+or acknowledgement until a deadline.
+
+The Agentic and Scheduler plugins own these mechanisms. The contracts below
+explain their lifetimes and delivery behavior, with user authorization supplied
+by the application’s instructions and tools.
 
 ## Agentic: persistent work and turn controls
 

@@ -2,9 +2,12 @@
 
 [Documentation](../README.md) / Build / Development
 
-Use this path to work on the Framework or its starter from a checkout.
-For an independent application, start with [bootstrap](first-application.md).
-Read this repository’s [contributor instructions](../../AGENTS.md) before changes.
+Work from a checkout when changing the library or its bundled starter. This
+guide covers the development environment, checks and the path from edited source
+to an active version. For your own generated application, begin with
+[bootstrap](first-application.md).
+
+Read the repository’s [contributor instructions](../../AGENTS.md) before editing.
 
 ## Choose the right environment
 
@@ -85,14 +88,18 @@ verify packaged imports/resources separately from checkout behavior.
    appropriate supervised lifecycle. Immutable deployment is an optional separate
    workflow described in [Deployment and recovery](../deployment.md).
 
-A frontend publication does not publish Python packages or select a backend.
-A successful backend build is not a tested or selected image. None of these
-operations authorizes public exposure or deletion of private data.
+Verify the candidate produced by the relevant path, activate it deliberately,
+then inspect the running result. Keep private data and access policies intact
+through the change.
 
 ## Keep documentation at the right level
 
-Explain reasons in `explanation/`, ordered tasks in `guides/` and exact contracts
-in `reference/`. Update topic pages when the API changes. Keep the root README
-an invitation and orientation, not a second reference manual. Design audits
-belong in the [historical index](../history/README.md); their proposed APIs must
-not be mistaken for shipped behavior.
+Start with the question the reader brings to the page. Define the thing and
+show what it helps them do before introducing the mechanics. Use a concrete
+application or change to connect the two.
+
+The README defines the project and gives a first route in. Explanations develop
+the mental model, guides walk through an outcome, and reference pages give exact
+contracts. Keep prerequisites, permissions and recovery advice next to the actions
+they affect. Check that examples and links still work when the API changes.
+Design audits belong in the [historical index](../history/README.md).

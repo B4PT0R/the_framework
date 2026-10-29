@@ -2,7 +2,12 @@
 
 [Documentation](../README.md) / [Reference](README.md)
 
-Use this to publish client files, return artifacts and distinguish presentation from vision input. Files outside the bucket remain private application state.
+To give the user a downloadable file, an image or a widget, return a conversation
+artifact. Files intended for clients go through an authenticated shared bucket;
+artifact records describe how clients should present them.
+
+This page covers publication, storage and presentation. Sending an image to a
+model for inspection is a separate operation from displaying it to the user.
 
 ## Client file bucket
 

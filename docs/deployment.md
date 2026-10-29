@@ -2,13 +2,15 @@
 
 [Documentation](README.md) / Deployment
 
-This is an opt-in advanced operating workflow, not a prerequisite for a local
-application. New users should start with [Your first application](guides/first-application.md).
+Use an immutable backend when you want to build a specific application version,
+test that exact image, select it for the next start and retain a recovery path.
+A host supervisor manages the backend container while private data stays outside
+the image.
 
-This is a separate deployment path, not a replacement for the local development
-launcher. Nothing installs a service, selects an image or switches a running
-application on import. An existing Docker daemon running Linux containers and
-`uv` are prerequisites; this module does not install them.
+This optional workflow complements the local starter launcher. Begin with
+[Your first application](guides/first-application.md) for a local setup. To follow
+the workflow here, provide an existing Docker daemon running Linux containers
+and `uv`; deployment actions are explicit calls.
 
 ## Four operations, distinct responsibilities
 

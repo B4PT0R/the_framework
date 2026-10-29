@@ -2,7 +2,12 @@
 
 [Documentation](../README.md) / [Reference](README.md)
 
-Use this for direct agent construction, process-local resources and private specialists. Hosted applications normally delegate construction to Application.
+An agent recipe combines instructions, model defaults and extensions. The same
+recipe can create agents for separate conversations. Private specialists use
+that construction to do work for a caller and return a result.
+
+This page covers direct construction, process-local resources and specialist
+invocation. Hosted applications construct their agents from `Application`.
 
 ## Agent construction
 

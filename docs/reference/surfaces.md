@@ -2,7 +2,13 @@
 
 [Documentation](../README.md) / [Reference](README.md)
 
-Use this to configure editable UI sources and the build → preview → publish → rollback workflow. A frontend release does not own the conversation.
+A client surface connects editable interface source to the releases served by
+the application. It supports a build → preview → publish → rollback workflow,
+so a candidate interface can be inspected before clients switch to it.
+
+The conversation stays in the application’s session storage as UI releases
+change. This page covers source conventions, build configuration and release
+controls.
 
 ## Versioned client surfaces
 

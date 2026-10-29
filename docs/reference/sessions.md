@@ -2,7 +2,12 @@
 
 [Documentation](../README.md) / [Reference](README.md)
 
-Use this to host separate conversations in one application. A specialist is not a second public application session; see [Agents](agents.md).
+Each public session is an independent conversation with its own worker,
+history, settings and plugin bindings. Several sessions can use the same agent
+recipe while sharing application services.
+
+The APIs below create, reopen and close those conversations. For private helper
+agents that return work to a caller, see [Agents and specialists](agents.md).
 
 ## Independent application sessions
 

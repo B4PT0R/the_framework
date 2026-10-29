@@ -2,7 +2,13 @@
 
 [Documentation](../README.md) / [Reference](README.md)
 
-Use this when defining access policies, route schemas or authenticated transports. The starter policy is local-only; it is not a public hosting recipe.
+An application’s access policy determines which clients may connect and what
+they may do. Endpoint declarations specify the authentication, input and output
+contracts for each operation.
+
+The starter supplies a loopback policy for local desktop use. Other hosting
+arrangements require a policy appropriate to their clients and exposed services;
+this page describes the declarations used to build it.
 
 ## Security and endpoint contracts
 
